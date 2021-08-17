@@ -1,8 +1,9 @@
 #canvas1{
     width: 1920px;
     height: 1080px;
-    border: 1px solid black;
+    border: 1px solid rgb(247, 0, 0);
     background: #d79c50;
+    /* center is using Pos Abso, and it will auto ajust */
     position: absolute;
     top: 50%;
     left: 50%;
