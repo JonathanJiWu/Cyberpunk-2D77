@@ -1,6 +1,6 @@
 #canvas1{
-    width: 800px;
-    height: 500px;
+    width: 1920px;
+    height: 1080px;
     border: 1px solid black;
     background: #d79c50;
     position: absolute;
@@ -8,4 +8,7 @@
     left: 50%;
     transform: translate(-50%, -50%);
 
+}
+*{
+    background-color: black;
 }
