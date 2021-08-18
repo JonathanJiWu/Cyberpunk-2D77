@@ -33,7 +33,6 @@ const enemy = {
   // Horizontal and vertical frame that we cut out of from the sprite sheet
   frameX: 0,
   frameY: 1,
-
   // How many pixels moved per animation
   speedX: 18,
   speedY: 13,
@@ -113,10 +112,10 @@ function movePlayer() {
     player.moving = false;
   }
 }
+// enemy random movements, make this into a array maybe? and randomlize
 // distants on X and Y
 let verticalDis = enemy.x - player.x + 80;
 let horizontalDis = enemy.y - player.y + 170;
-// move toward player
 function moveEnemy() {
   // to the left if E is on the right of the P
   enemy.x += enemy.speedX;
@@ -213,6 +212,10 @@ function animate() {
     movePlayer();
     moveEnemy();
     handlePlayerFrame();
+    if(health.value<=0){
+      alert('dd')
+    }
   }
 }
-startAnimating(25);
+let startConvo = prompt('Are You ready for This?')
+// startAnimating(25);

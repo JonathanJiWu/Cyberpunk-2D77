@@ -1,15 +1,40 @@
-#canvas1{
-    width: 1920px;
-    height: 1080px;
-    border: 1px solid rgb(247, 0, 0);
-    background: #d79c50;
-    /* center is using Pos Abso, and it will auto ajust */
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-
+#canvas1 {
+  width: 1920px;
+  height: 1080px;
+  border: 1px solid rgb(247, 0, 0);
+  background: #d79c50;
+  /* center is using Pos Abso, and it will auto ajust */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: none;
 }
-*{
-    background-color: black;
+* {
+  background-color: black;
+}
+#health {
+  position: absolute;
+  top: 20%;
+  left: 22%;
+  transform: translate(-50%, -50%);
+  width: 30%;
+  height: 40px;
+  background-color: #332833;
+  border-radius: 2px;
+  padding: 3px;
+  z-index: 1;
+  display: none;
+}
+#healthE {
+  position: absolute;
+  top: 20%;
+  left: 70%;
+  transform: translate(-50%, -50%);
+  width: 45%;
+  height: 40px;
+  background-color: #cc1240;
+  border-radius: 2px;
+  padding: 1px;
+  z-index: 1; display: none;
 }
