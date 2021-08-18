@@ -35,9 +35,18 @@ const enemy = {
   frameY: 1,
 
   // How many pixels moved per animation
-  speedX: 20 * (Math.random() * 2 - 1),
-  speedY: 15 * (Math.random() * 2 - 1),
+  speedX: 18,
+  speedY: 13,
 };
+class Bullet {
+  constructor(x, y, radius, color, velocity) {
+    this.x = x;
+    this.y = y;
+    this.radius = radius;
+    this.color = color;
+    this.velocity = velocity;
+  }
+}
 // load in player sprite
 const playerSprite = new Image();
 playerSprite.src = "img/paine.png";
@@ -47,6 +56,10 @@ enemySprite.src = "img/redgoat.png";
 // load in background img
 const background = new Image();
 background.src = "img/background1.jpg";
+// healthbar
+let health = document.getElementById("health");
+let healthE = document.getElementById("healthE");
+
 // give parameters and cut out the sprite img
 function drawSprite(img, sX, sY, sW, sH, dX, dY, dW, dH) {
   ctx.drawImage(img, sX, sY, sW, sH, dX, dY, dW, dH);
@@ -55,13 +68,17 @@ function drawSprite(img, sX, sY, sW, sH, dX, dY, dW, dH) {
 setInterval(function () {});
 // keep track what user press/control
 // add the key into the array when user pressed it; and delete it a once we released it, keyup and keydowns be firing over each other
-window.addEventListener("keydown", function (e) {
+addEventListener("keydown", function (e) {
   keys[e.keyCode] = true;
   player.moving = true;
 });
-window.addEventListener("keyup", function (e) {
+addEventListener("keyup", function (e) {
   delete keys[e.keyCode];
   player.moving = false;
+});
+// player fire
+addEventListener("click", function (e) {
+  const fire = new Bullet(e.clientX, e.clientY, 5, "yellow", null);
 });
 
 function movePlayer() {
@@ -102,15 +119,14 @@ let horizontalDis = enemy.y - player.y + 170;
 // move toward player
 function moveEnemy() {
   // to the left if E is on the right of the P
-  enemy.x += enemy.speedX
-  enemy.y += enemy.speedY
+  enemy.x += enemy.speedX;
+  enemy.y += enemy.speedY;
   if (enemy.x < 0 || enemy.x > 1800) {
-    enemy.speedX =-enemy.speedX
+    enemy.speedX = -enemy.speedX;
   }
   if (enemy.y < 700 || enemy.y > 900) {
-    enemy.speedY =-enemy.speedY
+    enemy.speedY = -enemy.speedY;
   }
-  // go right
 }
 // Alternate rendering frame of the player so it can appear that it is walking
 function handlePlayerFrame() {
@@ -125,6 +141,19 @@ function handleEnemyrFrame() {
     enemy.frameX++;
   } else {
     enemy.frameX = 0;
+  }
+}
+// detect collision
+function detectCollision() {
+  let horizontalDis = enemy.x - player.x + 120;
+  let verticalDis = enemy.y - player.y + 100;
+  if (Math.abs(verticalDis) < 50 && Math.abs(horizontalDis) < 50) {
+    health.value -= 5;
+  }
+}
+function detectDeath() {
+  if (health.value <= 0) {
+    alert("ded");
   }
 }
 // let browser to server frame Consistently across all machines
@@ -178,15 +207,12 @@ function animate() {
       enemy.width * 3,
       enemy.height * 3
     );
+    detectCollision();
+    console.log(player.x, player.y);
+    console.log(enemy.x, enemy.y);
     movePlayer();
     moveEnemy();
     handlePlayerFrame();
-    // detect collision
-    let verticalDis = enemy.x - player.x + 80;
-    let horizontalDis = enemy.y - player.y + 170;
-    if (Math.abs(verticalDis) < 30 && Math.abs(horizontalDis) < 50) {
-      alert("DON'T TOUCH THE GOAT");
-    }
   }
 }
 startAnimating(25);
