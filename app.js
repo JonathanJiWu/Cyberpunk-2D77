@@ -37,15 +37,6 @@ const enemy = {
   speedX: 18,
   speedY: 13,
 };
-class Bullet {
-  constructor(x, y, radius, color, velocity) {
-    this.x = x;
-    this.y = y;
-    this.radius = radius;
-    this.color = color;
-    this.velocity = velocity;
-  }
-}
 // load in player sprite
 const playerSprite = new Image();
 playerSprite.src = "img/paine.png";
@@ -55,16 +46,15 @@ enemySprite.src = "img/redgoat.png";
 // load in background img
 const background = new Image();
 background.src = "img/background1.jpg";
+const fire = new Image();
+fire.src = "img/fire.png";
 // healthbar
 let health = document.getElementById("health");
 let healthE = document.getElementById("healthE");
-
 // give parameters and cut out the sprite img
 function drawSprite(img, sX, sY, sW, sH, dX, dY, dW, dH) {
   ctx.drawImage(img, sX, sY, sW, sH, dX, dY, dW, dH);
 }
-
-setInterval(function () {});
 // keep track what user press/control
 // add the key into the array when user pressed it; and delete it a once we released it, keyup and keydowns be firing over each other
 addEventListener("keydown", function (e) {
@@ -75,43 +65,53 @@ addEventListener("keyup", function (e) {
   delete keys[e.keyCode];
   player.moving = false;
 });
-// player fire
-addEventListener("click", function (e) {
-  const fire = new Bullet(e.clientX, e.clientY, 5, "yellow", null);
-});
-
 function movePlayer() {
   // how high can it go up player.y -up-
-  if (keys[38] && player.y > 840) {
+  if ((keys[38] && player.y > 840) || (keys[87] && player.y > 840)) {
     player.y -= player.speed;
     // Render the correct frames from the spritesheet
     player.frameY = 3;
     // walking animation
     player.moving = true;
   }
-  // down
-  if (keys[37] && player.x > 0) {
+  // left
+  if ((keys[37] && player.x > 0) || (keys[65] && player.x > 0)) {
     player.x -= player.speed;
     player.frameY = 1;
     player.moving = true;
   }
-  // left
-  if (keys[40] && player.y < canvas.height - player.height) {
+  // down
+  if (
+    (keys[40] && player.y < canvas.height - player.height) ||
+    (keys[83] && player.y < canvas.height - player.height)
+  ) {
     player.y += player.speed;
     player.frameY = 0;
     player.moving = true;
   }
   // right
-  if (keys[39] && player.x < canvas.width - player.width) {
+  if (
+    (keys[39] && player.x < canvas.width - player.width) ||
+    (keys[68] && player.x < canvas.width - player.width)
+  ) {
     player.x += player.speed;
     player.frameY = 2;
     player.moving = true;
   }
   // spacebar & fire
+  godMode = false;
+  burnE = false;
+  // haveEnergy==true
   if (keys[32]) {
+    drawFiring();
+    burnE = true;
+    godMode = true;
     player.moving = false;
   }
 }
+// function countEnergy(){
+
+// }
 // enemy random movements, make this into a array maybe? and randomlize
 // distants on X and Y
 let verticalDis = enemy.x - player.x + 80;
@@ -126,6 +126,9 @@ function moveEnemy() {
   if (enemy.y < 700 || enemy.y > 900) {
     enemy.speedY = -enemy.speedY;
   }
+}
+function drawFiring() {
+  ctx.drawImage(fire, player.x + 3, player.y - 32, 60, 75);
 }
 // Alternate rendering frame of the player so it can appear that it is walking
 function handlePlayerFrame() {
@@ -146,13 +149,41 @@ function handleEnemyrFrame() {
 function detectCollision() {
   let horizontalDis = enemy.x - player.x + 120;
   let verticalDis = enemy.y - player.y + 100;
-  if (Math.abs(verticalDis) < 50 && Math.abs(horizontalDis) < 50) {
+  if (Math.abs(verticalDis) < 50 && Math.abs(horizontalDis) < 50 && godMode==false) {
     health.value -= 5;
+  }
+}
+function detectCollisionToE() {
+  let horizontalDis = enemy.x - player.x + 120;
+  let verticalDis = enemy.y - player.y + 100;
+  if (
+    Math.abs(verticalDis) < 50 &&
+    Math.abs(horizontalDis) < 50 &&
+    burnE == true
+  ) {
+    healthE.value -= 5;
   }
 }
 function detectDeath() {
   if (health.value <= 0) {
-    alert("ded");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    play = false;
+    Swal.fire({
+      title: "The Goat Got Your Soul!",
+      text: "Better Luck Next Time!",
+      confirmButtonText: "Restart Game",
+      onclose: (play = true),
+    }).then(() => startAnimating(25));
+  }
+  if (healthE.value<=0){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    play = false;
+    Swal.fire({
+      title: "Lamp Chop for Dinner!",
+      text: "An Other!",
+      confirmButtonText: "Restart Game",
+      onclose: (play = true),
+    }).then(() => startAnimating(25));
   }
 }
 // let browser to server frame Consistently across all machines
@@ -207,15 +238,23 @@ function animate() {
       enemy.height * 3
     );
     detectCollision();
+    detectCollisionToE();
     console.log(player.x, player.y);
     console.log(enemy.x, enemy.y);
     movePlayer();
     moveEnemy();
     handlePlayerFrame();
-    if(health.value<=0){
-      alert('dd')
-    }
+    detectDeath();
   }
 }
-let startConvo = prompt('Are You ready for This?')
-// startAnimating(25);
+
+let play = false;
+if (play == false) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+Swal.fire({
+  title: "Don't kiss the Cyber Goat!",
+  text: "Use W, A, S, D or Arrow keys to move; use Spacebar to light it up!",
+  confirmButtonText: "Start Game",
+  onclose: (play = true),
+}).then(() => startAnimating(25));
