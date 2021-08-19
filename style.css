@@ -12,6 +12,7 @@
 }
 body {
   background-color: black;
+  overflow: hidden;
 }
 #health {
   position: absolute;

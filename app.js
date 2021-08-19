@@ -46,8 +46,12 @@ enemySprite.src = "img/redgoat.png";
 // load in background img
 const background = new Image();
 background.src = "img/background1.jpg";
+// Fire
 const fire = new Image();
 fire.src = "img/fire.png";
+// blue flame, energy
+const blueFlame = new Image();
+blueFlame.src = "img/blue-flame.png";
 // healthbar
 let health = document.getElementById("health");
 let healthE = document.getElementById("healthE");
@@ -108,10 +112,21 @@ function movePlayer() {
     godMode = true;
     player.moving = false;
   }
+  if (keys[75]) {
+    fireEnergy();
+    player.moving = false;
+  }
 }
-// function countEnergy(){
+// shoot out energy
+let moveToX = player.x + 5;
+let moveToY = player.y + 5;
 
-// }
+function fireEnergy() {
+  moveToX += 1;
+  ctx.drawImage(blueFlame, moveToX, moveToY, 40, 55);
+  if(blueFlame.x>1080){ctx.clearRect(0, 0, canvas.width, canvas.height);}
+  requestAnimationFrame(fireEnergy);
+}
 // enemy random movements, make this into a array maybe? and randomlize
 // distants on X and Y
 let verticalDis = enemy.x - player.x + 80;
@@ -149,7 +164,11 @@ function handleEnemyrFrame() {
 function detectCollision() {
   let horizontalDis = enemy.x - player.x + 120;
   let verticalDis = enemy.y - player.y + 100;
-  if (Math.abs(verticalDis) < 50 && Math.abs(horizontalDis) < 50 && godMode==false) {
+  if (
+    Math.abs(verticalDis) < 50 &&
+    Math.abs(horizontalDis) < 50 &&
+    godMode == false
+  ) {
     health.value -= 5;
   }
 }
@@ -175,7 +194,7 @@ function detectDeath() {
       onclose: (play = true),
     }).then(() => startAnimating(25));
   }
-  if (healthE.value<=0){
+  if (healthE.value <= 0) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     play = false;
     Swal.fire({
@@ -237,6 +256,7 @@ function animate() {
       enemy.width * 3,
       enemy.height * 3
     );
+
     detectCollision();
     detectCollisionToE();
     console.log(player.x, player.y);
