@@ -25,7 +25,7 @@ const player = {
 };
 const enemy = {
   // Horizontal and vertical positions of the enemy
-  x: 1000,
+  x: 1600,
   y: 800,
   // enemy width and height, which is calculated on the base of the Sprite sheet used
   width: 80,
@@ -46,6 +46,18 @@ enemySprite.src = "img/redgoat.png";
 // load in background img
 const background = new Image();
 background.src = "img/background1.jpg";
+// load in gameover img
+const endGame = new Image();
+endGame.src = "img/endgame.jpg";
+// load in gameover img
+const initial = new Image();
+initial.src = "img/BG2.jpg";
+// load in WASD img
+const WASD = new Image();
+WASD.src = "img/wasd.png";
+// load in spacebar img
+const spacebar = new Image();
+spacebar.src = "img/spacebar.png";
 // Fire
 const fire = new Image();
 fire.src = "img/fire.png";
@@ -110,7 +122,6 @@ function movePlayer() {
     drawFiring();
     burnE = true;
     godMode = true;
-    player.moving = false;
   }
   if (keys[75]) {
     fireEnergy();
@@ -122,9 +133,11 @@ let moveToX = player.x + 5;
 let moveToY = player.y + 5;
 
 function fireEnergy() {
-  moveToX += 1;
+  let moveToX = player.x + 5;
+  let moveToY = player.y + 5;
+  // moveToX ;
   ctx.drawImage(blueFlame, moveToX, moveToY, 40, 55);
-  if(blueFlame.x>1080){ctx.clearRect(0, 0, canvas.width, canvas.height);}
+  moveToX+=3
   requestAnimationFrame(fireEnergy);
 }
 // enemy random movements, make this into a array maybe? and randomlize
@@ -169,7 +182,7 @@ function detectCollision() {
     Math.abs(horizontalDis) < 50 &&
     godMode == false
   ) {
-    health.value -= 5;
+    health.value -= 2;
   }
 }
 function detectCollisionToE() {
@@ -180,29 +193,31 @@ function detectCollisionToE() {
     Math.abs(horizontalDis) < 50 &&
     burnE == true
   ) {
-    healthE.value -= 5;
+    healthE.value -= 1;
   }
 }
 function detectDeath() {
   if (health.value <= 0) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    play = false;
-    Swal.fire({
-      title: "The Goat Got Your Soul!",
-      text: "Better Luck Next Time!",
-      confirmButtonText: "Restart Game",
-      onclose: (play = true),
-    }).then(() => startAnimating(25));
+    ctx.drawImage(endGame, 0, 0, canvas.width, canvas.height);
+    ctx.font = "250px serif";
+    canvas.fillStyle = "#de2312";
+    ctx.fillText("Click to Continue", 450, 900, 1200);
+    ctx.font = "150px serif";
+    ctx.fillText("The Goat Got Your Soul!", 150, 500, 1900);
+    document.addEventListener("click", function () {
+      this.location.reload();
+    });
   }
   if (healthE.value <= 0) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    play = false;
-    Swal.fire({
-      title: "Lamp Chop for Dinner!",
-      text: "An Other!",
-      confirmButtonText: "Restart Game",
-      onclose: (play = true),
-    }).then(() => startAnimating(25));
+    ctx.drawImage(endGame, 0, 0, canvas.width, canvas.height);
+    ctx.font = "250px serif";
+    canvas.fillStyle = "#de2312";
+    ctx.fillText("Click to Eat Lamp Chops", 450, 900, 1200);
+    ctx.font = "150px serif";
+    ctx.fillText("Lamb Chops for Dinna!", 150, 500, 1900);
+    document.addEventListener("click", function () {
+      this.location.reload();
+    });
   }
 }
 // let browser to server frame Consistently across all machines
@@ -233,6 +248,8 @@ function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     // -drawImage- is a buildin canvas method, taking 5 arguments: what img want it to draw(line 30), top Coordinate, left Coordinate, width, height
     ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(WASD, 130, 200, 300, 200);
+    ctx.drawImage(spacebar, 700, 120, 650, 500);
     // croping out the player width and height, drawSprite is global function
     drawSprite(
       playerSprite,
@@ -271,6 +288,7 @@ function animate() {
 let play = false;
 if (play == false) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // ctx.drawImage(BG2, 0, 0, canvas.width, canvas.height);
 }
 Swal.fire({
   title: "Don't kiss the Cyber Goat!",
