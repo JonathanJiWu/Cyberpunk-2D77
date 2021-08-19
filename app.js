@@ -225,7 +225,6 @@ function detectDeath() {
     ctx.fillText("Click to Eat Lamp Chops", 450, 900, 1200);
     ctx.font = "150px serif";
     ctx.fillText("Lamb Chops for Dinna!", 150, 500, 1900);
-
     document.addEventListener("click", function () {
       this.location.reload();
     });
@@ -261,8 +260,8 @@ function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     // -drawImage- is a buildin canvas method, taking 5 arguments: what img want it to draw(line 30), top Coordinate, left Coordinate, width, height
     ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
-    ctx.drawImage(WASD, 130, 200, 300, 200);
-    ctx.drawImage(spacebar, 700, 120, 650, 500);
+    ctx.drawImage(WASD, 130, 200, 200, 200);
+    ctx.drawImage(spacebar, 700, 80, 650, 500);
     // croping out the player width and height, drawSprite is global function
     drawSprite(
       playerSprite,
@@ -304,12 +303,11 @@ if (play == false) {
   // ctx.drawImage(BG2, 0, 0, canvas.width, canvas.height);
 }
 Swal.fire({
-  title: "It's year 2045, You're a Cyber chick, Don't kiss the Cyber Goat!",
+  title: "It's year 2045, You're a Cyber chick, Don't kiss the Demon Goat!",
   text: "Use W, A, S, D or Arrow keys to move; use Spacebar to light it up!",
   confirmButtonText: "Start Game",
   onclose: (play = true),
 }).then(() => startAnimating(25));
-
 // sound system
 function Sound(src) {
   this.sound = document.createElement("audio");
