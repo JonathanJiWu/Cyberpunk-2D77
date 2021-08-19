@@ -120,6 +120,7 @@ function movePlayer() {
   // haveEnergy==true
   if (keys[32]) {
     drawFiring();
+    fireSound.play();
     burnE = true;
     godMode = true;
   }
@@ -135,10 +136,12 @@ let moveToY = player.y + 5;
 function fireEnergy() {
   let moveToX = player.x + 5;
   let moveToY = player.y + 5;
+
   // moveToX ;
   ctx.drawImage(blueFlame, moveToX, moveToY, 40, 55);
-  moveToX+=3
-  requestAnimationFrame(fireEnergy);
+  moveToX += 5;
+  energySound.play();
+  ctx.drawImage(blueFlame, moveToX, moveToY, 40, 55);
 }
 // enemy random movements, make this into a array maybe? and randomlize
 // distants on X and Y
@@ -182,6 +185,7 @@ function detectCollision() {
     Math.abs(horizontalDis) < 50 &&
     godMode == false
   ) {
+    damageSound.play();
     health.value -= 2;
   }
 }
@@ -193,12 +197,17 @@ function detectCollisionToE() {
     Math.abs(horizontalDis) < 50 &&
     burnE == true
   ) {
-    healthE.value -= 1;
+    setTimeout(() => {
+      healthE.value -= 0.5;
+      hitSound.play();
+    }, 200);
   }
 }
 function detectDeath() {
   if (health.value <= 0) {
     ctx.drawImage(endGame, 0, 0, canvas.width, canvas.height);
+    // score.stop()
+    gameOverSound.play();
     ctx.font = "250px serif";
     canvas.fillStyle = "#de2312";
     ctx.fillText("Click to Continue", 450, 900, 1200);
@@ -210,11 +219,13 @@ function detectDeath() {
   }
   if (healthE.value <= 0) {
     ctx.drawImage(endGame, 0, 0, canvas.width, canvas.height);
+    // score.stop()
     ctx.font = "250px serif";
     canvas.fillStyle = "#de2312";
     ctx.fillText("Click to Eat Lamp Chops", 450, 900, 1200);
     ctx.font = "150px serif";
     ctx.fillText("Lamb Chops for Dinna!", 150, 500, 1900);
+
     document.addEventListener("click", function () {
       this.location.reload();
     });
@@ -234,6 +245,8 @@ function startAnimating(fps) {
 }
 // animate loop
 function animate() {
+  // start the score
+  score.play();
   // -requestAnimationFrame()-: more accurate version of setInterval(), everytime the browser refresh, (animate), make smoother animation
   // written without the window. the method belong to the window object, writting window is optional
   // it will call itself recursively
@@ -276,8 +289,8 @@ function animate() {
 
     detectCollision();
     detectCollisionToE();
-    console.log(player.x, player.y);
-    console.log(enemy.x, enemy.y);
+    // console.log(player.x, player.y);
+    // console.log(enemy.x, enemy.y);
     movePlayer();
     moveEnemy();
     handlePlayerFrame();
@@ -291,8 +304,30 @@ if (play == false) {
   // ctx.drawImage(BG2, 0, 0, canvas.width, canvas.height);
 }
 Swal.fire({
-  title: "Don't kiss the Cyber Goat!",
+  title: "It's year 2045, You're a Cyber chick, Don't kiss the Cyber Goat!",
   text: "Use W, A, S, D or Arrow keys to move; use Spacebar to light it up!",
   confirmButtonText: "Start Game",
   onclose: (play = true),
 }).then(() => startAnimating(25));
+
+// sound system
+function Sound(src) {
+  this.sound = document.createElement("audio");
+  this.sound.src = src;
+  this.sound.setAttribute("preload", "auto");
+  this.sound.setAttribute("controls", "none");
+  this.sound.style.display = "none";
+  document.body.appendChild(this.sound);
+  this.play = function () {
+    this.sound.play();
+  };
+  this.stop = function () {
+    this.sound.pause();
+  };
+}
+score = new Sound("sound/Disconnected.mp3");
+fireSound = new Sound("sound/fire.wav");
+damageSound = new Sound("sound/damage.wav");
+hitSound = new Sound("sound/hit.wav");
+gameOverSound = new Sound("sound/gameover.wav");
+energySound = new Sound("sound/energy.wav");
