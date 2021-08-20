@@ -132,7 +132,6 @@ function movePlayer() {
   }
 }
 // shoot out energy
-
 function fireEnergy() {
   var moveToX = player.x + 30;
   var moveToY = player.y + 20;
@@ -198,7 +197,7 @@ function detectCollisionToE() {
     burnE == true
   ) {
     setTimeout(() => {
-      healthE.value -= 0.5;
+      healthE.value -= 1;
       hitSound.play();
     }, 200);
   }
@@ -208,7 +207,7 @@ function detectCollisionToE() {
     zapE == true
   ) {
     setTimeout(() => {
-      healthE.value -= 1;
+      healthE.value -= 3;
       hitSound.play();
     }, 100);
   }
@@ -304,12 +303,13 @@ function animate() {
     detectDeath();
   }
 }
-
+// play switch
 let play = false;
 if (play == false) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   // ctx.drawImage(BG2, 0, 0, canvas.width, canvas.height);
 }
+// start popup
 Swal.fire({
   title: "It's year 2045, You're a Cyber chick, Don't kiss the Demon Goat",
   text: "Use W, A, S, D or Arrow keys to move; use Spacebar to light it up, press 'K' to shot energy ball",
