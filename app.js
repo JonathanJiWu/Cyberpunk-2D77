@@ -124,24 +124,24 @@ function movePlayer() {
     burnE = true;
     godMode = true;
   }
+  zapE = false;
   if (keys[75]) {
     fireEnergy();
+    zapE = true;
     player.moving = false;
   }
 }
 // shoot out energy
-let moveToX = player.x + 5;
-let moveToY = player.y + 5;
 
 function fireEnergy() {
-  let moveToX = player.x + 5;
-  let moveToY = player.y + 5;
-
-  // moveToX ;
-  ctx.drawImage(blueFlame, moveToX, moveToY, 40, 55);
-  moveToX += 5;
+  var moveToX = player.x + 30;
+  var moveToY = player.y + 20;
+  var dx = 2;
+  // var dy = -2;
+  ctx.drawImage(blueFlame, moveToX, moveToY, 55, 40);
+  moveToX += dx;
+  // moveToy += dy;
   energySound.play();
-  ctx.drawImage(blueFlame, moveToX, moveToY, 40, 55);
 }
 // enemy random movements, make this into a array maybe? and randomlize
 // distants on X and Y
@@ -202,11 +202,21 @@ function detectCollisionToE() {
       hitSound.play();
     }, 200);
   }
+  if (
+    Math.abs(verticalDis) < 40 &&
+    Math.abs(horizontalDis) < 40 &&
+    zapE == true
+  ) {
+    setTimeout(() => {
+      healthE.value -= 1;
+      hitSound.play();
+    }, 100);
+  }
 }
 function detectDeath() {
   if (health.value <= 0) {
     ctx.drawImage(endGame, 0, 0, canvas.width, canvas.height);
-    // score.stop()
+    play = false;
     gameOverSound.play();
     ctx.font = "250px serif";
     canvas.fillStyle = "#de2312";
@@ -219,7 +229,7 @@ function detectDeath() {
   }
   if (healthE.value <= 0) {
     ctx.drawImage(endGame, 0, 0, canvas.width, canvas.height);
-    // score.stop()
+    play = false;
     ctx.font = "250px serif";
     canvas.fillStyle = "#de2312";
     ctx.fillText("Click to Eat Lamp Chops", 450, 900, 1200);
@@ -262,6 +272,7 @@ function animate() {
     ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
     ctx.drawImage(WASD, 130, 200, 200, 200);
     ctx.drawImage(spacebar, 700, 80, 650, 500);
+    ctx.fillText('K', 1200, 200)
     // croping out the player width and height, drawSprite is global function
     drawSprite(
       playerSprite,
@@ -285,11 +296,8 @@ function animate() {
       enemy.width * 3,
       enemy.height * 3
     );
-
     detectCollision();
     detectCollisionToE();
-    // console.log(player.x, player.y);
-    // console.log(enemy.x, enemy.y);
     movePlayer();
     moveEnemy();
     handlePlayerFrame();
@@ -303,29 +311,8 @@ if (play == false) {
   // ctx.drawImage(BG2, 0, 0, canvas.width, canvas.height);
 }
 Swal.fire({
-  title: "It's year 2045, You're a Cyber chick, Don't kiss the Demon Goat!",
-  text: "Use W, A, S, D or Arrow keys to move; use Spacebar to light it up!",
+  title: "It's year 2045, You're a Cyber chick, Don't kiss the Demon Goat",
+  text: "Use W, A, S, D or Arrow keys to move; use Spacebar to light it up, press 'K' to shot energy ball",
   confirmButtonText: "Start Game",
   onclose: (play = true),
 }).then(() => startAnimating(25));
-// sound system
-function Sound(src) {
-  this.sound = document.createElement("audio");
-  this.sound.src = src;
-  this.sound.setAttribute("preload", "auto");
-  this.sound.setAttribute("controls", "none");
-  this.sound.style.display = "none";
-  document.body.appendChild(this.sound);
-  this.play = function () {
-    this.sound.play();
-  };
-  this.stop = function () {
-    this.sound.pause();
-  };
-}
-score = new Sound("sound/Disconnected.mp3");
-fireSound = new Sound("sound/fire.wav");
-damageSound = new Sound("sound/damage.wav");
-hitSound = new Sound("sound/hit.wav");
-gameOverSound = new Sound("sound/gameover.wav");
-energySound = new Sound("sound/energy.wav");
