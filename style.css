@@ -1,6 +1,6 @@
 #canvas1 {
-  width: 1920px;
-  height: 1080px;
+  width: 1800px;
+  height: 900px;
   border: 1px solid rgb(247, 0, 0);
   background: #2b2a29;
   /* center is using Pos Abso, and it will auto ajust */
@@ -15,9 +15,9 @@ body {
   overflow: hidden;
 }
 #health {
-  position: absolute;
-  top: 15%;
-  left: 22%;
+  position: relative;
+  top: -2%;
+  left: 15%;
   transform: translate(-50%, -50%);
   width: 450px;
   height: 40px;
@@ -28,15 +28,24 @@ body {
   /* display: none; */
 }
 #healthE {
-  position: absolute;
-  top: 15%;
-  left: 70%;
+  position: relative;
+  top: -2%;
+  right: -50%;
   transform: translate(-50%, -50%);
   width: 750px;
   height: 40px;
   background-color: #cc1240;
   border-radius: 2px;
   padding: 2px;
-  z-index: 1; 
+  z-index: 1;
   /* display: none; */
+}
+.health-container {
+  width: 1800px;
+  height: 900px;
+  /* border: 1px solid rgb(247, 0, 0); */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
