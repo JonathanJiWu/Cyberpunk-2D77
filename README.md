@@ -1,3 +1,3 @@
-# Cyberpunk_2D
+# Cyberpunk-2045-kinda
 
-Live website: https://youthful-liskov-6732b5.netlify.app/
+Live website: https://cyberpunk-2045.netlify.app
