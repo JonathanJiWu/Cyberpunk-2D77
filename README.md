@@ -1,6 +1,6 @@
 Cyberpunk 2D77 (don't sue me ProjectRed)
 
-Live website: https://cyberpunk-2045.netlify.app
+Live website: [https://cyberpunk-2045.netlify.app](https://cyberpunk-2d77.netlify.app/)
 
 Overview
   Welcome to Cyber city, this is a fast-paced 2D action game where you control a cyber warrior battling against a demonic goat. Use your agility and powerful attacks to survive and defeat your enemy.
