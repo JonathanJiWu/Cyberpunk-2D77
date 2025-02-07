@@ -311,7 +311,7 @@ if (play == false) {
 }
 // start popup
 Swal.fire({
-  title: "It's year 2045, You're a Cyber Badass, Don't kiss the Demon Goat",
+  title: "It's year 2D77, You're a Cyber Badass, Don't kiss the Demon Goat",
   text: "Use W, A, S, D or Arrow keys to move; use Spacebar to light it up, press 'K' to shot energy ball",
   confirmButtonText: "Start Game",
   onclose: (play = true),
