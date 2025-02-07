@@ -1,3 +1,3 @@
-# Cyberpunk-2045-kinda
+# Cyberpunk-2D77-kinda
 
 Live website: https://cyberpunk-2045.netlify.app
