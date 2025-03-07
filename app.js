@@ -76,10 +76,28 @@ function drawSprite(img, sX, sY, sW, sH, dX, dY, dW, dH) {
 addEventListener("keydown", function (e) {
   keys[e.keyCode] = true;
   player.moving = true;
+  if (e.keyCode === 32) { // Spacebar
+    jump();
+  }
+  if (e.keyCode === 75) { // Key K
+    godMode = true;
+    drawFiring();
+    fireSound.play();
+  }
+  if (e.keyCode === 74) { // Key J
+    fireEnergy();
+  }
 });
 addEventListener("keyup", function (e) {
   delete keys[e.keyCode];
   player.moving = false;
+  if (e.keyCode === 32) { // Spacebar
+    canJump = true;
+    jumpCount = 0;
+  }
+  if (e.keyCode === 75) { // Key K
+    godMode = false;
+  }
 });
 function movePlayer() {
   // how high can it go up player.y -up-
@@ -131,30 +149,75 @@ function movePlayer() {
     player.moving = false;
   }
 }
+// Array to store active projectiles
+const projectiles = [];
+let lastFireTime = 0;
+const fireCooldown = 500; // Cooldown time in milliseconds
+
 // shoot out energy
 function fireEnergy() {
-  var moveToX = player.x + 30;
-  var moveToY = player.y + 20;
-  var dx = 2;
-  // var dy = -2;
-  ctx.drawImage(blueFlame, moveToX, moveToY, 55, 40);
-  moveToX += dx;
-  // moveToy += dy;
+  const now = Date.now();
+  if (now - lastFireTime < fireCooldown) return; // Check cooldown
+  lastFireTime = now;
+
+  const projectile = {
+    x: player.x + 30,
+    y: player.y + 20,
+    width: 55,
+    height: 40,
+    speed: 5,
+    direction: player.frameY // Use player.frameY to determine the direction
+  };
+  projectiles.push(projectile);
   energySound.play();
 }
+
+// Update and draw projectiles
+function updateProjectiles() {
+  for (let i = 0; i < projectiles.length; i++) {
+    const projectile = projectiles[i];
+    switch (projectile.direction) {
+      case 0: // Down
+        projectile.y += projectile.speed;
+        break;
+      case 1: // Left
+        projectile.x -= projectile.speed;
+        break;
+      case 2: // Right
+        projectile.x += projectile.speed;
+        break;
+      case 3: // Up
+        projectile.y -= projectile.speed;
+        break;
+    }
+    ctx.drawImage(blueFlame, projectile.x, projectile.y, projectile.width, projectile.height);
+
+    // Remove projectile if it goes off-screen
+    if (projectile.x < 0 || projectile.x > canvas.width || projectile.y < 0 || projectile.y > canvas.height) {
+      projectiles.splice(i, 1);
+      i--;
+    }
+  }
+}
+
 // enemy random movements, make this into a array maybe? and randomlize
 // distants on X and Y
 let verticalDis = enemy.x - player.x + 80;
 let horizontalDis = enemy.y - player.y + 170;
 function moveEnemy() {
-  // to the left if E is on the right of the P
-  enemy.x += enemy.speedX;
-  enemy.y += enemy.speedY;
-  if (enemy.x < 0 || enemy.x > 1800) {
-    enemy.speedX = -enemy.speedX;
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (distance > 0) {
+    enemy.x += (dx / distance) * enemy.speedX;
+    enemy.y += (dy / distance) * enemy.speedY;
   }
-  if (enemy.y < 700 || enemy.y > 900) {
-    enemy.speedY = -enemy.speedY;
+
+  // Add some randomness to enemy movement
+  if (Math.random() < 0.01) {
+    enemy.speedX = (Math.random() - 0.5) * 20;
+    enemy.speedY = (Math.random() - 0.5) * 20;
   }
 }
 function drawFiring() {
@@ -211,6 +274,22 @@ function detectCollisionToE() {
       hitSound.play();
     }, 100);
   }
+
+  // Check for projectile collisions
+  for (let i = 0; i < projectiles.length; i++) {
+    const projectile = projectiles[i];
+    if (
+      projectile.x < enemy.x + enemy.width &&
+      projectile.x + projectile.width > enemy.x &&
+      projectile.y < enemy.y + enemy.height &&
+      projectile.y + projectile.height > enemy.y
+    ) {
+      healthE.value -= 1;
+      hitSound.play();
+      projectiles.splice(i, 1);
+      i--;
+    }
+  }
 }
 function detectDeath() {
   if (health.value <= 0) {
@@ -225,6 +304,7 @@ function detectDeath() {
     document.addEventListener("click", function () {
       this.location.reload();
     });
+    return; // Stop the game loop
   }
   if (healthE.value <= 0) {
     ctx.drawImage(endGame, 0, 0, canvas.width, canvas.height);
@@ -237,6 +317,7 @@ function detectDeath() {
     document.addEventListener("click", function () {
       this.location.reload();
     });
+    return; // Stop the game loop
   }
 }
 // let browser to server frame Consistently across all machines
@@ -253,6 +334,8 @@ function startAnimating(fps) {
 }
 // animate loop
 function animate() {
+  if (!play) return; // Stop the game loop if play is false
+
   // start the score
   score.play();
   // -requestAnimationFrame()-: more accurate version of setInterval(), everytime the browser refresh, (animate), make smoother animation
@@ -300,6 +383,7 @@ function animate() {
     movePlayer();
     moveEnemy();
     handlePlayerFrame();
+    updateProjectiles(); // Update and draw projectiles
     detectDeath();
   }
 }
@@ -314,5 +398,23 @@ Swal.fire({
   title: "It's year 2D77, You're a Cyber Badass, Don't kiss the Demon Goat",
   text: "Use W, A, S, D or Arrow keys to move; use Spacebar to light it up, press 'K' to shot energy ball",
   confirmButtonText: "Start Game",
-  onclose: (play = true),
-}).then(() => startAnimating(25));
+}).then(() => {
+  play = true;
+  startAnimating(25);
+});
+
+// Player jump with double jump
+let canJump = true;
+let jumpCount = 0;
+const maxJumps = 2;
+const jumpHeight = 50;
+
+function jump() {
+  if (jumpCount < maxJumps) {
+    player.y -= jumpHeight;
+    jumpCount++;
+    setTimeout(() => {
+      player.y += jumpHeight;
+    }, 300);
+  }
+}
