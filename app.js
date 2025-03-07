@@ -136,14 +136,14 @@ function movePlayer() {
   godMode = false;
   burnE = false;
   // haveEnergy==true
-  if (keys[32]) {
+  if (keys[75]) { // Key K
     drawFiring();
     fireSound.play();
     burnE = true;
     godMode = true;
   }
   zapE = false;
-  if (keys[75]) {
+  if (keys[74]) { // Key J
     fireEnergy();
     zapE = true;
     player.moving = false;
@@ -151,6 +151,7 @@ function movePlayer() {
 }
 // Array to store active projectiles
 const projectiles = [];
+const enemyProjectiles = [];
 let lastFireTime = 0;
 const fireCooldown = 500; // Cooldown time in milliseconds
 
@@ -172,6 +173,19 @@ function fireEnergy() {
   energySound.play();
 }
 
+// shoot out enemy projectiles
+function fireEnemyProjectile() {
+  const projectile = {
+    x: enemy.x + 30,
+    y: enemy.y + 20,
+    width: 55,
+    height: 40,
+    speed: 5,
+    direction: 2 // Always shoot downwards
+  };
+  enemyProjectiles.push(projectile);
+}
+
 // Update and draw projectiles
 function updateProjectiles() {
   for (let i = 0; i < projectiles.length; i++) {
@@ -190,11 +204,43 @@ function updateProjectiles() {
         projectile.y -= projectile.speed;
         break;
     }
+    ctx.save();
+    switch (projectile.direction) {
+      case 0: // Down
+        ctx.translate(projectile.x + projectile.width / 2, projectile.y + projectile.height / 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.translate(-projectile.x - projectile.width / 2, -projectile.y - projectile.height / 2);
+        break;
+      case 1: // Left
+        ctx.translate(projectile.x + projectile.width / 2, projectile.y + projectile.height / 2);
+        ctx.rotate(Math.PI);
+        ctx.translate(-projectile.x - projectile.width / 2, -projectile.y - projectile.height / 2);
+        break;
+      case 3: // Up
+        ctx.translate(projectile.x + projectile.width / 2, projectile.y + projectile.height / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.translate(-projectile.x - projectile.width / 2, -projectile.y - projectile.height / 2);
+        break;
+    }
     ctx.drawImage(blueFlame, projectile.x, projectile.y, projectile.width, projectile.height);
+    ctx.restore();
 
     // Remove projectile if it goes off-screen
     if (projectile.x < 0 || projectile.x > canvas.width || projectile.y < 0 || projectile.y > canvas.height) {
       projectiles.splice(i, 1);
+      i--;
+    }
+  }
+
+  // Update and draw enemy projectiles
+  for (let i = 0; i < enemyProjectiles.length; i++) {
+    const projectile = enemyProjectiles[i];
+    projectile.y += projectile.speed;
+    ctx.drawImage(blueFlame, projectile.x, projectile.y, projectile.width, projectile.height);
+
+    // Remove projectile if it goes off-screen
+    if (projectile.x < 0 || projectile.x > canvas.width || projectile.y < 0 || projectile.y > canvas.height) {
+      enemyProjectiles.splice(i, 1);
       i--;
     }
   }
@@ -210,14 +256,25 @@ function moveEnemy() {
   const distance = Math.sqrt(dx * dx + dy * dy);
 
   if (distance > 0) {
-    enemy.x += (dx / distance) * enemy.speedX;
-    enemy.y += (dy / distance) * enemy.speedY;
+    enemy.x += (dx / distance) * enemy.speedX * 1.5; // Increase speed by 50%
+    enemy.y += (dy / distance) * enemy.speedY * 1.5; // Increase speed by 50%
   }
 
   // Add some randomness to enemy movement
   if (Math.random() < 0.01) {
     enemy.speedX = (Math.random() - 0.5) * 20;
     enemy.speedY = (Math.random() - 0.5) * 20;
+  }
+
+  // Ensure enemy stays within the frame
+  if (enemy.x < 0) enemy.x = 0;
+  if (enemy.x > canvas.width - enemy.width) enemy.x = canvas.width - enemy.width;
+  if (enemy.y < 0) enemy.y = 0;
+  if (enemy.y > canvas.height - enemy.height) enemy.y = canvas.height - enemy.height;
+
+  // Enemy shoots projectiles when in the top half of the screen
+  if (enemy.y < canvas.height / 2 && Math.random() < 0.01) {
+    fireEnemyProjectile();
   }
 }
 function drawFiring() {
@@ -249,6 +306,22 @@ function detectCollision() {
   ) {
     damageSound.play();
     health.value -= 2;
+  }
+
+  // Check for enemy projectile collisions
+  for (let i = 0; i < enemyProjectiles.length; i++) {
+    const projectile = enemyProjectiles[i];
+    if (
+      projectile.x < player.x + player.width &&
+      projectile.x + projectile.width > player.x &&
+      projectile.y < player.y + player.height &&
+      projectile.y + projectile.height > player.y
+    ) {
+      health.value -= 1;
+      hitSound.play();
+      enemyProjectiles.splice(i, 1);
+      i--;
+    }
   }
 }
 function detectCollisionToE() {
@@ -352,8 +425,10 @@ function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     // -drawImage- is a buildin canvas method, taking 5 arguments: what img want it to draw(line 30), top Coordinate, left Coordinate, width, height
     ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
-    ctx.drawImage(WASD, 130, 200, 200, 200);
-    ctx.drawImage(spacebar, 700, 80, 650, 500);
+    if (Date.now() - startTime < 20000) {
+      ctx.drawImage(WASD, 130, 200, 200, 200);
+      ctx.drawImage(spacebar, 700, 80, 650, 500);
+    }
     ctx.fillText('K', 1200, 200)
     // croping out the player width and height, drawSprite is global function
     drawSprite(
