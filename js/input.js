@@ -7,7 +7,7 @@
 //             double jump); hold it down on a platform to drop through.
 //             Right side, "twin-stick": a second stick, push it to aim + fire.
 //             Right side, "tap": tap to fire at that spot, hold to rapid-fire.
-//             FLAME: a small button in the corner.
+//             SPECIAL: a button in the corner (Paine's flame toggles on/off).
 //   Settings: auto-fire (assisted aim) and auto flame, both optional.
 // =============================================================================
 
@@ -42,6 +42,7 @@ const settings = {
   autoFire: false, // the energy ball fires on its own at the nearest enemy
   autoFlame: false, // the flame lights itself when enemies are close
   touchAim: "twin", // touch, when auto-fire is off: "twin" (right stick) or "tap"
+  character: "paine",
 };
 try {
   Object.assign(settings, JSON.parse(localStorage.getItem("cp2d77-settings") || "{}"));
@@ -103,6 +104,7 @@ function fingerAim() {
 function clearInput() {
   input.keys.clear();
   input.buttons.flame = false;
+  input.specialQueued = false;
   input.mouse.zap = input.mouse.flame = false;
   input.fingers.clear();
   input.aimFinger = null;
@@ -280,24 +282,18 @@ const leftStick = makeStick(
 // Right stick: aim and fire (twin-stick)
 const rightStick = makeStick(document.getElementById("aim-zone"), document.getElementById("aim-stick"), document.getElementById("aim-knob"), input.aim);
 
-// FLAME button
+// SPECIAL button. Paine's flame is a toggle (tap on, tap off) so the right
+// thumb stays free to aim and fire; Tetsu's dash and Sudo's hack fire on tap.
 document.querySelectorAll(".action-btn").forEach((btn) => {
-  const action = btn.dataset.action;
   btn.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     SoundSystem.unlock();
-    try {
-      btn.setPointerCapture(e.pointerId);
-    } catch (err) {
-      /* ignore */
-    }
-    input.buttons[action] = true;
+    if (CHARACTERS[player.char].special.hold) input.buttons.flame = !input.buttons.flame;
+    else input.specialQueued = true;
     btn.classList.add("pressed");
+    vibrate(12);
   });
-  const release = () => {
-    input.buttons[action] = false;
-    btn.classList.remove("pressed");
-  };
+  const release = () => btn.classList.remove("pressed");
   btn.addEventListener("pointerup", release);
   btn.addEventListener("pointercancel", release);
   btn.addEventListener("lostpointercapture", release);

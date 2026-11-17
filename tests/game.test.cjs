@@ -223,7 +223,7 @@ const fastForward = (page, seconds, bot) =>
     await startRun(page, { quiet: false, settings: { autoFire: true, autoFlame: true } });
     const bot = "player.hp = Math.max(player.hp, 60);"; // keep the run alive
     await fastForward(page, 175, bot);
-    const r = await page.evaluate(() => ({ state: game.state, kills: game.kills, level: progress.level, boss: !!game.boss, t: game.time }));
+    const r = await page.evaluate(() => ({ state: game.state, kills: game.kills, level: progress.level, boss: director.stage >= 1, t: game.time }));
     assert(r.kills > 50, "too few kills: " + JSON.stringify(r));
     assert(r.level > 4, "no level-ups: " + JSON.stringify(r));
     assert(r.boss, "boss never arrived: " + JSON.stringify(r));
@@ -260,6 +260,283 @@ const fastForward = (page, seconds, bot) =>
       return peak;
     });
     assert(r > 0.05 && r < 1, "bad level: " + r);
+    await context.close();
+  });
+
+
+  // ------------------------------------------------------ Characters ----
+  await test("character select: three runners, the choice persists and sets the kit", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const cards = await page.$$(".char-card");
+    assert(cards.length === 3, "expected 3 character cards, got " + cards.length);
+    await cards[1].click();
+    const r = await page.evaluate(() => ({ chosen: settings.character, saved: JSON.parse(localStorage.getItem("cp2d77-settings")).character, checked: document.querySelectorAll('.char-card[aria-checked="true"]').length }));
+    assert(r.chosen === "tetsu" && r.saved === "tetsu" && r.checked === 1, "selection did not stick: " + JSON.stringify(r));
+    await page.reload();
+    await page.waitForTimeout(300);
+    await startRun(page);
+    const k = await page.evaluate(() => ({ char: player.char, maxHp: stats.maxHp, expectedHp: CHARACTERS.tetsu.hp, armor: stats.armorMul }));
+    assert(k.char === "tetsu" && k.maxHp === k.expectedHp, "kit not applied: " + JSON.stringify(k));
+    assert(k.armor < 1, "Tetsu should take reduced damage");
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("Paine faces where she fires even while running the other way", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "paine", autoFire: false } });
+    const r = await page.evaluate(() => {
+      input.keys.add("KeyD"); // run right
+      for (let i = 0; i < 20; i++) update(1 / 60);
+      const before = player.facing;
+      const pc = centerOf(player);
+      input.mouse.x = pc.x - 400; // ...and fire left
+      input.mouse.y = pc.y;
+      input.mouse.zap = true;
+      let facing = [];
+      for (let i = 0; i < 30; i++) {
+        update(1 / 60);
+        facing.push(player.facing);
+      }
+      input.mouse.zap = false;
+      input.keys.clear();
+      return { before, after: facing.slice(-10), anim: player.fireAnimMax > 0, shots: playerShots.filter((s) => s.vx < 0).length };
+    });
+    assert(r.before === 1, "was not facing right while running right");
+    assert(r.shots > 0, "no shots went left");
+    assert(r.after.every((f) => f === -1), "did not face the firing direction: " + r.after.join(","));
+    assert(r.anim, "no firing animation");
+    await context.close();
+  });
+
+  await test("Paine can fire and keep the flame lit at the same time", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "paine", autoFire: false } });
+    const r = await page.evaluate(() => {
+      player.heat = 100;
+      let fired = 0;
+      const f = fireZap;
+      fireZap = function () {
+        fired++;
+        return f.apply(this, arguments);
+      };
+      input.keys.add("KeyJ");
+      input.keys.add("KeyK");
+      let litAll = true;
+      for (let i = 0; i < 40; i++) {
+        update(1 / 60);
+        if (i > 3) litAll = litAll && player.flameOn;
+      }
+      fireZap = f;
+      input.keys.clear();
+      return { fired, litAll, heat: player.heat };
+    });
+    assert(r.fired >= 2, "did not fire while flaming: " + JSON.stringify(r));
+    assert(r.litAll && r.heat < 100, "flame went out while firing: " + JSON.stringify(r));
+    await context.close();
+  });
+
+  await test("Tetsu: the blade cuts nearby enemies and the dash spends focus", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "tetsu", autoFire: false, autoFlame: false } });
+    const r = await page.evaluate(() => {
+      const e = spawnEnemy("enforcer", player.x - 140, GROUND_Y - 116); // behind him, shield facing away
+      e.facing = -1;
+      e.vx = 0;
+      const hp0 = e.hp;
+      input.keys.add("KeyJ");
+      input.keys.add("KeyA");
+      for (let i = 0; i < 30; i++) update(1 / 60);
+      input.keys.clear();
+      const cut = hp0 - e.hp;
+      const slashes = slashFx.length;
+      // dash
+      for (let i = 0; i < 40; i++) update(1 / 60);
+      player.heat = 100;
+      const x0 = player.x;
+      const h0 = player.heat;
+      player.facing = 1;
+      input.specialQueued = true;
+      update(1 / 60);
+      const dashing = !!player.dash;
+      for (let i = 0; i < 20; i++) update(1 / 60);
+      return { cut, slashes, dashing, moved: player.x - x0, spent: h0 - player.heat, guard: player.guard };
+    });
+    assert(r.cut > 0, "blade did no damage: " + JSON.stringify(r));
+    assert(r.dashing && r.moved > 200, "dash did not move Tetsu: " + JSON.stringify(r));
+    assert(r.spent > 0 && r.guard > 0, "dash did not cost focus or grant guard: " + JSON.stringify(r));
+    await context.close();
+  });
+
+  await test("Sudo: orbs explode in an area and the overload stuns a crowd", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "sudo", autoFire: true, autoFlame: false } });
+    const r = await page.evaluate(() => {
+      const pack = [0, 1, 2].map((i) => {
+        const e = spawnEnemy("enforcer", player.x + 420 + i * 40, GROUND_Y - 116);
+        e.hp = e.maxHp = 9999;
+        return e;
+      });
+      const hold = () => pack.forEach((e, i) => ((e.x = player.x + 420 + i * 30), (e.vx = 0))); // keep them bunched up
+      for (let i = 0; i < 70; i++) {
+        hold();
+        update(1 / 60);
+      }
+      const hurt = pack.filter((e) => e.hp < 9999).length;
+      const slowed = pack.filter((e) => e.slowT > 0).length;
+      settings.autoFire = false;
+      player.heat = 100;
+      input.specialQueued = true;
+      for (let i = 0; i < 40; i++) update(1 / 60);
+      return { hurt, slowed, stunned: pack.filter((e) => e.stun > 0).length, vuln: pack.filter((e) => e.vulnT > 0).length, ram: player.heat };
+    });
+    assert(r.hurt >= 2, "orb explosion did not hit a group: " + JSON.stringify(r));
+    assert(r.slowed >= 1, "orbs did not slow: " + JSON.stringify(r));
+    assert(r.stunned === 3 && r.vuln === 3, "overload did not stun the crowd: " + JSON.stringify(r));
+    assert(r.ram < 100, "overload did not cost RAM");
+    await context.close();
+  });
+
+  await test("every runner can fire, use the special and jump with no errors", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    for (const ch of ["paine", "tetsu", "sudo"]) {
+      await startRun(page, { quiet: false, settings: { character: ch, autoFire: true, autoFlame: true } });
+      const bot = "player.hp = Math.max(player.hp, 40); player.heat = Math.max(player.heat, 50); if (Math.random() < 0.02) input.jumpQueued = true;";
+      const state = await fastForward(page, 40, bot);
+      assert(state === "playing", `${ch}: run ended early (${state})`);
+    }
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  // --------------------------------------------------------- Enemies ----
+  await test("new enemies: ninja dashes, bomber blows up, enforcer shield, sniper aims then fires", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "paine", autoFire: false, autoFlame: false } });
+    const r = await page.evaluate(() => {
+      const out = {};
+      const fresh = () => {
+        enemies.length = 0;
+        enemyShots.length = 0;
+        player.hp = stats.maxHp;
+        player.invuln = 0;
+        player.x = 1200;
+        player.y = GROUND_Y - player.h;
+      };
+      // ninja: wind-up, then a fast dash
+      fresh();
+      const n = spawnEnemy("ninja", player.x + 360, GROUND_Y - 92);
+      let windup = false;
+      let fast = 0;
+      for (let i = 0; i < 240 && !n.dead; i++) {
+        update(1 / 60);
+        windup = windup || n.windup > 0;
+        fast = Math.max(fast, Math.abs(n.vx));
+      }
+      out.ninja = { windup, fast };
+      // bomber: arms near you and explodes
+      fresh();
+      const b = spawnEnemy("bomber", player.x + 300, player.y - 40);
+      let armed = false;
+      for (let i = 0; i < 300 && !b.dead; i++) {
+        update(1 / 60);
+        armed = armed || b.fuse > 0;
+      }
+      out.bomber = { armed, dead: b.dead, hurt: player.hp < stats.maxHp };
+      // enforcer: shots into the shield barely scratch it
+      fresh();
+      const f = spawnEnemy("enforcer", player.x + 300, GROUND_Y - 116);
+      update(1 / 60); // on screen: logged in the database
+      f.facing = -1;
+      const pcx = centerOf(player).x;
+      let h = f.hp;
+      damageEnemy(f, 10, { source: "zap", fromX: pcx });
+      const front = h - f.hp;
+      h = f.hp;
+      damageEnemy(f, 10, { source: "zap", fromX: f.x + f.w + 300 });
+      out.enforcer = { front, back: h - f.hp };
+      // sniper: a visible aim, then a fast shot
+      fresh();
+      const sn = spawnEnemy("sniper", player.x + 700, player.y - 250);
+      let aimed = false;
+      let shot = null;
+      for (let i = 0; i < 60 * 9 && !shot; i++) {
+        player.hp = stats.maxHp;
+        update(1 / 60);
+        aimed = aimed || sn.aimT > 0;
+        shot = enemyShots.find((s) => s.kind === "snipe") || null;
+      }
+      out.sniper = { aimed, shot: !!shot, speed: shot ? Math.hypot(shot.vx, shot.vy) : 0 };
+      out.discovered = ["ninja", "bomber", "enforcer", "sniper"].every((id) => discovered.has(id));
+      return out;
+    });
+    assert(r.ninja.windup && r.ninja.fast > 700, "ninja did not dash: " + JSON.stringify(r.ninja));
+    assert(r.bomber.armed && r.bomber.dead && r.bomber.hurt, "bomber did not explode on the player: " + JSON.stringify(r.bomber));
+    assert(r.enforcer.front < r.enforcer.back * 0.5, "shield did not block from the front: " + JSON.stringify(r.enforcer));
+    assert(r.sniper.aimed && r.sniper.speed > 1000, "sniper did not aim and fire: " + JSON.stringify(r.sniper));
+    assert(r.discovered, "new enemies were not added to the database");
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("two bosses: the goat falls, the Overseer arrives and attacks, beating it wins", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { autoFire: false, autoFlame: false } });
+    const r = await page.evaluate(() => {
+      const out = {};
+      spawnBoss();
+      out.goat = !!game.boss && game.boss.type === "goat" && director.stage === 1;
+      damageEnemy(game.boss, game.boss.hp + 1, { source: "test" });
+      for (let i = 0; i < 5; i++) update(1 / 60);
+      out.afterGoat = { stage: director.stage, wait: Math.round(director.nextBossAt - game.time) };
+      director.nextBossAt = game.time;
+      update(1 / 60);
+      const o = game.boss;
+      out.overseer = !!o && o.type === "overseer" && director.stage === 3;
+      const states = new Set();
+      for (let i = 0; i < 60 * 25 && game.state === "playing"; i++) {
+        player.hp = stats.maxHp;
+        if (game.state === "levelup") chooseUpgrade(0);
+        update(1 / 60);
+        states.add(o.state);
+      }
+      out.states = [...states];
+      damageEnemy(o, o.hp + 1, { source: "test" });
+      for (let i = 0; i < 5; i++) update(1 / 60);
+      out.won = game.won;
+      out.state = game.state;
+      return out;
+    });
+    assert(r.goat, "goat did not spawn");
+    assert(r.afterGoat.stage === 2 && r.afterGoat.wait > 10, "no interlude after the goat: " + JSON.stringify(r.afterGoat));
+    assert(r.overseer, "the Overseer did not arrive");
+    assert(["rings", "laser", "barrage", "summon"].filter((s) => r.states.includes(s)).length >= 3, "Overseer used too few attacks: " + r.states.join(","));
+    assert(r.won && r.state === "over", "killing the Overseer did not win: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  // -------------------------------------------------------- Database ----
+  await test("DATABASE screen: opens from the menu, every tab renders, unknown enemies are locked", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await page.evaluate(() => localStorage.removeItem("cp2d77-db"));
+    await page.reload();
+    await page.waitForTimeout(300);
+    await page.click("#codex-btn");
+    const counts = {};
+    for (const tab of ["characters", "enemies", "bosses", "skills"]) {
+      await page.click(`[data-tab="${tab}"]`);
+      counts[tab] = await page.evaluate(() => ({ all: document.querySelectorAll("#codex-body .codex-entry").length, locked: document.querySelectorAll("#codex-body .codex-entry.locked").length }));
+    }
+    const open1 = await page.evaluate(() => !document.getElementById("codex").hidden);
+    await page.click("#codex-close");
+    const closed = await page.evaluate(() => document.getElementById("codex").hidden && game.state === "menu");
+    assert(open1 && closed, "codex did not open and close");
+    assert(counts.characters.all === 3, "characters: " + JSON.stringify(counts.characters));
+    assert(counts.enemies.all === 8 && counts.enemies.locked === 8, "enemies: " + JSON.stringify(counts.enemies));
+    assert(counts.bosses.all === 2 && counts.bosses.locked === 2, "bosses: " + JSON.stringify(counts.bosses));
+    assert(counts.skills.all >= 10 && counts.skills.locked === 0, "skills: " + JSON.stringify(counts.skills));
+    assert(!problems.length, problems.join("; "));
     await context.close();
   });
 
@@ -356,20 +633,53 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
-  await test("phone: the FLAME button burns heat; there is no JUMP button", async () => {
+  await test("phone: the SPECIAL button toggles Paine's flame; there is no JUMP button", async () => {
     const { context, page } = await open(browser, url, phone);
-    await startRun(page);
+    await startRun(page, { settings: { character: "paine", autoFlame: false } });
     await page.evaluate(() => (player.heat = 100));
     const btn = await page.$(".btn-flame");
     const box = await btn.boundingBox();
     const cdp = await context.newCDPSession(page);
-    const pt = { x: box.x + box.width / 2, y: box.y + box.height / 2, id: 20 };
-    await touch(cdp, "touchStart", [pt]);
+    const tap = async (id) => {
+      const pt = { x: box.x + box.width / 2, y: box.y + box.height / 2, id };
+      await touch(cdp, "touchStart", [pt]);
+      await page.waitForTimeout(40);
+      await touch(cdp, "touchEnd", [pt]);
+    };
+    await tap(20);
     await page.waitForTimeout(400);
-    const r = await page.evaluate(() => ({ on: player.flameOn, heat: player.heat, jumpBtn: !!document.querySelector(".btn-jump") }));
-    await touch(cdp, "touchEnd", [pt]);
-    assert(r.on && r.heat < 100, "flame button did not work: " + JSON.stringify(r));
-    assert(!r.jumpBtn, "a JUMP button still exists");
+    const on = await page.evaluate(() => ({ on: player.flameOn, heat: player.heat, label: document.querySelector(".btn-flame").textContent, lit: document.querySelector(".btn-flame").classList.contains("on"), jumpBtn: !!document.querySelector(".btn-jump") }));
+    await tap(21);
+    await page.waitForTimeout(200);
+    const off = await page.evaluate(() => player.flameOn);
+    assert(on.on && on.heat < 100 && on.lit, "a tap did not light the flame: " + JSON.stringify(on));
+    assert(!off, "a second tap did not put the flame out");
+    assert(on.label === "FLAME", "wrong button label: " + on.label);
+    assert(!on.jumpBtn, "a JUMP button still exists");
+    await context.close();
+  });
+
+  await test("phone: Tetsu's SPECIAL button dashes and Sudo's hacks", async () => {
+    const { context, page } = await open(browser, url, phone);
+    for (const [ch, label] of [["tetsu", "DASH"], ["sudo", "HACK"]]) {
+      await startRun(page, { settings: { character: ch, autoFlame: false, autoFire: false } });
+      await page.waitForTimeout(100);
+      await page.evaluate(() => {
+        player.heat = 100;
+        window.__used = 0;
+      });
+      const btn = await page.$(".btn-flame");
+      const box = await btn.boundingBox();
+      const cdp = await context.newCDPSession(page);
+      const pt = { x: box.x + box.width / 2, y: box.y + box.height / 2, id: 30 };
+      await touch(cdp, "touchStart", [pt]);
+      await page.waitForTimeout(40);
+      await touch(cdp, "touchEnd", [pt]);
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(() => ({ heat: player.heat, label: document.querySelector(".btn-flame").textContent, hacks: hackFx.length }));
+      assert(r.label === label, `${ch}: wrong label ${r.label}`);
+      assert(r.heat < 100, `${ch}: special was not used: ` + JSON.stringify(r));
+    }
     await context.close();
   });
 

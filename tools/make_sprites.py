@@ -40,6 +40,19 @@ City:
     aerodyne.png     128x24   2 frames of 64x24   flying car
     city-mid.png     640x420  seamless dense midground cityscape
     facade.png       128x64   2 wall tiles of 64x64, seamless both ways
+Heroes (paine.png grid: 6 rows x 4 frames of 32x48 - walk down, left, right,
+up, attack left, attack right; soles on y=44, outline on y=45 like paine.png):
+    tetsu.png        128x288  TETSU, chrome ronin
+    sudo.png         128x288  SUDO, netrunner
+    paine-attack.png 128x96   Paine's firing pose (derived from paine.png), left / right
+    portraits.png    144x48   Paine, Tetsu, Sudo busts (48x48 each)
+Enemies (facing right), boss and effects:
+    ninja.png        160x48   4 frames of 40x48   run x3, dash
+    enforcer.png     224x56   4 frames of 56x56   walk x3, shield bash
+    bomber.png       128x32   4 frames of 32x32   hover x3, armed
+    sniper.png       160x40   4 frames of 40x40   idle x3, recoil + flash
+    overseer.png     384x96   4 frames of 96x96   idle, idle, charging, rage
+    fx.png           256x32   8 effect cells of 32x32
 """
 
 import argparse
@@ -99,12 +112,39 @@ PAL = {
     "L": "#f3efff",  # moon light
     "l": "#d6cdf2",  # moon base
     "d": "#b5abdc",  # moon shade
+    # heroes
+    "E": "#e6e9f5",  # chrome bright
+    "F": "#aab1cf",  # chrome light
+    "H": "#717898",  # chrome mid
+    "I": "#454a68",  # chrome dark
+    "S": "#2b2e45",  # chrome deepest
+    "9": "#3b1d63",  # hoodie dark
+    "0": "#5a2d91",  # hoodie
+    "A": "#7d48c2",  # hoodie light
+    "T": "#a070e0",  # hoodie highlight
+    "6": "#f0b48a",  # skin
+    "7": "#c98563",  # skin shade
+    "8": "#8f4a3c",  # skin dark / mouth
+    "X": "#c4581e",  # hair (orange)
+    "Q": "#f39a3c",  # hair highlight
+    "Z": "#7a2f12",  # hair dark
+    "J": "#2d3f75",  # jeans
+    "j": "#1c2852",  # jeans shade
+    # paine.png colours (portrait / firing pose)
+    "!": "#b8ada8", "@": "#a4938c", "$": "#867670", "%": "#6b5b55", "&": "#49403d",
+    "*": "#ffebce", "+": "#ffc89b", "=": "#e8a08d", "?": "#aa7162",
+    "<": "#5c4766", ">": "#493357", "^": "#b7140d", "~": "#8e0f0c",
+    ":": "#242424", ";": "#3a3a3a", "/": "#1f1f1f", "`": "#000000",
     # translucent glows: never outlined, never count as solid
     "g": ("#19f5ff", 110),
     "h": ("#ff2fd6", 70),
     "f": ("#39ff8a", 80),
+    "k": ("#39ff8a", 150),  # holo panel green
+    "D": ("#19f5ff", 150),  # holo panel cyan
+    "#": ("#3f7cff", 130),  # blue energy glow
+    "(": ("#ff2457", 110),  # red warning glow
 }
-GLOW = {"g", "h", "f"}
+GLOW = {"g", "h", "f", "k", "D", "#", "("}
 OUTLINE = "K"
 
 
@@ -3133,6 +3173,1448 @@ def make_facade():
     return sheet
 
 
+# ================================================================== HEROES ===
+# Playable heroes share paine.png's grid: 32x48 frames, rows = walk down,
+# walk left, walk right (mirror of left), walk up, attack left, attack right
+# (mirror). Walk frames 0 and 2 are the neutral pose, 1 and 3 are steps with
+# the upper body 1px lower. Shoe soles sit on y=44 so the outline row is 45,
+# exactly like paine.png.
+HW, HH = 32, 48
+
+
+def layer():
+    return Grid(HW, HH)
+
+
+def put_ascii(g, rows, x0, y0, flip=False):
+    for y, row in enumerate(rows):
+        if flip:
+            row = row[::-1]
+        for x, ch in enumerate(row):
+            if ch != ".":
+                g.set(x0 + x, y0 + y, ch)
+
+
+def hero_sheet(frame_fn, rows=(0, 1, 2, 3, 4, 5)):
+    sheet = Image.new("RGBA", (128, len(rows) * 48), (0, 0, 0, 0))
+    for i, r in enumerate(rows):
+        for f in range(4):
+            sheet.paste(frame_fn(r, f).image(), (f * 32, i * 48))
+    return sheet
+
+
+def mirrored(g):
+    out = g.flipped()
+    out.outlined = g.outlined
+    return out
+
+
+# -------------------------------------------------------------------- SUDO ---
+SUDO_SHOE_FRONT = [".sWWs.", "WWWWWs", "GWWWWG", "tttttt"]
+SUDO_SHOE_SIDE = ["..sWWW.", ".WWGGWW", "WWWWWWs", "ttttttt"]
+SUDO_SHOE_BACK = [".WWWW.", "WWWWWW", "sGWWGs", "tttttt"]
+
+
+def messy_hair(cx, cy, rx, ry, spikes, strands=()):
+    """Ellipse of hair with triangular spikes (angle deg, length, half width)
+    pushed out from its edge; returns (pts, strand pixels)."""
+    pts = ellipse_pts(cx, cy, rx, ry)
+    for (ang, ln, w) in spikes:
+        a = math.radians(ang)
+        ex, ey = cx + rx * 0.92 * math.cos(a), cy + ry * 0.92 * math.sin(a)
+        tx, ty = cx + (rx + ln) * math.cos(a), cy + (ry + ln) * math.sin(a)
+        nx_, ny_ = -math.sin(a), math.cos(a)
+        pts |= poly_pts([(ex + nx_ * w, ey + ny_ * w), (tx, ty), (ex - nx_ * w, ey - ny_ * w)])
+    lines = set()
+    for (a, b_) in strands:
+        lines |= set(line_pts(*a, *b_))
+    return pts, lines & pts
+
+
+def shade_hair(g, hp, lines, b, dark_from):
+    g.fill(hp, "X")
+    for (x, y) in hp:
+        if (x - 1, y - 1) not in hp or (x, y - 1) not in hp:
+            g.set(x, y, "Q")
+        elif (x + 1, y + 1) not in hp or y >= dark_from + b:
+            g.set(x, y, "Z")
+    for (x, y) in lines:
+        if g.get(x, y) == "X":
+            g.set(x, y, "Z")
+
+
+def sudo_head(view, b, f):
+    """Hair, face, glasses and headset. view: 'front', 'side' (facing left), 'back'."""
+    hair, face, gear = layer(), layer(), layer()
+    tip = "G" if f % 2 == 0 else "W"
+    if view in ("front", "back"):
+        spikes = [(-165, 2.5, 2.0), (-135, 3.2, 2.4), (-105, 1.6, 2.4), (-75, 1.6, 2.4), (-45, 3.2, 2.4),
+                  (-12, 3.0, 2.0), (10, 2.5, 1.8), (170, 2.5, 1.8)]
+        cy_ = 10.0 + b
+        strands = [((16, 3 + b), (11, 9 + b)), ((16, 3 + b), (20, 9 + b)), ((13, 2 + b), (9, 8 + b)), ((19, 2 + b), (23, 8 + b))]
+        if view == "back":
+            spikes += [(55, 2.5, 2.0), (80, 3.0, 2.0), (100, 3.0, 2.0), (125, 2.5, 2.0)]
+            cy_ = 10.0 + b
+            strands = [((16, 3 + b), (x_, 19 + b)) for x_ in (9, 12, 15, 18, 21, 24)]
+        hp, lines = messy_hair(16.0, cy_, 9.0, 7.6, spikes, strands)
+        shade_hair(hair, hp, lines, b, 17 if view == "front" else 19)
+        if view == "front":
+            fp = {(x, y) for (x, y) in ellipse_pts(15.8, 13.8 + b, 6.3, 6.6, p=2.4) if y >= 9 + b}
+            face.fill(fp, "6")
+            for (x, y) in fp:
+                if x >= 20 or y >= 19 + b:
+                    face.set(x, y, "7")
+            for (x, y) in ((11, 9), (12, 9), (12, 10), (15, 9), (16, 9), (16, 10), (17, 9), (20, 9), (20, 10), (21, 9)):
+                face.set(x, y + b, "X")  # jagged bangs
+            for cx in (12.6, 19.0):
+                ring = ellipse_pts(cx, 13.6 + b, 2.7, 2.7)
+                face.fill(ring, "C")
+                face.fill(edge_pts(ring, N4), "K")
+                lx, ly = int(cx) - 1, 12 + b
+                face.set(lx, ly, "B")
+                face.set(int(cx) + 1, 15 + b, "c")
+            face.hline(15, 16, 13 + b, "K")
+            face.set(15, 18 + b, "8")
+            face.set(16, 18 + b, "8")
+            face.set(14, 17 + b, "7")
+            face.set(17, 17 + b, "7")
+            face.set(11, 17 + b, "p")
+            face.set(21, 17 + b, "p")
+            face.rect(14, 19 + b, 17, 21 + b, "7")
+            # headset: band over the hair, ear cups, mic boom, antenna
+            for i in range(41):
+                a = math.pi + math.pi * i / 40
+                gear.set(int(round(16 + 7.6 * math.cos(a))), int(round(11.0 + b + 7.4 * math.sin(a))), "2")
+            for x0 in (6, 23):
+                gear.rect(x0, 12 + b, x0 + 2, 16 + b, "2")
+                gear.vline(x0, 12 + b, 16 + b, "3")
+                gear.set(x0 + 1, 14 + b, "G")
+            gear.line(8, 17 + b, 11, 19 + b, "2")
+            gear.set(12, 19 + b, "M")
+            gear.line(25, 11 + b, 27, 5 + b, "3")
+            gear.set(27, 4 + b, tip)
+        else:
+            for i in range(41):
+                a = math.pi * i / 40
+                gear.set(int(round(16 + 7.6 * math.cos(a + math.pi))), int(round(11.0 + b - 7.4 * math.sin(a))), "2")
+            for x0 in (6, 23):
+                gear.rect(x0, 12 + b, x0 + 2, 16 + b, "2")
+                gear.vline(x0 + 2, 12 + b, 16 + b, "3")
+            gear.line(6, 11 + b, 4, 5 + b, "3")
+            gear.set(4, 4 + b, tip)
+            gear.set(16, 20 + b, "G")  # neck port seen from behind
+    else:  # side, facing left
+        spikes = [(-160, 2.5, 2.0), (-125, 2.8, 2.4), (-95, 1.6, 2.4), (-62, 2.4, 2.4), (-30, 4.0, 2.4),
+                  (0, 4.0, 2.2), (28, 3.5, 2.0), (55, 2.5, 1.8)]
+        strands = [((15, 3 + b), (22, 8 + b)), ((18, 3 + b), (24, 11 + b)), ((14, 4 + b), (19, 9 + b)),
+                   ((21, 12 + b), (23, 17 + b))]
+        hp, lines = messy_hair(16.8, 10.2 + b, 8.2, 7.6, spikes, strands)
+        hp |= poly_pts([(18, 14 + b), (25, 12 + b), (24, 19.5 + b), (18, 19.5 + b)])
+        shade_hair(hair, hp, lines, b, 18)
+        fp = {(x, y) for (x, y) in ellipse_pts(12.4, 13.8 + b, 5.2, 6.2, p=2.4) if y >= 9 + b}
+        fp.add((7, 14 + b))
+        face.fill(fp, "6")
+        for (x, y) in fp:
+            if x >= 16 or y >= 19 + b:
+                face.set(x, y, "7")
+        for (x, y) in ((8, 9), (9, 9), (9, 10), (12, 9), (13, 9), (13, 10), (14, 9), (8, 10)):
+            face.set(x, y + b, "X")
+        ring = ellipse_pts(10.6, 13.6 + b, 2.7, 2.7)
+        face.fill(ring, "C")
+        face.fill(edge_pts(ring, N4), "K")
+        face.set(9, 12 + b, "B")
+        face.set(11, 15 + b, "c")
+        face.hline(13, 16, 13 + b, "K")
+        face.set(8, 18 + b, "8")
+        face.set(9, 18 + b, "8")
+        face.set(12, 17 + b, "p")
+        face.rect(13, 19 + b, 16, 21 + b, "7")
+        gear.rect(16, 12 + b, 19, 16 + b, "2")
+        gear.vline(16, 12 + b, 16 + b, "3")
+        gear.set(17, 14 + b, "G")
+        for y in range(3, 12):
+            gear.set(17 + (1 if y < 6 else 0), y + b, "3")
+        gear.line(16, 17 + b, 12, 19 + b, "2")
+        gear.set(11, 19 + b, "M")
+        gear.line(19, 11 + b, 22, 5 + b, "3")
+        gear.set(22, 4 + b, tip)
+    return hair, face, gear
+
+
+def sudo_body(view, b, arm_pose, f):
+    """Torso (hoodie), arms and cyberdeck. arm_pose: 'neutral', 'fwd', 'back' for walking."""
+    torso, near_arm, far_arm, deck, cable = layer(), layer(), layer(), layer(), layer()
+    if view in ("front", "back"):
+        tp = poly_pts([(8.5, 21.5 + b), (23.5, 21.5 + b), (24.5, 25 + b), (24.2, 35.5), (7.8, 35.5), (7.5, 25 + b)])
+        torso.fill(tp, "0")
+        for (x, y) in tp:
+            if x <= 9:
+                torso.set(x, y, "A")
+            elif x >= 22:
+                torso.set(x, y, "9")
+            if y >= 34:
+                torso.set(x, y, "9" if x % 2 else "0")
+        if view == "front":
+            hood = ellipse_pts(16.0, 21.5 + b, 7.0, 2.6)
+            torso.fill(hood, "A")
+            torso.fill({(x, y) for (x, y) in hood if abs(x + 0.5 - 16) < 3.5 and y >= 21 + b}, "9")
+            for sx in (14, 18):
+                torso.vline(sx, 23 + b, 26 + b, "s")
+            torso.hline(11, 20, 29 + b, "9")
+            torso.vline(10, 30 + b, 32 + b, "9")
+            torso.vline(21, 30 + b, 32 + b, "9")
+            for (a, c) in (((12, 24), (12, 27)), ((12, 27), (15, 27)), ((20, 24), (20, 26)), ((20, 26), (18, 26))):
+                torso.line(a[0], a[1] + b, c[0], c[1] + b, "G")
+            for (x, y) in ((15, 27), (18, 26), (12, 24), (20, 24)):
+                torso.set(x, y + b, "W" if (x + y) % 2 else "G")
+            torso.set(22, 31 + b, "i")
+            torso.set(9, 26 + b, "i")
+        else:
+            hood = poly_pts([(10.5, 20.5 + b), (21.5, 20.5 + b), (22.5, 24 + b), (19, 28.5 + b), (13, 28.5 + b), (9.5, 24 + b)])
+            torso.fill(hood, "A")
+            torso.fill({(x, y) for (x, y) in hood if 12 <= x <= 19 and 22 + b <= y <= 26 + b}, "0")
+            torso.vline(16, 21 + b, 27 + b, "9")
+            torso.rect(13, 30 + b, 18, 33 + b, "G")
+            torso.rect(14, 31 + b, 17, 32 + b, "z")
+            torso.set(15, 31 + b, "G")
+            for (a, c) in (((12, 31), (10, 31)), ((19, 32), (22, 32)), ((16, 29), (16, 28))):
+                torso.line(a[0], a[1] + b, c[0], c[1] + b, "G")
+        # sleeves: hands swing a little on the step frames
+        lsh = {"neutral": 0, "fwd": -1, "back": 1}[arm_pose]
+        for side, sx in ((-1, 7), (1, 24)):
+            dy = lsh if side < 0 else -lsh
+            sp_ = capsule_pts((sx + 0.5 + (1 if side < 0 else -1), 23.5 + b), (sx + 0.5, 31.5 + b + dy), 2.3, 2.0)
+            arm = near_arm
+            shade_rim(arm, sp_, "0", light="A", dark="9")
+            for (x, y) in sp_:
+                if y >= 31 + b + dy:
+                    arm.set(x, y, "9")
+            arm.fill(ellipse_pts(sx + 0.5, 33.5 + b + dy, 1.4, 1.4), "6")
+        dside = 24 if view == "front" else 6
+        dy = (-lsh if view == "front" else lsh)
+        deck.rect(dside - 1, 32 + b + dy, dside + 4, 35 + b + dy, "2")
+        deck.hline(dside - 1, dside + 4, 32 + b + dy, "3")
+        deck.rect(dside, 33 + b + dy, dside + 3, 34 + b + dy, "z")
+        deck.set(dside + (1 if f % 2 else 2), 33 + b + dy, "G")
+        deck.set(dside + 3, 34 + b + dy, "G")
+        if view == "front":
+            cable.fill(set(line_pts(18, 20 + b, 22, 23 + b)) | set(line_pts(22, 23 + b, 25, 31 + b + dy)), "c")
+            cable.set(18, 20 + b, "G")
+        else:
+            cable.fill(set(line_pts(16, 21 + b, 11, 24 + b)) | set(line_pts(11, 24 + b, 8, 31 + b + dy)), "c")
+    return torso, near_arm, far_arm, deck, cable
+
+
+def sudo_side_body(b, hand, far_hand, lean=0, deck_far=False, f=0):
+    """Side view (facing left). hand / far_hand are (x, y) positions of the near / far hand."""
+    torso, near_arm, far_arm, deck, cable = layer(), layer(), layer(), layer(), layer()
+    L_ = lean
+    tp = poly_pts([(11.5 + L_, 21.5 + b), (19.5 + L_, 21.0 + b), (22.0 + L_, 24 + b), (22.4, 35.5), (10.4, 35.5),
+                   (10.0 + L_, 27 + b)])
+    torso.fill(tp, "0")
+    for (x, y) in tp:
+        if x <= 11 + L_:
+            torso.set(x, y, "A")
+        elif x >= 21 + L_:
+            torso.set(x, y, "9")
+        if y >= 34:
+            torso.set(x, y, "9" if x % 2 else "0")
+    hood = ellipse_pts(20.0 + L_, 22.0 + b, 3.6, 3.0)
+    torso.fill(hood, "A")
+    torso.fill({(x, y) for (x, y) in hood if x <= 19 + L_ and y >= 22 + b}, "9")
+    for (a, c) in (((13, 25), (13, 28)), ((13, 28), (16, 28)), ((18, 25), (18, 27))):
+        torso.line(a[0] + L_, a[1] + b, c[0] + L_, c[1] + b, "G")
+    torso.set(16 + L_, 28 + b, "W")
+    torso.set(18 + L_, 27 + b, "W")
+    sh = (17.0 + L_, 24.0 + b)
+    fsh = (19.0 + L_, 24.0 + b)
+    fa = capsule_pts(fsh, far_hand, 2.0, 1.8)
+    shade_rim(far_arm, fa, "9", light="0", dark="9")
+    far_arm.fill(ellipse_pts(far_hand[0], far_hand[1] + 0.5, 1.3, 1.3), "7")
+    na = capsule_pts(sh, hand, 2.3, 2.0)
+    shade_rim(near_arm, na, "0", light="A", dark="9")
+    hx, hy = hand
+    for (x, y) in na:
+        if math.hypot(x + 0.5 - hx, y + 0.5 - hy) < 2.2:
+            near_arm.set(x, y, "9")
+    near_arm.fill(ellipse_pts(hx, hy + 0.5, 1.5, 1.5), "6")
+    dx_, dy_ = (far_hand if deck_far else hand)
+    dx_, dy_ = int(dx_) - 3, int(dy_) - 1
+    deck.rect(dx_, dy_, dx_ + 4, dy_ + 3, "2")
+    deck.hline(dx_, dx_ + 4, dy_, "3")
+    deck.rect(dx_ + 1, dy_ + 1, dx_ + 3, dy_ + 2, "z")
+    deck.set(dx_ + (1 if f % 2 else 2), dy_ + 1, "G")
+    cable.fill(set(line_pts(17 + L_, 20 + b, 15 + L_, 23 + b)) | set(line_pts(15 + L_, 23 + b, dx_ + 4, dy_ + 1)), "c")
+    cable.set(17 + L_, 20 + b, "G")
+    return torso, near_arm, far_arm, deck, cable
+
+
+def sudo_legs(view, f):
+    legs, shoes = layer(), layer()
+    if view in ("front", "back"):
+        la = 2 if f == 1 else 0
+        ra = 2 if f == 3 else 0
+        shoe = SUDO_SHOE_FRONT if view == "front" else SUDO_SHOE_BACK
+        for x0, lift in ((11, la), (18, ra)):
+            legs.rect(x0, 34, x0 + 2, 41 - lift, "J")
+            legs.vline(x0 + 2, 34, 41 - lift, "j")
+        for x0, lift in ((9, la), (17, ra)):
+            put_ascii(shoes, shoe, x0, 41 - lift)
+        return legs, shoes, layer(), layer()
+    # side, facing left: near / far leg
+    near_l, far_l, near_s, far_s = layer(), layer(), layer(), layer()
+    pose = {0: (0, 0), 1: (-4, 4), 2: (0, 0), 3: (4, -4)}[f]
+    for (g_leg, g_shoe, hipx, dx, dark) in ((near_l, near_s, 14.0, pose[0], False), (far_l, far_s, 16.5, pose[1], True)):
+        foot_x = hipx + dx
+        lift = 1 if (dx > 0 and not dark and f == 3) or (dx > 0 and dark and f == 1) else 0
+        lp = capsule_pts((hipx, 34.5), (foot_x, 40.5 - lift), 1.6, 1.4)
+        shade_rim(g_leg, lp, "j" if dark else "J", light=None if dark else "J", dark="j")
+        put_ascii(g_shoe, SUDO_SHOE_SIDE, int(foot_x) - 3, 41 - lift)
+        if dark:
+            g_shoe.recolor({"W": "s", "s": "t", "G": "i"})
+    return near_l, near_s, far_l, far_s
+
+
+def sudo_frame(row, f):
+    if row == 2:
+        return mirrored(sudo_frame(1, f))
+    if row == 5:
+        return mirrored(sudo_frame(4, f))
+    if row in (0, 3):
+        view = "front" if row == 0 else "back"
+        b = 1 if f in (1, 3) else 0
+        arm = {0: "neutral", 1: "fwd", 2: "neutral", 3: "back"}[f]
+        legs, shoes, _, _ = sudo_legs(view, f)
+        hair, face, gear = sudo_head(view, b, f)
+        torso, near_arm, far_arm, deck, cable = sudo_body(view, b, arm, f)
+        if view == "front":
+            return stack(HW, HH, legs, shoes, torso, near_arm, deck, cable, hair, face, gear)
+        return stack(HW, HH, deck, cable, legs, shoes, torso, near_arm, hair, face, gear)
+    if row == 1:
+        b = 1 if f in (1, 3) else 0
+        swing = {0: 0, 1: -2, 2: 0, 3: 2}[f]
+        near_l, near_s, far_l, far_s = sudo_legs("side", f)
+        hair, face, gear = sudo_head("side", b, f)
+        torso, near_arm, far_arm, deck, cable = sudo_side_body(b, (14.5 + swing, 32.0 + b), (20.5 - swing, 31.0 + b), f=f)
+        return stack(HW, HH, far_arm, far_l, far_s, near_l, near_s, torso, cable, hair, face, gear, near_arm, deck)
+    # row 4: cast attack facing left
+    b = 0
+    lean = (0, -1, -1, 0)[f]
+    hand = [(10.5, 21.0), (7.5, 23.5), (6.5, 23.5), (11.5, 28.5)][f]
+    near_l, near_s, far_l, far_s = sudo_legs("side", 0)
+    hair, face, gear = sudo_head("side", b, f)
+    if lean:
+        for g_ in (hair, face, gear):
+            g_.px = [row_[1:] + ["."] for row_ in g_.px]
+    torso, near_arm, far_arm, deck, cable = sudo_side_body(b, hand, (17.5 + lean, 30.0), lean=lean, deck_far=True, f=f)
+    fx = layer()
+    if f == 1:   # glyph panel appears in front of the hand
+        fx.rect(1, 18, 5, 28, "k")
+        for y in (18, 28):
+            fx.hline(1, 5, y, "G")
+        for x in (1, 5):
+            fx.vline(x, 18, 28, "G")
+        for (x, y) in ((3, 20), (2, 22), (4, 22), (3, 24), (2, 26), (4, 26), (3, 23)):
+            fx.set(x, y, "C")
+        fx.set(3, 21, "W")
+    elif f == 2:  # cast flare
+        fx.rect(0, 17, 6, 29, "k")
+        for (x, y) in ((3, 23), (2, 23), (4, 23), (3, 22), (3, 24)):
+            fx.set(x, y, "W")
+        for r_ in range(2, 6):
+            for (dx, dy) in ((r_, 0), (-r_, 0), (0, r_), (0, -r_)):
+                fx.set(3 + dx, 23 + dy, "B" if r_ < 4 else "G")
+        for (dx, dy) in ((2, 2), (-2, 2), (2, -2), (-2, -2), (3, 3), (-3, -3), (3, -3), (-3, 3)):
+            fx.set(3 + dx, 23 + dy, "C")
+    elif f == 3:  # fading sparkles
+        for (x, y) in ((2, 20), (4, 24), (1, 26), (5, 19), (3, 28)):
+            fx.set(x, y, "i" if (x + y) % 2 else "D")
+    g = stack(HW, HH, far_arm, deck, far_l, far_s, near_l, near_s, torso, cable, hair, face, gear, near_arm)
+    return g.blit(fx)
+
+
+def make_sudo():
+    return hero_sheet(sudo_frame)
+
+
+# ------------------------------------------------------------------- TETSU ---
+def draw_blade(g, grip, ang, length, hilt=4, edge_side=1, bright=False, guard=True):
+    """Katana from a grip point along angle ang (radians, screen coords). The
+    cutting edge glows cyan on edge_side (+1/-1 = perpendicular side)."""
+    dx, dy = math.cos(ang), math.sin(ang)
+    nx, ny = -dy * edge_side, dx * edge_side
+    spine, edge = set(), set()
+    for i in range(int(length * 2) + 1):
+        t = i / 2.0
+        px_, py_ = grip[0] + dx * t, grip[1] + dy * t
+        spine.add((int(round(px_)), int(round(py_))))
+        if t < length - 1:
+            edge.add((int(round(px_ + nx * 0.9)), int(round(py_ + ny * 0.9))))
+    g.fill(edge, "B" if bright else "C")
+    g.fill(spine, "E" if bright else "F")
+    tip = (int(round(grip[0] + dx * length)), int(round(grip[1] + dy * length)))
+    g.set(tip[0], tip[1], "W" if bright else "B")
+    for i in range(1, hilt * 2 + 1):
+        t = i / 2.0
+        p = (int(round(grip[0] - dx * t)), int(round(grip[1] - dy * t)))
+        g.set(p[0], p[1], "R" if int(t) % 2 == 0 else "1")
+        g.set(int(round(p[0] + nx * 0.8)), int(round(p[1] + ny * 0.8)), "q" if int(t) % 2 else "R")
+    end = (int(round(grip[0] - dx * (hilt + 0.8))), int(round(grip[1] - dy * (hilt + 0.8))))
+    g.set(end[0], end[1], "F")
+    if guard:
+        for s_ in (-1.5, -0.5, 0.5, 1.5):
+            g.set(int(round(grip[0] + nx * s_ / 0.9 * 0.9)), int(round(grip[1] + ny * s_)), "H")
+
+
+def plate(g, pts, base="H", light="F", dark="I", hi="E", spec=True):
+    shade_rim(g, pts, base, light=light, dark=dark)
+    if pts and base == "H":  # chrome: bright upper band, darker lower band
+        y0 = min(y for (_, y) in pts)
+        y1 = max(y for (_, y) in pts)
+        span = max(1, y1 - y0)
+        for (x, y) in pts:
+            if g.get(x, y) == "H":
+                t = (y - y0) / span
+                if t < 0.34:
+                    g.set(x, y, "F")
+                elif t > 0.8 and span >= 4:
+                    g.set(x, y, "I")
+    for (x, y) in edge_pts(pts, ((0, -1),)):
+        if (x - 1, y) in pts and (x + 1, y) in pts:
+            g.set(x, y, hi)
+    inner = [p for p in pts if all((p[0] + dx, p[1] + dy) in pts for dx, dy in N8)]
+    if spec and inner:
+        x, y = min(inner, key=lambda p: (p[0] + p[1], p[1]))
+        g.set(x, y, "W")
+        if (x + 1, y) in inner:
+            g.set(x + 1, y, hi)
+
+
+def tetsu_helmet(view, b, dx=0):
+    """Kabuto-style helmet: dome, flared laced neck guard, mask with a red slit, short crest."""
+    guard, helm, visor = layer(), layer(), layer()
+    if view in ("front", "back"):
+        sp_ = poly_pts([(9.5 + dx, 12 + b), (22.5 + dx, 12 + b), (26.2 + dx, 19.6 + b), (5.8 + dx, 19.6 + b)])
+        plate(guard, sp_, spec=False)
+        for y in (14, 16, 18):
+            for (x, yy) in sp_:
+                if yy == y + b:
+                    guard.set(x, yy, "I")
+        for (x, y) in sp_:
+            if y in (15 + b, 17 + b) and (x - dx) % 3 == 0:
+                guard.set(x, y, "R")
+        plate(helm, ellipse_pts(16.0 + dx, 10.0 + b, 6.8, 6.6))
+        helm.hline(10 + dx, 22 + dx, 10 + b, "I")
+        crest = poly_pts([(14.2 + dx, 5.5 + b), (16.0 + dx, 0.6 + b), (17.8 + dx, 5.5 + b)])
+        helm.fill(crest, "E")
+        helm.fill({p for p in crest if p[0] >= 16 + dx}, "F")
+        helm.set(16 + dx, 2 + b, "R")
+        helm.set(16 + dx, 3 + b, "R")
+        if view == "front":
+            fp = {(x, y) for (x, y) in ellipse_pts(16.0 + dx, 13.0 + b, 4.6, 5.4) if y >= 11 + b}
+            visor.fill(fp, "S")
+            visor.hline(12 + dx, 19 + dx, 12 + b, "R")
+            visor.hline(14 + dx, 17 + dx, 12 + b, "p")
+            visor.set(15 + dx, 12 + b, "W")
+            mg = poly_pts([(12.6 + dx, 14 + b), (19.4 + dx, 14 + b), (18.4 + dx, 17 + b), (16 + dx, 18.6 + b), (13.6 + dx, 17 + b)])
+            plate(visor, mg, spec=False)
+            for x in (14, 16):
+                visor.vline(x + dx, 15 + b, 16 + b, "I")
+    else:  # side, facing left
+        sp_ = poly_pts([(14.5 + dx, 11.5 + b), (21.5 + dx, 11.5 + b), (24.8 + dx, 19.6 + b), (14.5 + dx, 19.6 + b)])
+        plate(guard, sp_, spec=False)
+        for y in (14, 16, 18):
+            for (x, yy) in sp_:
+                if yy == y + b and x > 16 + dx:
+                    guard.set(x, yy, "I")
+        for (x, y) in sp_:
+            if y in (15 + b, 17 + b) and (x - dx) % 3 == 0 and x > 16 + dx:
+                guard.set(x, y, "R")
+        plate(helm, ellipse_pts(15.2 + dx, 10.0 + b, 6.8, 6.6))
+        helm.hline(9 + dx, 21 + dx, 10 + b, "I")
+        crest = poly_pts([(12.8 + dx, 5.4 + b), (14.2 + dx, 0.7 + b), (19.4 + dx, 1.4 + b), (18.0 + dx, 2.8 + b),
+                          (17.4 + dx, 5.4 + b)])
+        helm.fill(crest, "E")
+        helm.fill({p for p in crest if p[1] >= 3 + b}, "F")
+        helm.set(15 + dx, 2 + b, "R")
+        helm.set(16 + dx, 2 + b, "R")
+        fp = {(x, y) for (x, y) in ellipse_pts(11.6 + dx, 13.2 + b, 3.4, 5.0) if y >= 11 + b}
+        visor.fill(fp, "S")
+        visor.hline(8 + dx, 13 + dx, 12 + b, "R")
+        visor.hline(8 + dx, 10 + dx, 12 + b, "p")
+        visor.set(8 + dx, 12 + b, "W")
+        mg = poly_pts([(7.4 + dx, 14 + b), (13.4 + dx, 14 + b), (13 + dx, 17.6 + b), (9 + dx, 18.6 + b), (7.0 + dx, 16.4 + b)])
+        plate(visor, mg, spec=False)
+        visor.vline(10 + dx, 15 + b, 16 + b, "I")
+    return guard, helm, visor
+
+
+def tetsu_scarf(view, b, f, dx=0):
+    g = layer()
+    wave = (0, 1, 0, -1)[f % 4]
+    if view in ("front", "back"):
+        g.rect(11 + dx, 19 + b, 21 + dx, 21 + b, "R")
+        g.hline(11 + dx, 21 + dx, 21 + b, "r")
+        tx = 19 if view == "front" else 13
+        tp = poly_pts([(tx + dx, 21 + b), (tx + 3 + dx, 21 + b), (tx + 3.5 + dx + wave * 0.5, 28 + b),
+                       (tx + 2 + dx, 26.5 + b), (tx + 1 + dx, 28.5 + b), (tx - 0.5 + dx, 27 + b)])
+        shade_rim(g, tp, "R", light="p", dark="r")
+    else:
+        g.rect(11 + dx, 19 + b, 19 + dx, 21 + b, "R")
+        g.hline(11 + dx, 19 + dx, 21 + b, "r")
+        tp = poly_pts([(18 + dx, 19 + b), (24 + dx, 19.5 + b + wave), (29 + dx, 21 + b + wave), (27.5 + dx, 22.5 + b + wave),
+                       (29 + dx, 24.5 + b + wave), (24 + dx, 23.5 + b + wave), (19 + dx, 22 + b)])
+        shade_rim(g, tp, "R", light="p", dark="r")
+    return g
+
+
+def tetsu_legs(view, f, stance=None):
+    legs, boots = layer(), layer()
+    far_legs, far_boots = layer(), layer()
+    if view in ("front", "back"):
+        la = 1 if f == 1 else 0
+        ra = 1 if f == 3 else 0
+        legs.rect(14, 34, 17, 37, "1")
+        for x0, lift in ((9, la), (18, ra)):
+            lp = {(x, y) for x in range(x0, x0 + 5) for y in range(34, 41 - lift)}
+            plate(legs, lp)
+            legs.hline(x0, x0 + 4, 37 - lift, "E" if view == "front" else "I")
+            legs.hline(x0, x0 + 4, 38 - lift, "I")
+            bp = {(x, y) for x in range(x0 - 1, x0 + 6) for y in range(40 - lift, 45 - lift)}
+            plate(boots, bp, base="I", light="H", dark="S", hi="F")
+            boots.hline(x0 - 1, x0 + 5, 44 - lift, "S")
+            boots.hline(x0, x0 + 4, 42 - lift, "R" if view == "front" else "q")
+        return legs, boots, far_legs, far_boots
+    # side, facing left; stance = (near foot dx, far foot dx)
+    pose = stance or {0: (0, 0), 1: (-4, 4), 2: (0, 0), 3: (4, -4)}[f]
+    for g_leg, g_boot, hipx, dxf, far in ((legs, boots, 14.5, pose[0], False),
+                                          (far_legs, far_boots, 17.5, pose[1], True)):
+        fx_ = hipx + dxf
+        lift = 1 if stance is None and ((dxf > 0 and not far and f == 3) or (dxf > 0 and far and f == 1)) else 0
+        lp = capsule_pts((hipx, 34.5), (fx_, 39.5 - lift), 2.5, 2.2)
+        if far:
+            shade_rim(g_leg, lp, "I", light="H", dark="S")
+        else:
+            plate(g_leg, lp)
+        kx, ky = int(round((hipx + fx_) / 2 - 1.5)), 37 - lift
+        g_leg.rect(kx, ky, kx + 1, ky + 1, "S" if far else "E")
+        bx = int(round(fx_)) - 4
+        bp = {(x, y) for x in range(bx, bx + 8) for y in range(41 - lift, 45 - lift)} | \
+             {(x, y) for x in range(bx + 2, bx + 7) for y in range(39 - lift, 41 - lift)}
+        if far:
+            shade_rim(g_boot, bp, "S", light="I", dark="S")
+        else:
+            plate(g_boot, bp, base="I", light="H", dark="S", hi="F")
+            g_boot.hline(bx + 2, bx + 6, 41 - lift, "R")
+        g_boot.hline(bx, bx + 7, 44 - lift, "S")
+    return legs, boots, far_legs, far_boots
+
+
+def tetsu_torso(view, b, dx=0):
+    torso, pads = layer(), layer()
+    if view in ("front", "back"):
+        tp = poly_pts([(9 + dx, 20.5 + b), (23 + dx, 20.5 + b), (24 + dx, 27 + b), (22 + dx, 34.5 + b),
+                       (10 + dx, 34.5 + b), (8 + dx, 27 + b)])
+        plate(torso, tp)
+        torso.rect(14 + dx, 19 + b, 17 + dx, 20 + b, "1")
+        if view == "front":
+            torso.vline(16 + dx, 22 + b, 28 + b, "I")
+            torso.hline(10 + dx, 22 + dx, 26 + b, "R")
+            torso.set(15 + dx, 24 + b, "R")
+            torso.set(17 + dx, 24 + b, "R")
+            for y in (29, 31):
+                torso.hline(11 + dx, 21 + dx, y + b, "I")
+        else:
+            torso.vline(16 + dx, 21 + b, 33 + b, "I")
+            torso.hline(10 + dx, 22 + dx, 28 + b, "I")
+        torso.rect(10 + dx, 33 + b, 22 + dx, 34 + b, "S")
+        torso.set(16 + dx, 33 + b, "R")
+        torso.set(15 + dx, 33 + b, "R")
+        for x0 in (9, 19):  # hip tassets
+            tsp = {(x, y) for x in range(x0 + dx, x0 + 5 + dx) for y in range(35 + b, 38 + b)}
+            plate(pads, tsp)
+            pads.hline(x0 + dx, x0 + 4 + dx, 37 + b, "R" if view == "front" else "I")
+    else:
+        tp = poly_pts([(10.5 + dx, 21 + b), (20.5 + dx, 20.5 + b), (22.5 + dx, 25 + b), (21.5 + dx, 34.5 + b),
+                       (11 + dx, 34.5 + b), (9 + dx, 27 + b)])
+        plate(torso, tp)
+        torso.rect(12 + dx, 19 + b, 16 + dx, 20 + b, "1")
+        torso.hline(10 + dx, 16 + dx, 26 + b, "R")
+        for y in (29, 31):
+            torso.hline(11 + dx, 20 + dx, y + b, "I")
+        torso.rect(11 + dx, 33 + b, 21 + dx, 34 + b, "S")
+        torso.set(12 + dx, 33 + b, "R")
+        tsp = {(x, y) for x in range(12 + dx, 19 + dx) for y in range(35 + b, 38 + b)}
+        plate(pads, tsp)
+        pads.hline(12 + dx, 18 + dx, 37 + b, "R")
+    return torso, pads
+
+
+def tetsu_pauldron(cx, cy):
+    g = layer()
+    pp = ellipse_pts(cx, cy, 4.4, 3.6)
+    plate(g, pp)
+    for (x, y) in pp:
+        if (x, y + 1) not in pp:
+            g.set(x, y, "R")
+    return g
+
+
+def tetsu_arm(shoulder, hand, far=False):
+    g = layer()
+    ap = capsule_pts(shoulder, hand, 2.4, 2.1)
+    if far:
+        shade_rim(g, ap, "I", light="H", dark="S")
+    else:
+        plate(g, ap)
+    fist = ellipse_pts(hand[0], hand[1] + 0.6, 2.0, 2.0)
+    shade_rim(g, fist, "I" if far else "H", light="I" if far else "F", dark="S")
+    return g
+
+
+def tetsu_back_sword(view, b, dx=0):
+    g = layer()
+    if view == "front":
+        draw_blade(g, (22.0 + dx, 17.0 + b), math.radians(120), 22, hilt=4)
+    elif view == "back":
+        draw_blade(g, (11.0 + dx, 16.0 + b), math.radians(58), 22, hilt=4, edge_side=-1)
+    else:
+        draw_blade(g, (22.0 + dx, 15.0 + b), math.radians(97), 24, hilt=4, edge_side=-1)
+    return g
+
+
+def tetsu_frame(row, f):
+    if row == 2:
+        return mirrored(tetsu_frame(1, f))
+    if row == 5:
+        return mirrored(tetsu_frame(4, f))
+    if row in (0, 3):
+        view = "front" if row == 0 else "back"
+        b = 1 if f in (1, 3) else 0
+        sw = {0: 0, 1: -1, 2: 0, 3: 1}[f]
+        legs, boots, _, _ = tetsu_legs(view, f)
+        torso, pads = tetsu_torso(view, b)
+        guard, helm, visor = tetsu_helmet(view, b)
+        sword = tetsu_back_sword(view, b)
+        scarf = tetsu_scarf(view, b, f)
+        arm_l = tetsu_arm((7.5, 25.5 + b), (6.5, 32.0 + b + sw))
+        arm_r = tetsu_arm((24.5, 25.5 + b), (25.5, 32.0 + b - sw))
+        pl, pr = tetsu_pauldron(7.0, 23.0 + b), tetsu_pauldron(25.0, 23.0 + b)
+        if view == "front":
+            return stack(HW, HH, sword, legs, boots, torso, pads, scarf, arm_l, arm_r, pl, pr, guard, helm, visor)
+        return stack(HW, HH, legs, boots, torso, pads, arm_l, arm_r, pl, pr, sword, scarf, guard, helm, visor)
+    if row == 1:
+        b = 1 if f in (1, 3) else 0
+        sw = {0: 0, 1: -2, 2: 0, 3: 2}[f]
+        legs, boots, far_legs, far_boots = tetsu_legs("side", f)
+        torso, pads = tetsu_torso("side", b)
+        guard, helm, visor = tetsu_helmet("side", b)
+        sword = tetsu_back_sword("side", b)
+        scarf = tetsu_scarf("side", b, f)
+        far_arm = tetsu_arm((18.5, 25.0 + b), (19.5 - sw, 32.0 + b), far=True)
+        arm = tetsu_arm((15.5, 25.5 + b), (14.5 + sw, 32.5 + b))
+        pd = tetsu_pauldron(15.5, 23.0 + b)
+        return stack(HW, HH, far_arm, sword, far_legs, far_boots, legs, boots, torso, pads, scarf, guard, helm,
+                     visor, arm, pd)
+    # row 4: katana attack facing left
+    lean = (1, -1, -2, 0)[f]
+    grip = [(20.0, 14.0), (8.0, 26.0), (10.0, 32.0), (12.0, 27.0)][f]
+    ang = [math.radians(-55), math.radians(180), math.radians(135), math.radians(-115)][f]
+    length = [13, 9, 12, 13][f]
+    stance = (-4, 4)
+    legs, boots, far_legs, far_boots = tetsu_legs("side", 0, stance=stance)
+    torso, pads = tetsu_torso("side", 0, dx=lean)
+    guard, helm, visor = tetsu_helmet("side", 0, dx=lean)
+    scarf = tetsu_scarf("side", 0, (1, 3, 1, 0)[f], dx=lean)
+    far_arm = tetsu_arm((18.5 + lean, 25.0), (grip[0] + 1.5, grip[1] + 1.0), far=True)
+    arm = tetsu_arm((15.5 + lean, 25.5), grip)
+    pd = tetsu_pauldron(15.5 + lean, 23.0)
+    blade = layer()
+    draw_blade(blade, grip, ang, length, hilt=3, edge_side=-1 if f in (0, 3) else 1, bright=(f == 1))
+    trail = layer()
+    if f == 1:  # swing smear: a crescent from overhead down to the blade
+        for y in range(HH):
+            for x in range(HW):
+                d = math.hypot(x + 0.5 - 16, y + 0.5 - 27)
+                a = math.degrees(math.atan2(y + 0.5 - 27, x + 0.5 - 16))
+                if -175 <= a <= -95 and 12.0 <= d <= 15.5:
+                    trail.set(x, y, "W" if d < 13.2 else "B" if d < 14.4 else "C")
+    if f == 2:
+        for y in range(HH):
+            for x in range(HW):
+                d = math.hypot(x + 0.5 - 16, y + 0.5 - 27)
+                a = math.degrees(math.atan2(y + 0.5 - 27, x + 0.5 - 16))
+                if 150 <= a <= 178 and 12.5 <= d <= 14.5 and (x + y) % 2 == 0:
+                    trail.set(x, y, "c")
+    behind = f == 0
+    layers = [far_arm, far_legs, far_boots, legs, boots, torso, pads, scarf, guard, helm, visor]
+    if behind:
+        layers = [blade] + layers + [arm, pd]
+    else:
+        layers = layers + [arm, pd, blade]
+    g = stack(HW, HH, *layers)
+    for y in range(HH):
+        for x in range(HW):
+            if trail.get(x, y) != "." and g.get(x, y) == ".":
+                g.set(x, y, trail.get(x, y))
+    return g
+
+
+def make_tetsu():
+    return hero_sheet(tetsu_frame)
+
+
+# ------------------------------------------------------------ PAINE ATTACK ---
+def make_paine_attack():
+    """Firing pose built on paine.png's own left-facing neutral frame: the
+    resting hand is painted out in Paine's outfit colours and a new arm in
+    Paine's palette is drawn on top, ending in a blue energy glow."""
+    src = load_source("paine.png")
+    base = src.crop((0, 48, 32, 96))
+    sheet = Image.new("RGBA", (128, 96), (0, 0, 0, 0))
+    arms = [((14.0, 25.0), (8.5, 29.5)), ((14.0, 25.0), (6.5, 25.0)), ((15.0, 25.0), (7.5, 24.5)),
+            ((14.0, 25.0), (9.5, 30.0))]
+    for f in range(4):
+        fr = base.copy()
+        fp = fr.load()
+        for y in range(28, 33):  # hide the hand that rests on the hip
+            for x in range(9, 16):
+                if fp[x, y][3] and fp[x, y][:3] != (0, 0, 0):
+                    edge = any(fp[x + dx, y + dy][3] == 0 for dx, dy in N4)
+                    fp[x, y] = (0, 0, 0, 255) if edge else (0x24, 0x24, 0x24, 255)
+        if f == 2:  # recoil: upper body leans back 1px
+            lean = Image.new("RGBA", (32, 48), (0, 0, 0, 0))
+            lean.paste(fr.crop((0, 0, 31, 34)), (1, 0))
+            lean.paste(fr.crop((0, 34, 32, 48)), (0, 34))
+            fr = lean
+        sh, hand = arms[f]
+        arm = Grid(32, 48)
+        ap = capsule_pts(sh, hand, 1.7, 1.5)
+        shade_rim(arm, ap, "/", light=";", dark="/")
+        hp = ellipse_pts(hand[0], hand[1] + 0.2, 1.7, 1.7)
+        shade_rim(arm, hp, "+", light="*", dark="=")
+        arm.outline("`")
+        fr.alpha_composite(arm.image())
+        glow = Grid(32, 48)
+        hx, hy = int(hand[0]) - 1, int(hand[1])
+        if f == 1:
+            glow.fill({p for p in ellipse_pts(hx + 0.5, hy + 0.5, 3.0, 3.0) if fr.getpixel(p)[3] == 0}, "#")
+            for (x, y) in ((hx - 1, hy), (hx - 2, hy), (hx - 1, hy - 1), (hx - 1, hy + 1)):
+                glow.set(x, y, "B")
+            glow.set(hx - 1, hy, "W")
+        elif f == 2:
+            cx_, cy_ = 3, hy
+            glow.fill(ellipse_pts(cx_ + 0.5, cy_ + 0.5, 5.5, 5.5), "#")
+            for r_ in range(1, 6):
+                for (dx, dy) in ((r_, 0), (-r_, 0), (0, r_), (0, -r_)):
+                    glow.set(cx_ + dx, cy_ + dy, "W" if r_ == 1 else "B" if r_ < 3 else "U")
+            for (dx, dy) in ((1, 1), (-1, -1), (1, -1), (-1, 1), (2, 2), (-2, -2), (2, -2), (-2, 2)):
+                glow.set(cx_ + dx, cy_ + dy, "B" if abs(dx) == 1 else "C")
+            glow.set(cx_, cy_, "W")
+            glow.set(hx - 1, hy, "W")
+        elif f == 3:
+            glow.fill({p for p in ellipse_pts(hx + 0.5, hy + 0.5, 2.2, 2.2) if fr.getpixel(p)[3] == 0}, "#")
+            glow.set(hx - 1, hy, "U")
+        fr.alpha_composite(glow.image())
+        sheet.paste(fr, (f * 32, 0))
+        sheet.paste(fr.transpose(Image.FLIP_LEFT_RIGHT), (f * 32, 48))
+    return sheet
+
+
+# --------------------------------------------------------------- PORTRAITS ---
+def portrait_badge(col, dark):
+    g = Grid(48, 48)
+    inside = {(x, y) for y in range(48) for x in range(48) if min(x, 47 - x) + min(y, 47 - y) >= 3}
+    g.fill(inside, "P")
+    for (x, y) in inside:
+        if y % 3 == 0:
+            g.set(x, y, "w")
+    ring1 = edge_pts(inside, N4)
+    in2 = inside - ring1
+    ring2 = edge_pts(in2, N4)
+    in3 = in2 - ring2
+    ring3 = edge_pts(in3, N4)
+    g.fill(ring1, "K")
+    g.fill(ring2, col)
+    g.fill(ring3, dark)
+    return g, in3 - ring3
+
+
+def portrait_paine():
+    hair, face, body = Grid(48, 48), Grid(48, 48), Grid(48, 48)
+    sp_ = ellipse_pts(24, 53, 19, 13)
+    shade_rim(body, sp_, ":", light=";", dark="/")
+    body.fill(set(line_pts(19, 41, 23, 47)) | set(line_pts(20, 41, 24, 47)), "^")
+    body.rect(20, 34, 27, 40, "=")
+    body.rect(21, 38, 26, 40, "+")
+    fp = {(x, y) for (x, y) in ellipse_pts(24, 26.5, 9.2, 10.4) if y >= 17}
+    shade_rim(face, fp, "+", light="*", dark="=")
+    for (x, y) in fp:
+        if x >= 30 or y >= 34:
+            face.set(x, y, "=")
+    for ex in (17, 27):
+        face.hline(ex, ex + 4, 23, "`")
+        face.rect(ex, 24, ex + 4, 28, "<")
+        face.rect(ex + 1, 26, ex + 3, 28, ">")
+        face.set(ex + 3, 24, "W")
+        face.set(ex + 3, 25, "W")
+        face.hline(ex, ex + 4, 29, "=")
+    face.set(24, 30, "=")
+    face.hline(23, 25, 33, "?")
+    face.set(18, 31, "=")
+    face.set(30, 31, "=")
+    spikes = [(-170, 5, 3), (-150, 7, 3), (-128, 8, 3.4), (-105, 8, 3.4), (-80, 9, 3.4), (-56, 8, 3.4),
+              (-33, 7, 3), (-12, 5, 3), (8, 4, 2.6), (172, 4, 2.6)]
+    hp, lines = messy_hair(24, 18, 14.0, 11.0, spikes,
+                           [((24, 6), (16, 16)), ((24, 6), (32, 16)), ((19, 7), (12, 15)), ((29, 7), (36, 14))])
+    bp = set()
+    for (bx, by) in ((15, 22), (19, 21), (23, 22), (27, 21), (31, 22)):
+        bp |= poly_pts([(bx - 2.6, 15), (bx, by), (bx + 2.6, 15)])
+    bp |= {(x, y) for (x, y) in hp if y <= 17}
+    hp |= poly_pts([(13, 18), (15.5, 18), (15.5, 31), (14, 29)]) | poly_pts([(32.5, 18), (35, 18), (34, 29), (32.5, 31)])
+    bangs = Grid(48, 48)
+    for g_, pts in ((hair, hp), (bangs, bp)):
+        g_.fill(pts, "$")
+        for (x, y) in pts:
+            if (x - 1, y - 1) not in pts or (x, y - 1) not in pts:
+                g_.set(x, y, "!")
+            elif (x - 2, y - 2) not in pts:
+                g_.set(x, y, "@")
+            elif (x + 1, y + 1) not in pts or y >= 20:
+                g_.set(x, y, "%")
+        for q in lines:
+            if q in pts:
+                g_.set(q[0], q[1], "%")
+    return [body, hair, face, bangs]
+
+
+def portrait_tetsu():
+    body, guard, helm, mask, scarf = (Grid(48, 48) for _ in range(5))
+    plate(body, {(x, y) for x in range(15, 34) for y in range(40, 48)})
+    body.hline(16, 32, 43, "R")
+    for cx in (8, 40):
+        pp = ellipse_pts(cx, 46, 9, 7)
+        plate(body, pp)
+        for (x, y) in pp:
+            if (x, y + 1) not in pp or y == 44:
+                body.set(x, y, "R")
+    sc = {(x, y) for x in range(14, 35) for y in range(35, 41)}
+    shade_rim(scarf, sc, "R", light="p", dark="r")
+    scarf.fill(poly_pts([(29, 40), (34, 40), (35.5, 47.5), (31, 46), (29, 47.5)]), "R")
+    scarf.fill(set(line_pts(29, 41, 30, 47)), "r")
+    sp_ = poly_pts([(11, 22), (37, 22), (42, 36), (6, 36)])
+    plate(guard, sp_, spec=False)
+    for y in (26, 30, 34):
+        guard.fill({p for p in sp_ if p[1] == y}, "I")
+    for (x, y) in sp_:
+        if y in (28, 32) and x % 4 == 0:
+            guard.set(x, y, "R")
+    plate(helm, ellipse_pts(24, 18, 12.5, 11.5))
+    helm.hline(12, 36, 20, "I")
+    crest = poly_pts([(20.5, 9), (24, -0.5), (27.5, 9)])
+    helm.fill(crest, "E")
+    helm.fill({p for p in crest if p[0] >= 24}, "F")
+    helm.rect(23, 3, 24, 5, "R")
+    fp = {(x, y) for (x, y) in ellipse_pts(24, 28, 8.4, 8.8) if y >= 22}
+    mask.fill(fp, "S")
+    mask.rect(17, 25, 31, 26, "R")
+    mask.hline(20, 28, 25, "p")
+    mask.hline(22, 26, 25, "W")
+    mask.hline(19, 29, 26, "r")
+    mg = poly_pts([(17, 29), (31, 29), (29.5, 34), (24, 36.6), (18.5, 34)])
+    plate(mask, mg, spec=False)
+    for x in (21, 24, 27):
+        mask.vline(x, 31, 33, "I")
+    return [body, scarf, guard, helm, mask]
+
+
+def portrait_sudo():
+    body, face, hair, gear = (Grid(48, 48) for _ in range(4))
+    sp_ = ellipse_pts(24, 53, 19, 13)
+    shade_rim(body, sp_, "0", light="A", dark="9")
+    hood = ellipse_pts(24, 40, 11.5, 4.2)
+    body.fill(hood, "A")
+    body.fill({(x, y) for (x, y) in hood if abs(x + 0.5 - 24) < 6 and y >= 40}, "9")
+    for sx in (20, 28):
+        body.vline(sx, 42, 46, "s")
+    for (a, c) in (((13, 43), (13, 47)), ((13, 43), (16, 43)), ((34, 44), (34, 47)), ((34, 44), (31, 44))):
+        body.line(*a, *c, "G")
+    body.set(16, 43, "W")
+    body.set(31, 44, "W")
+    body.rect(21, 34, 27, 40, "7")
+    fp = {(x, y) for (x, y) in ellipse_pts(24, 27, 9.4, 10.4) if y >= 18}
+    shade_rim(face, fp, "6", dark="7")
+    for (x, y) in fp:
+        if x >= 31:
+            face.set(x, y, "7")
+    for (cx, cy) in ((19.5, 27.5), (29.0, 27.5)):
+        ring = ellipse_pts(cx, cy, 4.6, 4.6)
+        face.fill(ring, "C")
+        face.fill(edge_pts(ring, N4), "K")
+        x0, y0 = int(cx) - 2, int(cy) - 2
+        face.set(x0, y0, "W")
+        face.set(x0 + 1, y0, "B")
+        face.set(x0, y0 + 1, "B")
+        face.set(int(cx) + 2, int(cy) + 2, "c")
+        face.set(int(cx) + 1, int(cy) + 2, "c")
+    face.hline(23, 25, 27, "K")
+    face.hline(20, 28, 33, "8")
+    face.hline(21, 27, 33, "W")
+    face.hline(21, 27, 34, "8")
+    face.hline(22, 26, 35, "8")
+    for (x, y) in ((15, 31), (17, 32), (31, 32), (33, 31)):
+        face.set(x, y, "7")
+    face.set(16, 33, "p")
+    face.set(32, 33, "p")
+    spikes = [(-170, 4, 3), (-148, 6, 3), (-125, 7, 3.4), (-100, 8, 3.4), (-76, 8, 3.4), (-52, 7, 3.4),
+              (-28, 6, 3), (-8, 4, 2.6), (10, 3, 2.4), (170, 3, 2.4)]
+    hp, lines = messy_hair(24, 17, 14.0, 11.0, spikes,
+                           [((24, 5), (17, 14)), ((24, 5), (31, 14)), ((19, 6), (12, 14)), ((29, 6), (36, 13))])
+    for (bx, by) in ((16, 23), (21, 22), (26, 23), (31, 22)):
+        hp |= poly_pts([(bx - 2.6, 17), (bx, by), (bx + 2.6, 17)])
+    shade_hair(hair, hp, lines, 0, 22)
+    for i in range(61):
+        a = math.pi + math.pi * i / 60
+        gear.set(int(round(24 + 12.6 * math.cos(a))), int(round(20 + 12.4 * math.sin(a))), "2")
+    for x0 in (8, 36):
+        gear.rect(x0, 23, x0 + 4, 31, "2")
+        gear.vline(x0, 23, 31, "3")
+        gear.set(x0 + 2, 27, "G")
+    gear.line(39, 22, 44, 5, "3")
+    gear.set(44, 4, "G")
+    gear.line(11, 32, 17, 35, "2")
+    gear.set(18, 35, "M")
+    return [body, hair, face, gear]
+
+
+def make_portraits():
+    sheet = Image.new("RGBA", (144, 48), (0, 0, 0, 0))
+    for i, (fn, col, dark) in enumerate(((portrait_paine, "C", "e"), (portrait_tetsu, "R", "q"),
+                                         (portrait_sudo, "G", "i"))):
+        badge_, inner = portrait_badge(col, dark)
+        bust = Grid(48, 48)
+        for lay in fn():
+            bust.blit(lay.copy().outline())
+        for (x, y) in inner:
+            if bust.get(x, y) != ".":
+                badge_.set(x, y, bust.get(x, y))
+        sheet.paste(badge_.image(), (i * 48, 0))
+    return sheet
+
+
+# ================================================================= ENEMIES ===
+def make_ninja():
+    sheet = Image.new("RGBA", (160, 48), (0, 0, 0, 0))
+    poses = [
+        dict(hip=(18.5, 31.0), nf=(26.5, 46.0), ff=(10.5, 41.0), nh=(14.0, 31.0), fh=(25.0, 28.0)),
+        dict(hip=(18.5, 30.0), nf=(19.0, 46.0), ff=(23.0, 38.5), nh=(19.0, 32.0), fh=(19.0, 30.0)),
+        dict(hip=(18.5, 31.0), nf=(11.0, 41.5), ff=(26.0, 46.0), nh=(25.0, 29.0), fh=(13.0, 29.5)),
+        dict(hip=(16.5, 36.0), nf=(30.5, 46.0), ff=(4.5, 46.0), nh=(31.0, 31.0), fh=(9.0, 34.0)),
+    ]
+    for f, P in enumerate(poses):
+        dash = f == 3
+        hx, hy = P["hip"]
+        lean = 6 if dash else 3
+        chest = (hx + lean, hy - (8 if dash else 10))
+        head = (chest[0] + (3 if dash else 2), chest[1] - 6)
+        far_l, far_a, torso, headg, near_l, near_a, blade, scarf = (Grid(40, 48) for _ in range(8))
+        for g_, foot, far in ((far_l, P["ff"], True), (near_l, P["nf"], False)):
+            knee = ik_knee((hx, hy), foot, 8.5, 9.0, -1)
+            kn = (int(round(knee[0])), int(round(knee[1])))
+            thigh = brush(line_pts(int(hx), int(hy), *kn), SQ2)
+            shin = brush(line_pts(kn[0], kn[1], int(foot[0]), int(foot[1]) - 1), [(0, 0), (1, 0)])
+            col, lite = ("1", "2") if far else ("2", "3")
+            shade_rim(g_, thigh | shin, col, light=lite, dark="1" if not far else "P")
+            g_.set(kn[0], kn[1], "3" if not far else "2")
+            fx_, fy_ = int(foot[0]), int(foot[1])
+            g_.hline(fx_ - 1, fx_ + 2, fy_, "S" if far else "1")
+            g_.set(fx_ + 2, fy_ - 1, "S" if far else "2")
+            if not far:
+                g_.set(kn[0] + 1, kn[1], "M")
+        tp = capsule_pts((hx, hy), chest, 3.0, 4.2)
+        shade_rim(torso, tp, "2", light="3", dark="1")
+        for (x, y) in edge_pts(tp, ((-1, 0),)):
+            torso.set(x, y, "m")
+        torso.set(int(chest[0]) + 1, int(chest[1]) + 2, "M")
+        torso.set(int(chest[0]) + 2, int(chest[1]) + 3, "M")
+        torso.set(int(chest[0]), int(chest[1]) + 3, "M")
+        hp = ellipse_pts(head[0], head[1], 4.4, 4.6)
+        hp |= poly_pts([(head[0] - 3, head[1] - 2), (head[0] - 7, head[1] - 4), (head[0] - 3, head[1] + 1)])
+        shade_rim(headg, hp, "2", light="4", dark="1")
+        vy = int(head[1])
+        headg.hline(int(head[0]) - 1, int(head[0]) + 4, vy, "M")
+        headg.hline(int(head[0]) + 1, int(head[0]) + 3, vy, "N")
+        headg.set(int(head[0]) + 3, vy, "W")
+        wave = (0, 1, 0, 0)[f]
+        sp = (chest[0] - 1, chest[1] - 2)
+        tail = poly_pts([(sp[0], sp[1] - 1), (sp[0] - 8, sp[1] + 1 + wave), (sp[0] - 13, sp[1] - 1 + 2 * wave),
+                         (sp[0] - 12, sp[1] + 1.5 + 2 * wave), (sp[0] - 8, sp[1] + 3 + wave), (sp[0], sp[1] + 2)]) \
+            if not dash else poly_pts([(sp[0], sp[1] - 1), (sp[0] - 16, sp[1] - 2), (sp[0] - 15, sp[1] + 0.5),
+                                        (sp[0] - 9, sp[1] + 1), (sp[0], sp[1] + 2)])
+        shade_rim(scarf, tail, "M", light="N", dark="m")
+        for g_, hand, far in ((far_a, P["fh"], True), (near_a, P["nh"], False)):
+            sh = (chest[0] + (1 if far else 0), chest[1] + 1)
+            ap = capsule_pts(sh, hand, 1.6, 1.3)
+            shade_rim(g_, ap, "1" if far else "2", light="2" if far else "4", dark="P" if far else "1")
+            g_.fill(ellipse_pts(hand[0], hand[1], 1.3, 1.3), "2")
+        nh = P["nh"]
+        ang = math.radians(0 if dash else 35)
+        ln = 9 if dash else 6
+        for i in range(ln * 2):
+            t = i / 2
+            x, y = int(round(nh[0] + 1 + math.cos(ang) * t)), int(round(nh[1] + math.sin(ang) * t))
+            blade.set(x, y, "W")
+            blade.set(x, y + (1 if not dash else -1), "M")
+        blade.set(int(round(nh[0] + 1 + math.cos(ang) * ln)), int(round(nh[1] + math.sin(ang) * ln)), "N")
+        g = stack(40, 48, scarf, far_a, far_l, torso, headg, near_l, near_a, blade)
+        if dash:
+            for (y, x0, x1) in ((28, 0, 5), (33, 1, 7), (38, 0, 4), (42, 2, 6)):
+                for x in range(x0, x1 + 1):
+                    if g.get(x, y) == ".":
+                        g.set(x, y, "m" if x < x1 else "N")
+        sheet.paste(g.image(), (f * 40, 0))
+    return sheet
+
+
+def make_enforcer():
+    sheet = Image.new("RGBA", (224, 56), (0, 0, 0, 0))
+    for f in range(4):
+        bash = f == 3
+        bob = (0, 1, 1, 0)[f]
+        lean = 3 if bash else 0
+        lifts = [(0, 0), (4, 0), (0, 4), (0, 0)][f]
+        feet = [(30, 21), (32, 20), (29, 23), (35, 15)][f]
+        far_leg, near_leg, body, head, far_arm, shield, near_arm = (Grid(56, 56) for _ in range(7))
+        for g_, fx_, lift, hipx, far in ((far_leg, feet[1], lifts[1], 22, True), (near_leg, feet[0], lifts[0], 29, False)):
+            hip = (hipx + lean * 0.5, 36 + bob)
+            foot = (fx_, 50 - lift)
+            knee = ((hip[0] + foot[0]) / 2 + 2, (hip[1] + foot[1]) / 2 - 1)
+            lp = capsule_pts(hip, knee, 4.0, 3.4) | capsule_pts(knee, foot, 3.2, 2.8)
+            if far:
+                shade_rim(g_, lp, "I", light="H", dark="S")
+            else:
+                plate(g_, lp)
+            kp = ellipse_pts(knee[0], knee[1], 2.4, 2.4)
+            shade_rim(g_, kp, "S" if far else "Y", light="I" if far else "y", dark="S" if far else "O")
+            fp = {(x, y) for x in range(int(foot[0]) - 6, int(foot[0]) + 6) for y in range(int(foot[1]), int(foot[1]) + 5)}
+            fp -= {(int(foot[0]) - 6, int(foot[1])), (int(foot[0]) + 5, int(foot[1]))}
+            if far:
+                shade_rim(g_, fp, "S", light="I", dark="S")
+            else:
+                plate(g_, fp, base="I", light="H", dark="S", hi="F")
+                g_.hline(int(foot[0]) - 5, int(foot[0]) + 4, int(foot[1]) + 4, "S")
+        tp = ellipse_pts(26 + lean, 26 + bob, 13.5, 12.0, p=3.0)
+        plate(body, tp)
+        for (x, y) in tp:  # hazard band at the waist
+            if 33 + bob <= y <= 35 + bob:
+                body.set(x, y, "Y" if (x + y) % 6 < 3 else "S")
+        body.rect(21 + lean, 20 + bob, 30 + lean, 23 + bob, "S")
+        for x in range(22, 30, 2):
+            body.vline(x + lean, 20 + bob, 23 + bob, "I")
+        body.set(16 + lean, 26 + bob, "R")
+        hp = ellipse_pts(28 + lean, 13 + bob, 6.5, 5.0)
+        plate(head, hp)
+        head.rect(29 + lean, 12 + bob, 34 + lean, 14 + bob, "S")
+        head.hline(30 + lean, 34 + lean, 13 + bob, "R")
+        head.set(33 + lean, 13 + bob, "W")
+        head.set(32 + lean, 13 + bob, "p")
+        head.vline(23 + lean, 6 + bob, 9 + bob, "I")
+        head.set(23 + lean, 5 + bob, "R")
+        fa = capsule_pts((17 + lean, 22 + bob), (14 + lean, 33 + bob), 3.4, 3.0)
+        shade_rim(far_arm, fa, "I", light="H", dark="S")
+        far_arm.fill(ellipse_pts(14 + lean, 35 + bob, 3.0, 2.6), "S")
+        sx0 = 40 + (9 if bash else 0)
+        spts = {(x, y) for x in range(sx0 - 6, sx0 + 4) for y in range(8 + bob, 48 + bob)}
+        spts -= {(sx0 - 6, 8 + bob), (sx0 + 3, 8 + bob), (sx0 - 6, 47 + bob), (sx0 + 3, 47 + bob)}
+        shade_rim(shield, spts, "2", light="3", dark="1")
+        for (x, y) in edge_pts(spts, ((1, 0), (0, -1), (0, 1))):
+            shield.set(x, y, "C")
+        for (x, y) in edge_pts(spts, ((1, 0),)):
+            shield.set(x, y, "B" if y % 4 else "W")
+        shield.rect(sx0 - 4, 13 + bob, sx0 + 1, 15 + bob, "e")
+        shield.hline(sx0 - 4, sx0 + 1, 13 + bob, "c")
+        for i in range(4):
+            shield.set(sx0 - 3 + i // 2, 24 + bob + i, "C")
+            shield.set(sx0 - 3 + i // 2, 34 + bob - i, "C")
+        shield.vline(sx0 - 1, 22 + bob, 36 + bob, "1")
+        na = capsule_pts((33 + lean, 22 + bob), (sx0 - 7, 28 + bob), 3.2, 2.8)
+        plate(near_arm, na)
+        g = stack(56, 56, far_arm, far_leg, near_leg, body, head, near_arm, shield)
+        if bash:
+            for (y, x0) in ((12, 52), (20, 53), (28, 53), (36, 53), (44, 52)):
+                for x in range(x0, 56):
+                    if g.get(x, y) == ".":
+                        g.set(x, y, "g")
+        sheet.paste(g.image(), (f * 56, 0))
+    return sheet
+
+
+def make_bomber():
+    sheet = Image.new("RGBA", (128, 32), (0, 0, 0, 0))
+    for f in range(4):
+        dy = (0, -1, 0, 0)[f]
+        armed = f == 3
+        rotors, body, light = Grid(32, 32), Grid(32, 32), Grid(32, 32)
+        for mx in (8, 23):
+            rotors.vline(mx, 6 + dy, 9 + dy, "3")
+            blades = [(-4, 4), (-2, 2), (-4, 4), (-3, 3)][f]
+            for x in range(mx + blades[0], mx + blades[1] + 1):
+                if f != 1 or abs(x - mx) <= 2:
+                    rotors.set(x, 5 + dy, "4" if abs(x - mx) > 1 else "5")
+            rotors.set(mx, 5 + dy, "2")
+        bp = ellipse_pts(16, 18 + dy, 9.4, 9.0)
+        shade_sphere(body, 16, 18 + dy, 9.4, ["1", "2", "3", "4"], lo=-0.5, pts=bp)
+        for (x, y) in bp:
+            if 20 + dy <= y <= 23 + dy:
+                body.set(x, y, "Y" if (x - y) % 6 < 3 else "1")
+        body.hline(8, 24, 19 + dy, "S")
+        body.hline(8, 24, 24 + dy, "S")
+        body.rect(14, 25 + dy, 18, 26 + dy, "S")
+        body.set(16, 26 + dy, "O")
+        body.set(22, 15 + dy, "C")
+        body.set(23, 15 + dy, "B")
+        lp = ellipse_pts(16, 10 + dy, 3.6, 3.2)
+        light.fill(lp, "R")
+        if armed:
+            light.fill(ellipse_pts(16, 10 + dy, 2.2, 2.0), "p")
+            light.set(16, 10 + dy, "W")
+            light.set(15, 10 + dy, "W")
+            light.set(16, 9 + dy, "W")
+        else:
+            for (x, y) in lp:
+                if (x + 1, y + 1) not in lp:
+                    light.set(x, y, "r")
+            light.set(15, 9 + dy, "p")
+        g = stack(32, 32, rotors, body, light)
+        if armed:
+            for (x, y) in ellipse_pts(16, 10, 7.0, 6.0):
+                if g.get(x, y) == ".":
+                    g.set(x, y, "(")
+            for (x, y) in ((16, 1), (16, 0), (9, 9), (23, 9), (11, 3), (21, 3)):
+                if g.get(x, y) == ".":
+                    g.set(x, y, "R")
+        sheet.paste(g.image(), (f * 32, 0))
+    return sheet
+
+
+def make_sniper():
+    sheet = Image.new("RGBA", (160, 40), (0, 0, 0, 0))
+    for f in range(4):
+        dy = (0, -1, 1, 0)[f]
+        rec = f == 3
+        dx = -2 if rec else 0
+        fin, body, barrel, scope, jet = (Grid(40, 40) for _ in range(5))
+        fin.fill(poly_pts([(8 + dx, 16 + dy), (3 + dx, 11 + dy), (5 + dx, 11 + dy), (11 + dx, 16 + dy)]), "2")
+        fin.fill(poly_pts([(8 + dx, 25 + dy), (3 + dx, 30 + dy), (5 + dx, 30 + dy), (11 + dx, 25 + dy)]), "1")
+        bp = ellipse_pts(15 + dx, 20.5 + dy, 9.0, 6.6, p=2.8)
+        plate(body, bp, base="2", light="3", dark="1", hi="4")
+        body.hline(8 + dx, 22 + dx, 22 + dy, "1")
+        body.set(12 + dx, 19 + dy, "Y")
+        body.set(14 + dx, 19 + dy, "Y")
+        end = 38 if not rec else 34
+        barrel.rect(23 + dx, 19 + dy, end, 20 + dy, "3")
+        barrel.hline(23 + dx, end, 19 + dy, "4")
+        barrel.rect(end - 3, 18 + dy, end - 1, 21 + dy, "2")
+        barrel.vline(end - 2, 18 + dy, 21 + dy, "3")
+        barrel.rect(28 + dx, 18 + dy, 29 + dx, 21 + dy, "2")
+        scope.rect(11 + dx, 11 + dy, 20 + dx, 13 + dy, "1")
+        scope.hline(11 + dx, 20 + dx, 11 + dy, "2")
+        scope.vline(21 + dx, 11 + dy, 13 + dy, "Y")
+        scope.set(21 + dx, 12 + dy, "W")
+        scope.vline(15 + dx, 14 + dy, 14 + dy, "1")
+        flick = ("C", "c", "B", "C")[f]
+        jet.hline(13 + dx, 17 + dx, 27 + dy, "2")
+        jet.set(14 + dx, 28 + dy, flick)
+        jet.set(15 + dx, 28 + dy, "B")
+        jet.set(16 + dx, 28 + dy, flick)
+        jet.set(15 + dx, 29 + dy, flick if f != 1 else "c")
+        g = stack(40, 40, fin, jet, barrel, body, scope)
+        for (x, y) in ((22 + dx, 12 + dy), (23 + dx, 12 + dy), (22 + dx, 11 + dy), (22 + dx, 13 + dy)):
+            if g.get(x, y) == ".":
+                g.set(x, y, "Y" if x == 22 + dx and y == 12 + dy else "y")
+        if rec:
+            for (x, y, ch) in ((37, 19, "W"), (38, 19, "W"), (37, 20, "W"), (38, 20, "y"), (39, 19, "Y"), (39, 20, "Y"),
+                               (36, 17, "Y"), (37, 16, "O"), (36, 22, "Y"), (37, 23, "O"), (39, 17, "O"), (39, 22, "O"),
+                               (38, 18, "y"), (38, 21, "y")):
+                g.set(x, y + dy, ch)
+        sheet.paste(g.image(), (f * 40, 0))
+    return sheet
+
+
+# ================================================================ OVERSEER ===
+def make_overseer():
+    sheet = Image.new("RGBA", (384, 96), (0, 0, 0, 0))
+    W = H = 96
+    cx, cy = 48.0, 44.0
+    for f in range(4):
+        rng = random.Random(SEED + 300 + f)
+        open_ = (0, 1, 5, 2)[f]
+        rot = (0, 3, 0, -2)[f]
+        rage, charge = f == 3, f == 2
+        seam_cols = ("R", "p") if rage else None
+        cables, jets, plates_, seams, ring, hexg, eye = (Grid(W, H) for _ in range(7))
+        # cables hanging from below (fanned out so they never cross)
+        r0, r1 = 20 + open_, 36 + open_
+        for i, (a, ex, ey) in enumerate(((60, 70, 86), (80, 56, 90), (100, 40, 90), (120, 26, 86))):
+            ar = math.radians(a)
+            sx, sy = cx + (r1 - 3) * math.cos(ar), cy + (r1 - 3) * math.sin(ar)
+            sway = (0, 1, -1, 2)[f] * (1 if i % 2 else -1)
+            pts = bezier((sx, sy), ((sx + ex) / 2, max(sy, ey) + 3), (ex + sway, ey), 40)
+            cp = brush([(int(round(x)), int(round(y))) for (x, y) in pts], SQ2)
+            shade_rim(cables, cp, "1", light="3", dark="P")
+            px_, py_ = int(round(ex + sway)), int(round(ey))
+            cables.rect(px_ - 1, py_, px_ + 2, py_ + 2, "3")
+            cables.set(px_, py_ + 1, ("C", "M")[i % 2] if not rage else "R")
+        # thruster glows under the lower plates
+        for a in (50, 130):
+            ar = math.radians(a)
+            tx, ty = int(round(cx + (r1 + 1) * math.cos(ar))), int(round(cy + (r1 + 1) * math.sin(ar)))
+            jets.rect(tx - 2, ty - 1, tx + 2, ty + 1, "2")
+            flame = ("C", "B", "C", "O")[f]
+            jets.set(tx, ty + 2, "W")
+            jets.set(tx - 1, ty + 2, flame)
+            jets.set(tx + 1, ty + 2, flame)
+            jets.set(tx, ty + 3, flame)
+            if f in (0, 2):
+                jets.set(tx, ty + 4, "c" if not rage else "o")
+        # six segmented armour plates lit from the upper left; horns on top, fins on the sides
+        lx_, ly_ = -0.6, -0.8
+        for k in range(6):
+            mid = -120 + k * 60 + rot
+            pts = set()
+            for y in range(H):
+                for x in range(W):
+                    d = math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+                    a = math.degrees(math.atan2(y + 0.5 - cy, x + 0.5 - cx))
+                    da = (a - mid + 180) % 360 - 180
+                    if abs(da) <= 24 and r0 <= d <= r1 - abs(da) * 0.07:
+                        pts.add((x, y))
+            hm = None
+            if k in (0, 1):
+                hm = math.radians(mid + (-10 if k == 0 else 10))
+                ln, w = 10, 0.13
+            elif k in (2, 5):
+                hm = math.radians(mid + (8 if k == 2 else -8))
+                ln, w = 5, 0.10
+            if hm is not None:
+                b1 = (cx + (r1 - 3) * math.cos(hm - w), cy + (r1 - 3) * math.sin(hm - w))
+                b2 = (cx + (r1 - 3) * math.cos(hm + w), cy + (r1 - 3) * math.sin(hm + w))
+                tip = (cx + (r1 + ln) * math.cos(hm), cy + (r1 + ln) * math.sin(hm))
+                pts |= poly_pts([b1, tip, b2])
+            for (x, y) in pts:
+                d = max(0.01, math.hypot(x + 0.5 - cx, y + 0.5 - cy))
+                v = ((x + 0.5 - cx) * lx_ + (y + 0.5 - cy) * ly_) / d
+                if d < r0 + 1.6:
+                    v -= 0.6
+                elif d > r1 - 1.6:
+                    v += 0.25 if v > 0 else -0.25
+                plates_.set(x, y, "E" if v > 0.6 else "F" if v > 0.15 else "H" if v > -0.3 else "I" if v > -0.75 else "S")
+                if abs(d - (r0 + 7)) < 0.5:
+                    plates_.set(x, y, "S")
+            for off in (-13, 0, 13):  # three rivets per plate
+                ar = math.radians(mid + off)
+                plates_.set(int(round(cx + (r0 + 11) * math.cos(ar))), int(round(cy + (r0 + 11) * math.sin(ar))),
+                            "W" if k in (0, 1, 5) else "F")
+            if rage:  # cracks glowing red
+                x, y = rng.choice(sorted(pts))
+                for _ in range(12):
+                    if (x, y) in pts:
+                        plates_.set(x, y, "K")
+                        if (x + 1, y) in pts:
+                            plates_.set(x + 1, y, "R")
+                    x += rng.choice((-1, 0, 1))
+                    y += rng.choice((-1, 1))
+        # glowing seams in the gaps between plates
+        for k in range(6):
+            gap = -90 + k * 60 + rot
+            for y in range(H):
+                for x in range(W):
+                    d = math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+                    a = math.degrees(math.atan2(y + 0.5 - cy, x + 0.5 - cx))
+                    da = abs((a - gap + 180) % 360 - 180)
+                    if r0 + 1 <= d <= r1 - 2 and da <= 4.5:
+                        if rage:
+                            seams.set(x, y, "p" if da < 1.6 else "R")
+                        else:
+                            core, outer = ("B", "C") if k % 2 == 0 else ("N", "M")
+                            seams.set(x, y, core if da < 1.6 else outer)
+        # dark inner ring with status lights
+        rp = {(x, y) for y in range(H) for x in range(W) if 16.5 <= math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= r0 + 0.5}
+        shade_rim(ring, rp, "S", light="I", dark="P")
+        for k in range(12):
+            a = math.radians(k * 30 + 15 + rot)
+            ring.set(int(round(cx + 18 * math.cos(a))), int(round(cy + 18 * math.sin(a))),
+                     ("R" if rage else ("C", "M")[k % 2]) if (k + f) % 3 else "W")
+        # hexagonal eye housing
+        hexo = poly_pts([(cx + 18.5 * math.cos(math.radians(-90 + 60 * i)), cy + 18.5 * math.sin(math.radians(-90 + 60 * i)))
+                         for i in range(6)])
+        hexi = poly_pts([(cx + 14.8 * math.cos(math.radians(-90 + 60 * i)), cy + 14.8 * math.sin(math.radians(-90 + 60 * i)))
+                         for i in range(6)])
+        plate(hexg, hexo)
+        hexg.fill(hexi, "P")
+        # iris
+        ir = (9.5, 10.5, 10.5, 9.5)[f]
+        iris = ellipse_pts(cx, cy, ir, ir)
+        for (x, y) in iris:
+            d = math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+            if charge:
+                ch = "W" if d < 3.5 else "y" if d < 5.5 else "Y" if d < 7 else "O" if d < 8.5 else "R"
+            else:
+                ch = "q" if d > ir - 1.2 else "r" if d > ir - 3 else "R" if d > 3 else "p"
+            eye.set(x, y, ch)
+        if not charge:
+            pw = 0 if rage else 1
+            for y in range(int(cy - ir + 2), int(cy + ir - 1)):
+                for x in range(int(cx) - pw - 1, int(cx) + pw + 1):
+                    if (x, y) in iris:
+                        eye.set(x, y, "K")
+            eye.set(int(cx) - 4, int(cy) - 4, "W")
+            eye.set(int(cx) - 3, int(cy) - 4, "W")
+            eye.set(int(cx) - 4, int(cy) - 3, "N")
+            if f == 1:
+                for (x, y) in edge_pts(iris, N4):
+                    eye.set(x, y, "R")
+        g = stack(W, H, cables, jets, plates_, ring, hexg)
+        g.blit(seams).blit(eye)
+        # glows
+        if charge:
+            for (x, y) in ellipse_pts(cx, cy, 13, 13):
+                if g.get(x, y) in ("P",):
+                    g.set(x, y, "O")
+            for i in range(8):  # energy arcs from the plates to the eye
+                a = math.radians(i * 45 + 22)
+                pts = [(cx + (r0 + 2) * math.cos(a), cy + (r0 + 2) * math.sin(a)),
+                       (cx + 13 * math.cos(a + 0.15), cy + 13 * math.sin(a + 0.15))]
+                for (x, y) in line_pts(*pts[0], *pts[1]):
+                    g.set(x, y, "B" if (x + y) % 2 else "W")
+        if rage:
+            for (x, y) in ellipse_pts(cx, cy, 44, 44):
+                if g.get(x, y) == "." and any(g.get(x + dx, y + dy) not in (".", "h") for dx, dy in N4):
+                    g.set(x, y, "h")
+            for _ in range(14):
+                x, y = rng.randint(6, 89), rng.randint(4, 90)
+                if g.get(x, y) == ".":
+                    g.set(x, y, rng.choice(("R", "O", "Y")))
+            for (x, y) in iris:
+                if g.get(x, y) == "P":
+                    g.set(x, y, "q")
+        sheet.paste(g.image(), (f * 96, 0))
+    return sheet
+
+
+# ====================================================================== FX ===
+def make_fx():
+    sheet = Image.new("RGBA", (256, 32), (0, 0, 0, 0))
+    cells = [Grid(32, 32) for _ in range(8)]
+    # [0] muzzle flash: blue energy burst pointing right
+    g = cells[0]
+    for y in range(32):
+        for x in range(32):
+            dx, dy = x + 0.5 - 9, y + 0.5 - 16
+            d = math.hypot(dx, dy)
+            a = math.degrees(math.atan2(dy, dx))
+            ray = max(0.0, math.cos(math.radians(a * 4))) if abs(a) < 80 else 0
+            reach = 5 + 14 * ray * (1 if abs(a) < 30 else 0.5)
+            if d < 4.5:
+                g.set(x, y, "W" if d < 2.5 else "B")
+            elif dx > -3 and d < reach:
+                g.set(x, y, "B" if d < reach * 0.5 else "U" if d < reach * 0.8 else "b")
+    # [1] slash arc (white/cyan) and [2] heavy slash (red/white): crescents sweeping right
+    for idx, cols, thick in ((1, ("W", "B", "C"), 3.4), (2, ("W", "p", "R"), 5.0)):
+        g = cells[idx]
+        for y in range(32):
+            for x in range(32):
+                d1 = math.hypot(x + 0.5 - 10, y + 0.5 - 16)
+                d2 = math.hypot(x + 0.5 - 10 + thick, y + 0.5 - 16)
+                if d1 <= 13.5 and d2 > 13.5 and x + 0.5 > 10:
+                    a = abs(math.degrees(math.atan2(y + 0.5 - 16, x + 0.5 - 10)))
+                    if a > 82:
+                        continue
+                    w = 13.5 - d1
+                    g.set(x, y, cols[0] if w > thick * 0.45 or a < 20 else cols[1] if w > thick * 0.2 else cols[2])
+        if idx == 2:
+            for (x, y) in ((25, 6), (27, 10), (28, 22), (26, 26)):
+                g.set(x, y, "R")
+    # [3] hack ring: green circular glyph ring
+    g = cells[3]
+    for y in range(32):
+        for x in range(32):
+            d = math.hypot(x + 0.5 - 16, y + 0.5 - 16)
+            a = (math.degrees(math.atan2(y + 0.5 - 16, x + 0.5 - 16)) + 360) % 360
+            if 12.6 <= d <= 13.6:
+                g.set(x, y, "G")
+            elif 10.5 <= d <= 12.0 and int(a // 15) % 3 != 2:
+                g.set(x, y, "i" if int(a // 5) % 2 else "G")
+            elif 7.5 <= d <= 8.3 and int(a // 10) % 2 == 0:
+                g.set(x, y, "k")
+    for k in range(6):
+        a = math.radians(k * 60 + 30)
+        x, y = int(round(16 + 14.6 * math.cos(a))), int(round(16 + 14.6 * math.sin(a)))
+        g.set(x, y, "W")
+    g.set(16, 16, "G")
+    g.set(15, 16, "k")
+    g.set(17, 16, "k")
+    # [4] small explosion
+    g = cells[4]
+    blob = set()
+    for (bx, by, r_) in ((16, 17, 8), (11, 14, 5), (21, 13, 5.5), (12, 21, 4.5), (21, 21, 5)):
+        blob |= ellipse_pts(bx, by, r_, r_)
+    for (x, y) in blob:
+        d = math.hypot(x + 0.5 - 16, y + 0.5 - 16)
+        g.set(x, y, "W" if d < 3 else "y" if d < 5.5 else "Y" if d < 8 else "O" if d < 10 else "o")
+    for (x, y) in edge_pts(blob, N4):
+        if (x + y) % 3 == 0:
+            g.set(x, y, "r")
+    for (x, y) in ((3, 6), (28, 5), (29, 27), (4, 27), (16, 2)):
+        g.set(x, y, "O")
+    # [5] dust puff
+    g = cells[5]
+    cloud = set()
+    for (bx, by, r_) in ((11, 21, 5.5), (19, 20, 6.5), (15, 15, 5.0), (24, 23, 4.0), (6, 24, 3.0)):
+        cloud |= ellipse_pts(bx, by, r_, r_ * 0.85)
+    for (x, y) in cloud:
+        top = min(yy for (xx, yy) in cloud if xx == x)
+        g.set(x, y, "s" if y - top < 2 else "t" if y < 22 else "4")
+    for (x, y) in edge_pts(cloud, ((1, 0), (0, 1))):
+        if y >= 20:
+            g.set(x, y, "3")
+    for (x, y) in ((3, 18), (28, 16), (26, 12), (8, 13)):
+        g.set(x, y, "t")
+    # [6] stun icon: glitchy stars
+    g = cells[6]
+    for (sx, sy, col, r_) in ((9, 14, "Y", 4), (17, 9, "C", 5), (24, 15, "Y", 4)):
+        for i in range(-r_, r_ + 1):
+            g.set(sx + i, sy, col)
+            g.set(sx, sy + i, col)
+        for i in (-1, 1):
+            g.set(sx + i, sy + i, col)
+            g.set(sx + i, sy - i, col)
+        g.set(sx, sy, "W")
+    for (x, y, ch) in ((6, 20, "C"), (7, 20, "C"), (19, 18, "M"), (20, 18, "M"), (26, 7, "C"), (13, 4, "Y")):
+        g.set(x, y, ch)
+    # [7] hex shield bubble: cyan, mostly transparent inside
+    g = cells[7]
+    hexo = poly_pts([(16 + 14.5 * math.cos(math.radians(-90 + 60 * i)), 16 + 14.5 * math.sin(math.radians(-90 + 60 * i)))
+                     for i in range(6)])
+    edge = edge_pts(hexo, N8)
+    for (x, y) in hexo:
+        if (x + 2 * y) % 7 == 0:
+            g.set(x, y, "g")
+    for i in range(6):
+        a = math.radians(-90 + 60 * i)
+        for (x, y) in line_pts(16, 16, int(round(16 + 7 * math.cos(a))), int(round(16 + 7 * math.sin(a)))):
+            if (x + y) % 2 == 0:
+                g.set(x, y, "g")
+    g.fill(edge, "C")
+    for (x, y) in edge:
+        if y < 12 and x < 16:
+            g.set(x, y, "B")
+    g.set(10, 6, "W")
+    for i, c in enumerate(cells):
+        sheet.paste(c.image(), (i * 32, 0))
+    return sheet
+
+
 # ================================================================= PREVIEW ===
 RESKIN_SOURCES = {"reaper-cyber.png": ("death.png", 50), "dragon-cyber.png": ("dragon.png", 96),
                   "goat-cyber.png": ("redgoat.png", 80)}
@@ -3163,38 +4645,51 @@ def make_preview(sheets, path):
             x += i.width + GAP
         return out
 
-    items = []  # (label, image, [(x offset, width, frame width)])
+    items = []  # (label, image, [(x offset, width, frame width)], row labels)
+    hero_rows = ["row 0: walk down", "row 1: walk left", "row 2: walk right", "row 3: walk up",
+                 "row 4: attack left", "row 5: attack right"]
     for name, im, frame_w in sheets:
+        if name in ("tetsu.png", "sudo.png"):
+            items.append((f"{name}  {im.width}x{im.height}", im, [(0, im.width, 32)], hero_rows))
+            continue
+        if name == "paine-attack.png":
+            src = load_source("paine.png").crop((0, 48, 128, 144))
+            items.append((f"paine.png rows 1-2 (walk left/right, left)  vs  {name}  {im.width}x{im.height} (right)",
+                          side_by_side(src, im), [(0, 128, 32), (128 + GAP, 128, 32)],
+                          ["row 0: fire left", "row 1: fire right"]))
+            continue
         if name in RESKIN_SOURCES:
             src_name, fw = RESKIN_SOURCES[name]
             src = load_source(src_name)
             items.append((f"{src_name} (source, left)  ->  {name}  {im.width}x{im.height}  "
                           f"max bbox delta {RESKIN_DELTA.get(name, '?')}px",
-                          side_by_side(src, im), [(0, src.width, fw), (src.width + GAP, im.width, fw)]))
+                          side_by_side(src, im), [(0, src.width, fw), (src.width + GAP, im.width, fw)], None))
             continue
-        items.append((f"{name}  {im.width}x{im.height}", im, [(0, im.width, frame_w)] if frame_w else []))
+        items.append((f"{name}  {im.width}x{im.height}", im, [(0, im.width, frame_w)] if frame_w else [], None))
         if name == "platform.png":
             row = Image.new("RGBA", (320, 16), (0, 0, 0, 0))
             row.alpha_composite(im.crop((0, 0, 32, 16)), (0, 0))
             for i in range(1, 9):
                 row.alpha_composite(im.crop((32, 0, 64, 16)), (i * 32, 0))
             row.alpha_composite(im.crop((64, 0, 96, 16)), (288, 0))
-            items.append(("platform.png tiled: cap + 8 middles + cap", row, []))
+            items.append(("platform.png tiled: cap + 8 middles + cap", row, [], None))
         if name in ("skyline.png", "ground.png", "city-mid.png"):
-            items.append((f"{name} x2 side by side (seam check)", tile(im, 2), []))
+            items.append((f"{name} x2 side by side (seam check)", tile(im, 2), [], None))
         if name == "facade.png":
             items.append(("facade.png tile 0 and tile 1, each tiled 3x3 (seam check)",
                           side_by_side(tile(im.crop((0, 0, 64, 64)), 3, 3), tile(im.crop((64, 0, 128, 64)), 3, 3)),
-                          []))
+                          [], None))
     pad = 16
-    width = max(im.width * S for _, im, _ in items) + pad * 2
-    height = pad + sum(24 + im.height * S + pad for _, im, _ in items)
+    width = max(im.width * S + (260 if rl else 0) for _, im, _, rl in items) + pad * 2
+    height = pad + sum(24 + im.height * S + pad for _, im, _, _ in items)
     out = Image.new("RGBA", (width, height), bg)
     d = ImageDraw.Draw(out)
     y = pad
-    for label, im, frames in items:
+    for label, im, frames, row_labels in items:
         d.text((pad, y), label, fill=(220, 210, 255, 255), font=font)
         y += 24
+        for i, rl in enumerate(row_labels or []):
+            d.text((pad + im.width * S + 16, y + i * 48 * S + 48 * S // 2 - 8), rl, fill=(255, 225, 77, 255), font=font)
         big = im.resize((im.width * S, im.height * S), Image.NEAREST)
         for (ox, w, fw) in frames:
             for fx in range(0, w, fw):
@@ -3232,6 +4727,17 @@ def build_all():
         ("aerodyne.png", make_aerodyne(), 64),
         ("city-mid.png", make_city_mid(), None),
         ("facade.png", make_facade(), 64),
+        # heroes, new enemies, second boss, fx
+        ("tetsu.png", make_tetsu(), 32),
+        ("sudo.png", make_sudo(), 32),
+        ("paine-attack.png", make_paine_attack(), 32),
+        ("portraits.png", make_portraits(), 48),
+        ("ninja.png", make_ninja(), 40),
+        ("enforcer.png", make_enforcer(), 56),
+        ("bomber.png", make_bomber(), 32),
+        ("sniper.png", make_sniper(), 40),
+        ("overseer.png", make_overseer(), 96),
+        ("fx.png", make_fx(), 32),
     ]
 
 
@@ -3243,7 +4749,9 @@ EXPECTED = {
     "terminal.png": (48, 40), "moon.png": (64, 64), "katana.png": (40, 12),
     "ripperdoc.png": (64, 72), "reaper-cyber.png": (200, 192), "dragon-cyber.png": (384, 384),
     "goat-cyber.png": (320, 320), "aerodyne.png": (128, 24), "city-mid.png": (640, 420),
-    "facade.png": (128, 64),
+    "facade.png": (128, 64), "tetsu.png": (128, 288), "sudo.png": (128, 288), "paine-attack.png": (128, 96),
+    "portraits.png": (144, 48), "ninja.png": (160, 48), "enforcer.png": (224, 56), "bomber.png": (128, 32),
+    "sniper.png": (160, 40), "overseer.png": (384, 96), "fx.png": (256, 32),
 }
 
 

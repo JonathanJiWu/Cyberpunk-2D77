@@ -39,8 +39,8 @@ const TUNING = {
     hpGrowth: 1 / 110, // enemy HP multiplier grows by this much per second
   },
   boss: {
-    at: 150, // seconds into the run when the Demon Goat shows up
-    maxHp: 850,
+    at: 150, // seconds into the run when the Demon Goat shows up (its HP is in database.js)
+    overseerDelay: 40, // the second boss arrives this long after the goat falls
     chaseSpeed: 330,
     hoverSpeed: 560,
     recoilSpeed: 900,
@@ -54,76 +54,13 @@ const TUNING = {
   },
 };
 
-// --------------------------------------------------------------- Enemies -----
-// w/h is the hitbox. sheet describes how to cut the sprite sheet.
-// maxAlive caps how many of a type can be on the field at once.
-// rows: which sheet row faces left / right (null = flip the sprite instead).
-const ENEMY_TYPES = {
-  crawler: {
-    name: "Glitch Crawler",
-    kind: "melee",
-    walker: true, // obeys gravity and walks on platforms
-    hp: 8,
-    speed: 250,
-    damage: 7,
-    xp: 1,
-    w: 72,
-    h: 48,
-    sheet: { img: "crawler", fw: 40, fh: 28, frames: 4, scale: 2.5, flip: true, fps: 12 },
-    from: 0,
-    weight: 5,
-  },
-  reaper: {
-    name: "Chrome Reaper",
-    kind: "melee",
-    hp: 16,
-    speed: 125,
-    damage: 10,
-    xp: 2,
-    w: 64,
-    h: 92,
-    sheet: { img: "reaperCyber", fallback: "death", fw: 50, fh: 48, frames: 4, scale: 2.2, rowLeft: 1, rowRight: 2, fps: 6 },
-    alpha: 0.92,
-    from: 8,
-    weight: 3,
-  },
-  drone: {
-    name: "Security Drone",
-    kind: "ranged",
-    hp: 7,
-    speed: 300,
-    damage: 5,
-    xp: 1,
-    w: 58,
-    h: 46,
-    sheet: { img: "drone", fw: 32, fh: 32, frames: 4, scale: 2.5, flip: true, fps: 10 },
-    keepDistance: 460,
-    shot: { kind: "laser", damage: 4, speed: 520, radius: 12, cooldown: [3.2, 4.8] },
-    maxAlive: 4,
-    from: 30,
-    weight: 3,
-  },
-  dragon: {
-    name: "Mecha Wyrm",
-    kind: "ranged",
-    hp: 30,
-    speed: 220,
-    damage: 9,
-    xp: 4,
-    w: 84,
-    h: 78,
-    sheet: { img: "dragonCyber", fallback: "dragon", fw: 96, fh: 96, frames: 4, scale: 1.3, rowLeft: 1, rowRight: 2, fps: 7 },
-    keepDistance: 560,
-    shot: { kind: "fireball", damage: 7, speed: 380, radius: 18, cooldown: [3.6, 5.2] },
-    maxAlive: 2,
-    from: 60,
-    weight: 2,
-  },
-};
+// Enemies, bosses and the playable characters live in js/database.js.
 
 // -------------------------------------------------------------- Upgrades -----
 // Vampire Survivors style: every level-up you pick 1 of 3 random upgrades.
-// desc[n] describes what level n+1 gives.
+// desc[n] describes what level n+1 gives. "zap" and "flame" are each
+// character's primary and special: their name, icon and text come from
+// CHARACTERS in js/database.js.
 const UPGRADES = [
   {
     id: "zap",
@@ -220,7 +157,7 @@ const UPGRADES = [
   { id: "legs", name: "Servo Legs", icon: 7, max: 5, desc: ["Move 8% faster and jump a bit higher."] },
   { id: "magnet", name: "Magnet Coil", icon: 8, max: 5, desc: ["Pick up XP from 40% further away."] },
   { id: "armor", name: "Nano Armor", icon: 9, max: 5, desc: ["Take 8% less damage."] },
-  { id: "sink", name: "Heat Sink", icon: 10, max: 5, desc: ["Earn 25% more heat; the flame burns it slower."] },
+  { id: "sink", name: "Heat Sink", icon: 10, max: 5, desc: ["Earn 25% more {resource}; your special costs less."] },
   { id: "clock", name: "Overclock", icon: 11, max: 5, desc: ["All weapons recharge 7% faster."] },
 ];
 
