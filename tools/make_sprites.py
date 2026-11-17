@@ -101,6 +101,7 @@ class Grid:
     def __init__(self, w, h):
         self.w, self.h = w, h
         self.px = [["."] * w for _ in range(h)]
+        self.outlined = False
 
     @classmethod
     def ascii(cls, rows):
@@ -197,17 +198,23 @@ class Grid:
 
 
 def sprite(rows_or_grid, diag=False):
-    """Pad by one pixel and add the 1px dark outline."""
+    """Pad by one pixel and add the 1px dark outline (unless already done)."""
     g = rows_or_grid if isinstance(rows_or_grid, Grid) else Grid.ascii(rows_or_grid)
-    return g.padded(1).outline(diag=diag)
+    if g.outlined:
+        return g
+    out = g.padded(1).outline(diag=diag)
+    out.outlined = True
+    return out
 
 
-def stack(w, h, *layers):
+def stack(w, h, *layers, pad=0):
     """Compose already-positioned layers; each one is outlined on its own so
-    overlapping parts keep a dark separating line."""
-    out = Grid(w, h)
+    overlapping parts keep a dark separating line. pad grows the canvas so the
+    outer outline has room."""
+    out = Grid(w + 2 * pad, h + 2 * pad)
     for layer in layers:
-        out.blit(layer.copy().outline())
+        out.blit(layer.padded(pad).outline() if pad else layer.copy().outline())
+    out.outlined = True
     return out
 
 
@@ -412,29 +419,33 @@ def drone_frame(f):
     eye.set(int(ex + 0.8) + 1, int(ey) - 1, "W")
     eye.set(int(ex + 0.8) + 1, int(ey) - 2, "p")
 
-    # thruster nozzle + flickering flame
+    # thruster nozzle (own layer, under the hull) + flickering flame
     jet = Grid(32, 32)
-    nb = int(cy + ry)  # first row under the hull
-    jet.hline(13, 18, nb, "2")
-    jet.set(13, nb, "3")
-    jet.hline(14, 17, nb + 1, "1")
+    nb = max(y for (_, y) in hull) + 1  # first row under the hull
+    jet.hline(12, 19, nb - 1, "2")
+    jet.hline(12, 19, nb, "2")
+    jet.set(12, nb, "3")
+    jet.set(19, nb, "1")
+    jet.hline(13, 18, nb + 1, "1")
+    jet.hline(14, 17, nb + 1, "O")
     jet.hline(15, 16, nb + 1, "Y")
-    length = (5, 3, 4, 2)[f]
-    sway = (0, 1, 0, -1)[f]
-    widths = (4, 4, 3, 2, 2, 1)
-    for i in range(length):
-        w = widths[min(i, 5)] if i < length - 1 else max(1, widths[min(i, 5)] - 1)
-        t = i / max(1, length - 1)
-        core, edge = (("W", "y") if t < 0.2 else ("y", "Y") if t < 0.45 else
-                      ("Y", "O") if t < 0.75 else ("O", "R"))
-        x0 = 15 - (w - 2) // 2 + (sway if i >= 2 else 0)
-        if w == 1:
-            x0 = 15 + (1 if f % 2 else 0) + (sway if i >= 2 else 0)
-        for j in range(w):
-            ch = edge if (j == 0 or j == w - 1) and w > 2 else core
-            jet.set(x0 + j, nb + 2 + i, ch)
+    flame = DRONE_FLAMES[f]
+    for i, row in enumerate(flame):
+        for j, ch in enumerate(row):
+            if ch != ".":
+                jet.set(13 + j, nb + 2 + i, ch)
 
     return stack(32, 32, back, jet, body, eye)
+
+
+# Thruster flame per frame (6 wide, starts right under the nozzle). Frames 1
+# and 2 are bobbed 1px down, so they get the shorter flames.
+DRONE_FLAMES = [
+    [".yWWy.", ".YyyY.", ".OYYO.", "..OYO.", "..RO..", "...R.."],
+    [".yWWy.", ".YyWY.", "..OYO.", "..R..."],
+    [".yWWy.", ".YyyY.", ".OYYO.", "..OO..", "...R.."],
+    [".yWWy.", ".OYYO.", "..RO.."],
+]
 
 
 def make_drone():
@@ -445,20 +456,8 @@ def make_drone():
 
 
 # ================================================================= CRAWLER ===
-CRAWLER_HEAD = [
-    "..12333...",
-    ".1233344..",
-    "1223333443",
-    "122333nMM3",
-    "1222nMWMM2",
-    "12223nnn21",
-    ".1122222K1",
-    "..1K3K3K..",
-    "...1222...",
-]
-
-
 def ik_knee(hip, foot, l1, l2, prefer):
+    """Two-bone IK; returns the knee on the side that minimises prefer * x."""
     dx, dy = foot[0] - hip[0], foot[1] - hip[1]
     d = max(0.01, min(math.hypot(dx, dy), l1 + l2 - 0.01))
     a = (l1 * l1 - l2 * l2 + d * d) / (2 * d)
@@ -469,103 +468,145 @@ def ik_knee(hip, foot, l1, l2, prefer):
     return min((k1, k2), key=lambda k: prefer * k[0])
 
 
-def crawler_leg(g, hip, foot, l1, l2, prefer, near):
-    knee = ik_knee(hip, foot, l1, l2, prefer)
+def brush(pts, offsets):
+    return {(x + dx, y + dy) for (x, y) in pts for (dx, dy) in offsets}
+
+
+SQ2 = ((0, 0), (1, 0), (0, 1), (1, 1))
+
+
+def crawler_leg(g, hip, foot, side, near):
+    """side -1: knee bends backwards (rear legs), +1: forwards (front legs)."""
+    knee = ik_knee(hip, foot, 8.0, 9.5, -side)
     hi, kn, ft = [(int(round(p[0])), int(round(p[1]))) for p in (hip, knee, foot)]
-    upper = thick_pts(line_pts(*hi, *kn), 0.8)
-    lower = set(line_pts(*kn, *ft))
-    lower |= {(x + 1, y) for (x, y) in line_pts(*kn, ft[0], ft[1] - 3)}
-    base, lite, dark = ("3", "4", "2") if near else ("1", "2", "P")
-    shade_rim(g, upper, base, light=lite, dark=dark)
-    shade_rim(g, lower, dark if not near else "2", light=base)
-    # knee servo + clawed foot
-    g.set(kn[0], kn[1], "5" if near else "3")
-    toe = 1 if prefer > 0 else -1
-    g.set(ft[0], ft[1], lite)
-    g.set(ft[0] + toe, ft[1], base)
-    g.set(ft[0] - toe, ft[1], dark)
+    off = 0 if side > 0 else -1
+    upper = brush(line_pts(*hi, *kn), [(dx + off, dy) for dx, dy in SQ2])
+    lower = brush(line_pts(kn[0], kn[1], ft[0], ft[1] - 1), [(off, 0), (off + 1, 0)])
+    if near:
+        shade_rim(g, upper, "3", light="4", dark="2")
+        shade_rim(g, lower, "2", light="4", dark="1", ldirs=((-1, 0),), ddirs=((1, 0),))
+    else:
+        shade_rim(g, upper, "1", light="2", dark="P")
+        shade_rim(g, lower, "1", light="2", dark="P", ldirs=((-1, 0),), ddirs=((1, 0),))
+    # knee servo
+    kx, ky = kn[0] + off, kn[1]
+    g.rect(kx, ky, kx + 1, ky + 1, "4" if near else "2")
+    g.set(kx, ky, "5" if near else "3")
+    if near:
+        g.set(kx + 1, ky + 1, "M")
+    # pointed foot claw
+    fx = ft[0] + off
+    g.hline(fx, fx + 1, ft[1], "3" if near else "1")
+    g.set(fx + (2 if side > 0 else -1), ft[1], "2" if near else "P")
 
 
-def crawler_frame(f, rng):
+def crawler_frame(f):
     W, H = 40, 28
-    ground = 26
+    ground = 26  # lowest coloured row; its outline lands on y=27
     bob = (1, 0, 1, 0)[f]
-    step = ((3, 0), (0, 0), (-3, 0), (0, -3))
-    # (hip x, hip y, foot x, knee side, phase offset, near?)
-    legs = [
-        (13, 15, 11, -1, 2, False),  # rear far
-        (26, 15, 33, +1, 0, False),  # front far
-        (11, 15, 8, -1, 0, True),    # rear near
-        (24, 16, 30, +1, 2, True),   # front near
+    step = ((3, 0), (0, 0), (-3, 0), (0, -3))  # foot (dx, lift) per phase
+    legs = [  # hip, foot base x, knee side, phase, near?
+        ((16, 15), 11, -1, 2, False),
+        ((26, 16), 34, +1, 0, False),
+        ((13, 16), 7, -1, 0, True),
+        ((24, 17), 31, +1, 2, True),
     ]
     far, near = Grid(W, H), Grid(W, H)
-    for hx, hy, fx, side, ph, is_near in legs:
+    for (hx, hy), fx, side, ph, is_near in legs:
         dx, lift = step[(f + ph) % 4]
-        crawler_leg(near if is_near else far, (hx, hy + bob), (fx + dx, ground + lift),
-                    7.0, 9.5, -side, is_near)
+        crawler_leg(near if is_near else far, (hx, hy + bob), (fx + dx, ground + lift), side, is_near)
 
-    body = Grid(W, H)
-    cx, cy = 18.5, 11.5 + bob
-    shell = ellipse_pts(cx, cy, 12.5, 5.6, p=2.3)
-    for (x, y) in shell:
-        u = (x + 0.5 - cx) / 12.5
-        v = (y + 0.5 - cy) / 5.6
-        t = -0.9 * v - 0.25 * u
-        ch = "4" if t > 0.68 else "3" if t > 0.25 else "2" if t > -0.25 else "1" if t > -0.7 else "P"
-        body.set(x, y, ch)
-    # segment seams
-    for sx in (12, 18, 24):
-        for (x, y) in shell:
-            if x == sx and y < cy + 3:
-                body.set(x, y, "1")
-    # magenta neon belly stripe
-    by = int(cy + 2)
-    for (x, y) in shell:
-        if y == by and 8 <= x <= 29:
-            body.set(x, y, "m")
-    for lx in (10, 15, 21, 27):
-        body.set(lx, by, "M")
-    # spine lights (one flickers cyan)
-    top = {x: min(y for (xx, y) in shell if xx == x) for (x, _) in shell}
-    for i, lx in enumerate((10, 15, 21)):
-        body.set(lx, top[lx] + 1, "C" if i == (f % 3) else "M")
-    # tail cable with a glitchy tip light
-    tail = [(7, 9), (5, 7), (4, 5), (3, 3)]
-    for i, (tx, ty) in enumerate(tail):
-        body.rect(tx, ty + bob, tx + 1, ty + 1 + bob, "2" if i % 2 else "3")
-    body.set(2, 2 + bob, "M" if f % 2 == 0 else "C")
-    body.set(3, 2 + bob, "N" if f % 2 == 0 else "B")
-    # head
-    head = Grid.ascii(CRAWLER_HEAD)
-    hx, hy = 28, 8 + bob
-    body.blit(head, hx, hy)
-    if f in (1, 3):  # eye pulse
-        body.set(hx + 6, hy + 4, "N")
+    def shell(g, cx, cy, rx, ry, p=2.3):
+        pts = ellipse_pts(cx, cy, rx, ry, p)
+        for (x, y) in pts:
+            u = (x + 0.5 - cx) / rx
+            v = (y + 0.5 - cy) / ry
+            t = -0.9 * v - 0.25 * u
+            g.set(x, y, "4" if t > 0.66 else "3" if t > 0.22 else "2" if t > -0.3 else
+                  "1" if t > -0.72 else "P")
+        return pts
 
-    # glitch: shift a horizontal slice of the body sideways with RGB split
+    # tail: a data cable with a glitching tip light
+    tail = Grid(W, H)
+    for i, (tx, ty) in enumerate([(5, 11), (4, 9), (3, 7), (3, 5)]):
+        tail.rect(tx, ty + bob, tx + 1, ty + 1 + bob, "3" if i % 2 == 0 else "2")
+    tail.set(3, 4 + bob, ("M", "C", "M", "W")[f])
+    tail.set(4, 4 + bob, ("N", "B", "m", "C")[f])
+
+    # abdomen (rear) with plates, vents and a magenta neon stripe
+    abd = Grid(W, H)
+    acx, acy = 13.0, 12.0 + bob
+    apts = shell(abd, acx, acy, 9.0, 5.6)
+    for sx in (9, 14):
+        for (x, y) in apts:
+            if x == sx and y < acy + 1:
+                abd.set(x, y, "1")
+    for (x, y) in apts:
+        if y == int(acy + 2) and 6 <= x <= 20:
+            abd.set(x, y, "m")
+    for lx in (8, 12, 16, 20):
+        abd.set(lx, int(acy + 2), "M")
+    atop = {}
+    for (x, y) in apts:
+        atop[x] = min(atop.get(x, 99), y)
+    for i, lx in enumerate((7, 11, 16)):
+        abd.set(lx, atop[lx] + 1, "C" if i == f % 3 else "M")
+
+    # thorax (front) - smaller, tilted forward
+    thx = Grid(W, H)
+    tpts = shell(thx, 24.5, 14.0 + bob, 6.0, 4.6)
+    for (x, y) in tpts:
+        if y == int(14.0 + bob + 2) and 20 <= x <= 28:
+            thx.set(x, y, "m")
+    thx.set(23, int(14.0 + bob + 2), "M")
+    thx.set(26, int(14.0 + bob + 2), "M")
+
+    # head: wedge skull, glowing magenta eye, snapping jaw
+    head = Grid(W, H)
+    hx, hy = 28, 9 + bob
+    skull = poly_pts([(hx, hy + 2), (hx + 4, hy), (hx + 8, hy + 2), (hx + 10.5, hy + 5.5),
+                      (hx + 8, hy + 8), (hx, hy + 8)])
+    shade_rim(head, skull, "2", light="4", dark="1")
+    for (x, y) in skull:
+        if y == hy + 1 and x < hx + 6:
+            head.set(x, y, "3")
+    ex, ey = hx + 6, hy + 3
+    head.rect(ex - 1, ey - 1, ex + 2, ey + 1, "n")
+    head.rect(ex, ey, ex + 1, ey, "M")
+    head.set(ex, ey - 1, "M")
+    head.set(ex + 1, ey - 1, "N" if f % 2 else "M")
+    head.set(ex, ey, "W")
+    head.set(hx + 2, hy + 1, "C")
+    jaw = Grid(W, H)
+    jy = hy + 7 + (1 if f in (1, 3) else 0)
+    jpts = poly_pts([(hx + 1, jy), (hx + 10, jy), (hx + 10.5, jy + 1.5), (hx + 7, jy + 2.5), (hx + 1, jy + 2.5)])
+    shade_rim(jaw, jpts, "2", light="3", dark="1")
+    for tx in (hx + 5, hx + 7, hx + 9):
+        jaw.set(tx, jy - 1, "5")
+
+    g = stack(W, H, far, tail, abd, thx, jaw, head, near)
+
+    # glitch: displace one scanline of the body with an RGB split
     if f in (1, 3):
-        gy = (cy - 2 if f == 1 else cy + 1)
-        gy = int(gy)
+        gy = int(acy - 2) if f == 1 else int(acy + 1)
         shift = 2 if f == 1 else -2
-        row = [body.get(x, gy) for x in range(W)]
-        xs = [x for x in range(W) if row[x] != "."]
-        for x in range(W):
-            body.set(x, gy, ".")
-        for x in xs:
-            body.set(x + shift, gy, row[x])
-        lo, hi = min(xs) + shift, max(xs) + shift
-        body.set(lo, gy, "C")
-        body.set(hi, gy, "M")
-        body.set(hi + 1, gy, "M")
-
-    return stack(W, H, far, body, near)
+        seg = [(x, g.get(x, gy)) for x in range(3, 28) if g.get(x, gy) != "."]
+        for x, _ in seg:
+            g.set(x, gy, ".")
+        for x, ch in seg:
+            g.set(x + shift, gy, ch)
+        lo, hi = seg[0][0] + shift, seg[-1][0] + shift
+        g.set(lo, gy, "C")
+        g.set(lo + 1, gy, "B")
+        g.set(hi, gy, "M")
+        g.set(hi - 1, gy, "N")
+    return g
 
 
 def make_crawler():
-    rng = random.Random(SEED + 2)
     sheet = Image.new("RGBA", (160, 28), (0, 0, 0, 0))
     for f in range(4):
-        sheet.alpha_composite(crawler_frame(f, rng).image(), (f * 40, 0))
+        sheet.alpha_composite(crawler_frame(f).image(), (f * 40, 0))
     return sheet
 
 
@@ -732,19 +773,21 @@ def badge():
 
 
 def icon_energy_ball():
-    g = Grid(16, 16)
-    shade_sphere(g, 8, 8, 6.0, ["b", "U", "C", "B"], lo=-0.5)
-    # swirl inside the plasma
-    for (x, y) in [(5, 9), (6, 10), (7, 10), (8, 10), (9, 9), (10, 7)]:
-        g.set(x, y, "B")
-    g.set(5, 5, "W")
-    g.set(6, 4, "W")
-    g.set(5, 4, "W")
-    # crackling arcs outside the orb
-    for (x, y) in [(13, 3), (14, 2), (12, 2), (1, 12), (2, 13), (2, 11), (14, 11), (13, 12)]:
+    g = Grid(17, 17)
+    shade_sphere(g, 8.5, 8.5, 6.2, ["b", "b", "U", "U", "C", "B"], lo=-0.45)
+    # swirling plasma filament + hot core
+    for (x, y) in [(4, 10), (5, 11), (6, 11), (7, 11), (8, 11), (9, 10), (10, 9), (11, 7), (11, 6)]:
         g.set(x, y, "C")
+    for (x, y) in [(7, 7), (8, 7), (7, 8), (9, 8)]:
+        g.set(x, y, "B")
+    for (x, y) in [(5, 5), (6, 4), (5, 4), (4, 5)]:
+        g.set(x, y, "W")
+    # crackling arcs leaping off the orb
+    for (x, y) in [(13, 3), (14, 2), (15, 2), (16, 1), (3, 13), (2, 14), (1, 14), (0, 15), (15, 9), (16, 10)]:
+        g.set(x, y, "C")
+    g.set(16, 1, "B")
+    g.set(0, 15, "B")
     return g
-
 
 def icon_flame():
     g = Grid(16, 17)
@@ -790,63 +833,66 @@ def icon_orbit():
 
 
 def icon_missile():
-    """Rocket on the up-right diagonal. a = along axis, s = across axis."""
+    """Rocket on the up-right diagonal. a = along axis, s = across axis
+    (pixels with a + s odd lie on the lattice)."""
     g = Grid(16, 16)
+    fins = {-2: 3, -3: 4, -4: 4, -5: 4}
+    exhaust = {-5: 1, -6: 1, -7: 2, -8: 1, -9: 1, -10: 0, -11: 0, -12: 1}
     for y in range(16):
         for x in range(16):
             a = x - y
             s = x + y - 15
             ch = None
-            if 10 <= a <= 13 and abs(s) <= 13 - a:
-                ch = "p" if s < 0 else "R" if s == 0 else "r"
-                if a == 13:
-                    ch = "N"
-            elif -3 <= a <= 9 and abs(s) <= 2:
+            if 9 <= a <= 13 and abs(s) <= min(2, (13 - a + 1) // 2 + 1 if a > 10 else 2):
+                ch = "N" if a == 13 else "p" if s < 0 else "R" if s == 0 else "r"
+            elif -4 <= a <= 8 and abs(s) <= 2:
                 ch = {-2: "5", -1: "5", 0: "4", 1: "3", 2: "2"}[s]
                 if a in (5, 6):
                     ch = "C" if s < 1 else "c"
                 if a == 1:
                     ch = "M" if s < 1 else "m"
-                if a <= -2:
+                if a <= -3:
                     ch = "2" if s < 1 else "1"
-            elif -6 <= a <= -2 and 3 <= abs(s) <= 4 + (a + 2) // 2 + 2:
+            elif a in fins and 3 <= abs(s) <= fins[a]:
                 ch = "M" if s < 0 else "m"
-            elif -11 <= a <= -4 and abs(s) <= (1 if a >= -7 else 0):
-                ch = "W" if a >= -5 else "B" if a >= -7 else "C" if a >= -9 else "c"
+            elif a in exhaust and abs(s) <= exhaust[a]:
+                ch = "W" if a >= -6 else "B" if a >= -8 else "C" if a >= -10 else "c"
             if ch:
                 g.set(x, y, ch)
     return g
 
 
 BOOT = [
-    "..34443...",
-    "..23332...",
-    "..2CCC2...",
-    "..23332...",
-    "..23332...",
-    "..233332..",
-    ".2333333..",
-    ".23333344.",
-    ".233333344",
-    ".OOOOOOOOO",
-    ".111111111",
+    ".34444.....",
+    ".23333.....",
+    ".2CCCC.....",
+    ".23333.....",
+    ".233334....",
+    ".2333334...",
+    "123333334..",
+    "1233333334.",
+    "12333333334",
+    "12222222223",
+    "OOOOOOOOOOO",
+    "11111111111",
 ]
 
 
 def icon_stomp():
-    g = Grid(18, 17)
-    boot = Grid.ascii(BOOT)
-    g.blit(boot, 3, 1)
-    # shock arcs either side of the sole
-    for i, r in enumerate((2, 4)):
-        for dy in range(-2 - i, 1):
-            dx = int(round(math.sqrt(max(0, 1 - (dy / (3.0 + i)) ** 2)) * r))
-            g.set(3 - dx, 13 + dy, "Y")
-            g.set(14 + dx, 13 + dy, "Y")
-    g.hline(0, 17, 14, "O")
-    g.hline(2, 15, 14, "Y")
-    g.hline(6, 11, 15, "y")
-    return g
+    W, H = 19, 17
+    cx, cy, rx, ry = 9.0, 13.0, 8.8, 3.2
+    ring = edge_pts(ellipse_pts(cx, cy, rx, ry), N4)
+    back, front = Grid(W, H), Grid(W, H)
+    for (x, y) in ring:
+        (back if y + 0.5 < cy else front).set(x, y, "O" if y + 0.5 < cy else "Y")
+    for (x, y) in ring:
+        if y + 0.5 >= cy and abs(x + 0.5 - cx) < 4:
+            front.set(x, y, "y")
+    boot = Grid(W, H).blit(Grid.ascii(BOOT), 4, 1)
+    debris = Grid(W, H)
+    for (x, y) in [(1, 7), (2, 9), (17, 6), (16, 8)]:
+        debris.set(x, y, "Y")
+    return stack(W, H, back, debris, boot, front, pad=1)
 
 
 def icon_chain():
@@ -861,7 +907,7 @@ def icon_chain():
     for (x, y) in edge_pts(halo, ((1, 0), (0, 1))):
         if (x, y) not in core:
             g.set(x, y, "c")
-    # branch fork
+    # forked branch
     br = set(line_pts(8, 6, 13, 3))
     g.fill(thick_pts(br, 0.6), "c")
     g.fill(br, "B")
@@ -874,46 +920,60 @@ def icon_cyber_heart():
     g = Grid(17, 15)
     pts = heart_pts(8.5, 7.4, 6.4, 6.4)
     shade_rim(g, pts, "R", light="p", dark="r")
+    rim = edge_pts(pts, N4)
+    # right half is a darker circuit-board plate behind a seam
     for (x, y) in pts:
-        if x >= 9 and (x, y) not in edge_pts(pts, N4):
-            g.set(x, y, "r" if (x + y) % 2 else "R")
-    # circuit traces
-    traces = [[(9, 12), (9, 8), (12, 8), (12, 4)], [(9, 8), (14, 8)], [(11, 10), (13, 10)]]
+        if x >= 9 and (x, y) not in rim:
+            g.set(x, y, "r")
+        if x == 8 and (x, y) not in rim:
+            g.set(x, y, "q")
+    traces = [[(10, 12), (10, 9), (13, 9), (13, 5)], [(10, 9), (10, 6)], [(12, 11), (14, 11)]]
     for tr in traces:
         for (a, b) in zip(tr, tr[1:]):
             g.line(*a, *b, "C")
-    for (x, y) in [(12, 4), (14, 8), (13, 10)]:
+    for (x, y) in [(13, 4), (10, 5), (14, 11), (14, 9)]:
         g.set(x, y, "W")
     g.set(4, 3, "W")
     g.set(3, 4, "W")
     g.set(4, 4, "N")
+    g.set(5, 3, "N")
     return g
 
 
 def icon_servo_leg():
-    g = Grid(17, 17)
-    # speed lines
-    for (y, x0, x1) in [(4, 0, 4), (8, 1, 5), (12, 0, 3)]:
-        g.hline(x0, x1, y, "c")
-        g.set(x1, y, "C")
-    hip, knee, ankle = (10, 3), (13, 8), (9, 13)
-    thigh = thick_pts(line_pts(*hip, *knee), 1.4)
-    shade_rim(g, thigh, "3", light="4", dark="2")
-    shin = thick_pts(line_pts(*knee, *ankle), 0.9)
-    shade_rim(g, shin, "2", light="5", dark="1")
-    # piston rod on shin
-    for (x, y) in line_pts(knee[0] - 1, knee[1] + 2, ankle[0] + 1, ankle[1] - 1):
-        g.set(x, y, "5")
-    foot = poly_pts([(6, 13), (12, 13), (15, 15.2), (15, 16), (6, 16)])
-    shade_rim(g, foot, "3", light="4", dark="1")
-    for x in range(6, 16):
-        if (x, 15) in foot:
-            g.set(x, 15, "1")
-    for (jx, jy) in (hip, knee):
-        j = ellipse_pts(jx + 0.5, jy + 0.5, 1.8, 1.8)
-        shade_rim(g, j, "4", light="5", dark="2")
-        g.set(jx, jy, "C")
-    return g
+    W, H = 17, 17
+    lines = Grid(W, H)
+    for (y, x0, x1) in [(4, 0, 3), (8, 0, 5), (12, 1, 4)]:
+        lines.hline(x0, x1, y, "c")
+        lines.set(x1, y, "C")
+    hip, knee = (6.5, 2.5), (13.0, 8.5)
+    # armoured thigh, wide at the hip and tapering to the knee, with servo joints
+    dx, dy = knee[0] - hip[0], knee[1] - hip[1]
+    ln = math.hypot(dx, dy)
+    nx, ny = -dy / ln, dx / ln
+    thigh = Grid(W, H)
+    tp = poly_pts([(hip[0] + nx * 2.6, hip[1] + ny * 2.6), (knee[0] + nx * 1.7, knee[1] + ny * 1.7),
+                   (knee[0] - nx * 1.7, knee[1] - ny * 1.7), (hip[0] - nx * 2.6, hip[1] - ny * 2.6)])
+    shade_rim(thigh, tp, "3", light="4", dark="2")
+    for (x, y) in line_pts(7, 4, 11, 8):
+        thigh.set(x, y, "2")
+    for (jx, jy), r in ((hip, 2.0), (knee, 1.7)):
+        jp = ellipse_pts(jx, jy, r, r)
+        shade_rim(thigh, jp, "4", light="5", dark="2")
+        thigh.set(int(jx), int(jy), "C")
+    # piston shin
+    shin = Grid(W, H)
+    sp = brush(line_pts(12, 9, 9, 12), SQ2)
+    shade_rim(shin, sp, "2", light="5", dark="1")
+    # blade foot
+    foot = Grid(W, H)
+    fp = poly_pts([(6, 12), (11, 12), (16.5, 14.6), (16.5, 16), (6, 16)])
+    shade_rim(foot, fp, "3", light="4", dark="1")
+    for x in range(6, 17):
+        if (x, 15) in fp:
+            foot.set(x, 15, "1")
+    foot.set(15, 14, "C")
+    return stack(W, H, lines, shin, foot, thigh, pad=1)
 
 
 def icon_magnet_coil():
