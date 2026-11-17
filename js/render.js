@@ -1,0 +1,288 @@
+"use strict";
+// =============================================================================
+// Drawing: the scene (world space, scrolled by the camera) and the HUD.
+// =============================================================================
+
+const FONT = '"Press Start 2P", ui-monospace, monospace';
+
+function render(time) {
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+  ctx.save();
+  if (camera.shake > 0) ctx.translate(rand(-1, 1) * camera.shake, rand(-1, 1) * camera.shake);
+  drawParallax();
+
+  // World space. Snap the camera to whole device pixels so tiles don't shimmer.
+  ctx.save();
+  ctx.translate(-Math.round(camera.x * renderScale) / renderScale, 0);
+  drawDecor(time);
+  drawGround();
+  drawPlatforms();
+  drawCrates();
+  drawPickups(time);
+  drawEnemies(time);
+  drawPlayer(time);
+  drawPlayerProjectiles();
+  drawEnemyShots();
+  drawEffects();
+  if (game.debug) drawDebug();
+  ctx.restore();
+  ctx.restore();
+
+  // Red sky while the boss is alive
+  if (game.boss && !game.boss.dead && game.state !== "over") {
+    ctx.fillStyle = `rgba(255,20,60,${0.08 + 0.04 * Math.sin(time * 2)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (game.hurtFlash > 0) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.95);
+    g.addColorStop(0, "rgba(255,0,60,0)");
+    g.addColorStop(1, `rgba(255,0,60,${game.hurtFlash})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (game.state === "over") {
+    ctx.globalAlpha = clamp(game.overTime / 0.8, 0, 1);
+    if (isReady(IMG.endGame)) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(IMG.endGame, 0, 0, W, H);
+    } else {
+      ctx.fillStyle = "#14051f";
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.globalAlpha = 1;
+  } else {
+    drawHUD(time);
+  }
+}
+
+function drawEffects() {
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  particles.forEach((p) => {
+    ctx.globalAlpha = Math.min(1, p.life / 0.3);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  });
+  rings.forEach((r) => {
+    const t = 1 - r.life / r.max;
+    ctx.globalAlpha = 1 - t;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = 10 * (1 - t) + 2;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.radius * (0.3 + 0.7 * t), 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  arcs.forEach((a) => {
+    ctx.globalAlpha = a.life / a.max;
+    ctx.strokeStyle = a.color;
+    ctx.lineJoin = "round";
+    [10, 3].forEach((width, pass) => {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = pass ? "#ffffff" : "rgba(25,245,255,0.5)";
+      ctx.beginPath();
+      a.segs.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.stroke();
+    });
+  });
+  ctx.restore();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  popups.forEach((p) => {
+    ctx.globalAlpha = Math.min(1, p.life / 0.3);
+    ctx.font = `${p.size}px ${FONT}`;
+    ctx.fillStyle = "#000";
+    ctx.fillText(p.text, p.x + 3, p.y + 3);
+    ctx.fillStyle = p.color;
+    ctx.fillText(p.text, p.x, p.y);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawDebug() {
+  ctx.lineWidth = 3;
+  const box = (b, color) => {
+    ctx.strokeStyle = color;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+  };
+  box(player, "#19f5ff");
+  enemies.forEach((e) => !e.dead && box(e, "#ff2457"));
+  crates.forEach((c) => c.alive && box(c, "#ffe14d"));
+  platforms.forEach((p) => box(p, "#5aff7a"));
+  gems.forEach((g) => box(g, "#ffffff"));
+  if (player.flameOn) {
+    const c = centerOf(player);
+    ctx.strokeStyle = "#ff9b21";
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, stats.flame.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "#ffffff";
+  [...playerShots, ...enemyShots].forEach((s) => {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+}
+
+// ------------------------------------------------------------------ HUD -----
+function hudText(text, x, y, size, color, align = "left", baseline = "top") {
+  ctx.font = `${size}px ${FONT}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+  ctx.fillStyle = "rgba(0,0,0,0.75)";
+  ctx.fillText(text, x + 3, y + 3);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+function drawBar(x, y, w, h, frac, ghostFrac, color) {
+  frac = clamp(frac, 0, 1);
+  ctx.fillStyle = "rgba(10,3,24,0.8)";
+  ctx.fillRect(x, y, w, h);
+  if (ghostFrac) {
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillRect(x, y, w * clamp(ghostFrac, 0, 1), h);
+  }
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w * frac, h);
+  ctx.fillStyle = "rgba(255,255,255,0.22)";
+  ctx.fillRect(x, y, w * frac, h * 0.35);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = color;
+  ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+}
+
+function drawIcon(sheet, size, cell, x, y, s) {
+  if (!drawCell(sheet, cell, size, x + s / 2, y + s / 2, s, s)) {
+    ctx.fillStyle = "#3d3560";
+    ctx.fillRect(x, y, s, s);
+  }
+}
+
+// On small screens the HUD is drawn bigger so it stays readable.
+const hudLayout = { scale: 1, killsY: 132 };
+
+function drawHUD(time) {
+  const p = player;
+  const k = hudLayout.scale;
+  const VW = W / k;
+  ctx.save();
+  ctx.scale(k, k);
+
+  // XP bar across the very top
+  const need = xpForLevel(progress.level + progress.pending);
+  const xpFrac = clamp(progress.xp / need, 0, 1);
+  ctx.fillStyle = "rgba(10,3,24,0.85)";
+  ctx.fillRect(0, 0, VW, 16);
+  ctx.fillStyle = "#19f5ff";
+  ctx.fillRect(0, 0, VW * xpFrac, 16);
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillRect(0, 0, VW * xpFrac, 5);
+
+  // Health + heat
+  const lowHp = p.hp / stats.maxHp < 0.3;
+  const hpColor = lowHp && Math.sin(time * 12) > 0 ? "#ff2f6d" : "#19f5ff";
+  hudText(`LV ${progress.level}`, 44, 32, 26, "#ffe14d");
+  drawBar(44, 70, 440, 34, p.hp / stats.maxHp, p.ghostHp / stats.maxHp, hpColor);
+  hudText(`${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
+  const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : "#ff9b21";
+  drawBar(44, 120, 300, 18, p.heat / TUNING.heat.max, 0, heatColor);
+  hudText(p.heatLocked ? "NO HEAT" : "HEAT", 360, 120, 18, heatColor);
+
+  // Active power-ups
+  let ix = 44;
+  [
+    ["overdrive", p.overdrive],
+    ["shield", p.shield],
+  ].forEach(([type, left]) => {
+    if (left <= 0) return;
+    const def = POWERUPS[type];
+    drawIcon("pickups", 16, def.icon, ix, 156, 44);
+    ctx.fillStyle = def.color;
+    ctx.fillRect(ix, 204, 44 * (left / def.duration), 5);
+    ix += 56;
+  });
+
+  // Owned upgrades with their level
+  let ux = 44;
+  const uy = p.overdrive > 0 || p.shield > 0 ? 222 : 160;
+  UPGRADES.forEach((u) => {
+    const level = lv(u.id);
+    if (!level) return;
+    drawIcon("icons", 24, u.icon, ux, uy, 44);
+    hudText(String(level), ux + 40, uy + 30, 14, "#ffe14d", "right");
+    ux += 50;
+  });
+
+  // Run timer / boss
+  hudText(formatTime(game.time), VW / 2, 34, 40, "#ffffff", "center");
+  const boss = game.boss;
+  if (boss && !boss.dead) {
+    hudText(boss.enraged ? "DEMON GOAT !!" : "DEMON GOAT", VW / 2, 92, 22, boss.enraged ? "#ff2457" : "#ffffff", "center");
+    drawBar(VW / 2 - 320, 124, 640, 26, boss.hp / boss.maxHp, boss.ghostHp / boss.maxHp, "#ff2457");
+  } else if (!director.bossSpawned) {
+    const left = TUNING.boss.at - game.time;
+    const urgent = left < 10 && Math.sin(time * 10) > 0;
+    hudText(`BOSS IN ${formatTime(left)}`, VW / 2, 92, 20, urgent ? "#ff2457" : "#c9b6ff", "center");
+  }
+
+  // Kills (just under the pause / mute / fullscreen buttons)
+  hudText(`KILLS ${game.kills}`, VW - 44, hudLayout.killsY / k, 22, "#ffffff", "right");
+
+  drawHints(VW, H / k);
+
+  if (game.banner) {
+    ctx.globalAlpha = clamp(game.banner.time / 0.4, 0, 1);
+    hudText(game.banner.text, VW / 2, H / k / 2 - 180, 52, game.banner.color || "#ff2457", "center", "middle");
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  if (boss && !boss.dead && !onScreen(boss)) drawBossArrow(boss, time);
+}
+
+function drawBossArrow(boss, time) {
+  const c = centerOf(boss);
+  const right = c.x > camera.x + W / 2;
+  const x = right ? W - 60 : 60;
+  const y = clamp(c.y, 200, H - 200);
+  const bob = Math.sin(time * 8) * 8;
+  ctx.fillStyle = "#ff2457";
+  ctx.beginPath();
+  const dir = right ? 1 : -1;
+  ctx.moveTo(x + dir * (30 + bob), y);
+  ctx.lineTo(x - dir * (10 - bob), y - 30);
+  ctx.lineTo(x - dir * (10 - bob), y + 30);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawHints(VW, VH) {
+  if (game.state !== "playing" || game.time > 10) return;
+  const alpha = clamp((10 - game.time) / 1.5, 0, 1);
+  ctx.globalAlpha = alpha;
+  if (touchMode && settings.touchScheme === "gestures") {
+    hudText("TAP: ZAP   HOLD: FLAME   DOUBLE-TAP: JUMP", VW / 2, VH - 150, 24, "#ffffff", "center");
+  } else if (!touchMode) {
+    const box = { x: VW / 2 - 430, y: 250, w: 860, h: 200 };
+    ctx.fillStyle = "rgba(10,3,24,0.75)";
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.strokeStyle = "rgba(255,47,214,0.8)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(box.x, box.y, box.w, box.h);
+    if (isReady(IMG.wasd)) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(IMG.wasd, box.x + 24, box.y + 22, 145, 157);
+    }
+    [
+      ["A D", "MOVE    W S  AIM"],
+      ["SPACE", "JUMP x2  (S+SPACE: DROP)"],
+      ["J", "ZAP  (OR LEFT CLICK)"],
+      ["K", "FLAME (OR RIGHT CLICK)"],
+    ].forEach(([key, label], i) => {
+      hudText(key, box.x + 200, box.y + 26 + i * 40, 20, "#ff9b21");
+      hudText(label, box.x + 340, box.y + 26 + i * 40, 20, "#ffffff");
+    });
+  }
+  ctx.globalAlpha = 1;
+}

@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta
       name="description"
-      content="Cyberpunk 2D77 – a fast-paced 2D action game. Battle the Demon Goat in Cyber City on desktop or mobile."
+      content="Cyberpunk 2D77 – a neon side-scrolling action game. Survive waves of enemies, level up, and defeat the Demon Goat on desktop or mobile."
     />
     <title>Cyberpunk 2D77</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -49,18 +49,45 @@
         <div class="panel" role="dialog" aria-labelledby="overlay-title">
           <h1 id="overlay-title">Cyberpunk 2D77</h1>
           <p id="overlay-text">It's year 2D77. You're a Cyber Badass. Don't kiss the Demon Goat.</p>
+          <dl id="overlay-stats" class="stats" hidden></dl>
+          <div id="scheme-picker" class="scheme-picker touch-only" role="group" aria-label="Touch controls">
+            <span>Controls:</span>
+            <button type="button" data-scheme="buttons" aria-pressed="true">Buttons</button>
+            <button type="button" data-scheme="gestures" aria-pressed="false">Tap gestures</button>
+          </div>
           <dl id="controls-help" class="controls">
-            <dt class="kb-only">WASD / Arrows</dt>
-            <dt class="touch-only">Left thumb</dt>
-            <dd>Move &amp; aim</dd>
-            <dt><span class="kb-only">J</span><span class="touch-only">ZAP</span></dt>
-            <dd>Energy ball (hold to auto-fire)</dd>
-            <dt><span class="kb-only">K</span><span class="touch-only">FLAME</span></dt>
-            <dd>Hold to catch fire: the goat can't touch you and gets burned. Watch your heat!</dd>
-            <dt><span class="kb-only">Space</span><span class="touch-only">JUMP</span></dt>
-            <dd>Jump (double jump) to hop over fireballs</dd>
+            <dt class="kb-only">A / D</dt>
+            <dd class="kb-only">Run</dd>
+            <dt class="kb-only">W / S</dt>
+            <dd class="kb-only">Aim up / down. S + Space drops through a platform</dd>
+            <dt class="kb-only">Space</dt>
+            <dd class="kb-only">Jump. Press again in the air to double jump</dd>
+            <dt class="kb-only">J / Left click</dt>
+            <dd class="kb-only">Energy ball. Clicking aims at the cursor</dd>
+            <dt class="kb-only">K / Right click</dt>
+            <dd class="kb-only">Flame (hold). Burns everything around you</dd>
             <dt class="kb-only">P / M</dt>
             <dd class="kb-only">Pause / mute</dd>
+
+            <dt class="touch-only">Left thumb</dt>
+            <dd class="touch-only">Run and aim. Hold down + jump to drop through a platform</dd>
+            <dt class="touch-only buttons-only">ZAP</dt>
+            <dd class="touch-only buttons-only">Energy ball (hold to keep firing)</dd>
+            <dt class="touch-only buttons-only">FLAME</dt>
+            <dd class="touch-only buttons-only">Hold to burn everything around you</dd>
+            <dt class="touch-only buttons-only">JUMP</dt>
+            <dd class="touch-only buttons-only">Jump, tap again in the air to double jump</dd>
+            <dt class="touch-only gestures-only">Tap</dt>
+            <dd class="touch-only gestures-only">Zap toward the exact spot you tapped</dd>
+            <dt class="touch-only gestures-only">Long-press</dt>
+            <dd class="touch-only gestures-only">Flame, burns everything around you</dd>
+            <dt class="touch-only gestures-only">Double-tap</dt>
+            <dd class="touch-only gestures-only">Jump / double jump</dd>
+
+            <dt>Heat</dt>
+            <dd>The flame costs heat. Heat doesn't refill by itself: earn it by dealing and taking damage</dd>
+            <dt>XP</dt>
+            <dd>Grab the chips enemies drop to level up and pick an upgrade. The Demon Goat shows up at 2:30</dd>
           </dl>
           <div class="overlay-actions">
             <button id="overlay-btn" class="primary-btn" type="button">Start Game</button>
@@ -69,10 +96,19 @@
         </div>
       </div>
 
+      <div id="levelup" class="overlay levelup" hidden>
+        <div class="levelup-panel" role="dialog" aria-labelledby="levelup-title">
+          <h2 id="levelup-title">LEVEL UP!</h2>
+          <p>Choose an upgrade</p>
+          <div id="cards" class="cards"></div>
+        </div>
+      </div>
+
       <p class="rotate-hint">Rotate your phone for a bigger view</p>
     </main>
 
     <div id="touch-controls" class="touch-controls">
+      <div id="gesture-zone" class="gesture-zone"></div>
       <div id="stick-zone" class="stick-zone">
         <div id="stick" class="stick"><div id="stick-knob" class="stick-knob"></div></div>
       </div>
@@ -83,7 +119,16 @@
       </div>
     </div>
 
-    <script src="sound.js"></script>
-    <script src="app.js"></script>
+    <script src="js/sound.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/core.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/pickups.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/enemies.js"></script>
+    <script src="js/upgrades.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/main.js"></script>
   </body>
 </html>

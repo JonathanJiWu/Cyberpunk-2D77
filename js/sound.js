@@ -62,14 +62,22 @@ function Sound(src, { volume = 1, minGap = 0, pool = 3 } = {}) {
   this.loopElement = null;
   SoundSystem.sounds.push(this);
   if (canFetchAudio) {
-    fetch(src)
-      .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(res.status)))
+    fetchAudio(src)
       .then((data) => {
-        this.data = data;
+        this.data = data.slice(0); // decodeAudioData consumes its buffer
         this.decode();
       })
       .catch(() => {});
   }
+}
+
+// Several effects reuse the same file (pitched differently): download it once.
+const audioFetches = {};
+function fetchAudio(src) {
+  if (!audioFetches[src]) {
+    audioFetches[src] = fetch(src).then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(res.status)));
+  }
+  return audioFetches[src];
 }
 
 Sound.prototype.decode = function () {
@@ -195,11 +203,19 @@ const music = {
 };
 
 const sfx = {
-  flame: new Sound("sound/fire.wav", { volume: 0.55 }),
-  energy: new Sound("sound/energy.wav", { volume: 0.6, minGap: 0.05, pool: 4 }),
-  goatShot: new Sound("sound/energy.wav", { volume: 0.5, pool: 3 }),
-  zapHit: new Sound("sound/hit2.wav", { volume: 0.55, minGap: 0.05, pool: 4 }),
-  burn: new Sound("sound/hit.wav", { volume: 0.5, minGap: 0.35 }),
+  flame: new Sound("sound/fire.wav", { volume: 0.5 }),
+  energy: new Sound("sound/energy.wav", { volume: 0.5, minGap: 0.05, pool: 4 }),
+  enemyShot: new Sound("sound/energy.wav", { volume: 0.35, minGap: 0.12, pool: 3 }),
+  zapHit: new Sound("sound/hit2.wav", { volume: 0.45, minGap: 0.06, pool: 4 }),
+  burn: new Sound("sound/hit.wav", { volume: 0.4, minGap: 0.35 }),
   damage: new Sound("sound/damage.wav", { volume: 0.8, minGap: 0.1 }),
+  kill: new Sound("sound/hit2.wav", { volume: 0.4, minGap: 0.05, pool: 4 }),
+  pickup: new Sound("sound/energy.wav", { volume: 0.22, minGap: 0.045, pool: 4 }),
+  powerup: new Sound("sound/energy.wav", { volume: 0.6, pool: 2 }),
+  levelUp: new Sound("sound/hit.wav", { volume: 0.6, pool: 1 }),
+  stomp: new Sound("sound/damage.wav", { volume: 0.55, minGap: 0.1 }),
+  missile: new Sound("sound/energy.wav", { volume: 0.3, minGap: 0.08, pool: 3 }),
+  chain: new Sound("sound/hit2.wav", { volume: 0.35, minGap: 0.1, pool: 2 }),
+  crate: new Sound("sound/hit.wav", { volume: 0.5, minGap: 0.1 }),
   gameOver: new Sound("sound/gameover.wav", { volume: 0.8, pool: 1 }),
 };

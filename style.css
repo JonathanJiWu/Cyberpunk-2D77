@@ -68,9 +68,8 @@ button {
 /* ---------------------------------------------------------------- HUD buttons */
 .hud-buttons {
   position: absolute;
-  top: calc(var(--u) * 1.6);
-  left: 50%;
-  transform: translateX(-50%);
+  top: calc(var(--u) * 1.4);
+  right: calc(var(--u) * 2.2);
   display: flex;
   gap: max(6px, calc(var(--u) * 0.6));
   z-index: 30;
@@ -228,7 +227,9 @@ body.touch .touch-only {
   display: revert;
 }
 
-body.touch .kb-only {
+body.touch .kb-only,
+body.scheme-gestures .buttons-only,
+body:not(.scheme-gestures) .gestures-only {
   display: none;
 }
 
@@ -357,6 +358,7 @@ body.touch.state-playing .touch-controls {
 /* ------------------------------------------------- Touch: portrait layout */
 body.touch.portrait .hud-buttons {
   top: auto;
+  right: 8px;
   bottom: calc(100% + 8px);
 }
 
@@ -377,4 +379,241 @@ body.touch.portrait .overlay {
   position: fixed;
   padding: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px);
   font-size: 12px;
+}
+
+/* ------------------------------------------------- Menu extras */
+.stats {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  gap: 0.5em 1.4em;
+  margin: 0 0 1.4em;
+  font-size: 0.8em;
+}
+
+.stats dt {
+  color: var(--neon-orange);
+  text-align: right;
+}
+
+.stats dd {
+  margin: 0;
+  text-align: left;
+}
+
+.scheme-picker {
+  justify-content: center;
+  align-items: center;
+  gap: 0.6em;
+  margin: 0 0 1.2em;
+  font-size: 0.7em;
+}
+
+body.touch .scheme-picker {
+  display: flex;
+}
+
+.scheme-picker button {
+  min-height: 40px;
+  padding: 0.7em 1em;
+  border: 2px solid rgba(25, 245, 255, 0.5);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 1em;
+  touch-action: manipulation;
+}
+
+.scheme-picker button[aria-pressed="true"] {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 245, 255, 0.22);
+  box-shadow: 0 0 10px rgba(25, 245, 255, 0.5);
+}
+
+/* ------------------------------------------------- Level-up cards */
+.levelup {
+  z-index: 45;
+  background: radial-gradient(ellipse at center, rgba(40, 20, 0, 0.5), rgba(5, 1, 12, 0.85));
+}
+
+.levelup-panel {
+  width: min(100%, 62em);
+  max-height: 100%;
+  overflow-y: auto;
+  touch-action: pan-y;
+  text-align: center;
+}
+
+.levelup-panel h2 {
+  margin: 0 0 0.3em;
+  font-size: 1.8em;
+  font-weight: 400;
+  color: #ffe14d;
+  text-shadow: 0 0 12px #ffb000, 3px 3px 0 var(--neon-pink);
+}
+
+.levelup-panel p {
+  margin: 0 0 1em;
+  font-size: 0.75em;
+  color: #f1dcff;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1em;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6em;
+  padding: 1.2em 0.8em 1em;
+  border: 2px solid rgba(255, 225, 77, 0.6);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 0 16px rgba(255, 225, 77, 0.25);
+  font-size: 0.75em;
+  line-height: 1.5;
+  touch-action: manipulation;
+  transition: transform 0.08s;
+}
+
+.card:hover,
+.card:focus-visible {
+  outline: none;
+  transform: translateY(-3px);
+  border-color: #ffe14d;
+  box-shadow: 0 0 24px rgba(255, 225, 77, 0.6);
+}
+
+.card.is-new {
+  border-color: rgba(255, 47, 214, 0.8);
+}
+
+.card-key {
+  position: absolute;
+  top: 0.5em;
+  left: 0.6em;
+  font-size: 0.8em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+body.touch .card-key {
+  display: none;
+}
+
+.card-icon {
+  width: 4.2em;
+  height: 4.2em;
+  background-image: url("img/icons.png");
+  background-size: 1200% 100%;
+  background-position: calc(var(--i) * 100% / 11) 0;
+  image-rendering: pixelated;
+}
+
+.card-name {
+  color: var(--neon-cyan);
+  font-size: 1.05em;
+}
+
+.card-level {
+  color: #ffe14d;
+  font-size: 0.85em;
+}
+
+.card.is-new .card-level {
+  color: var(--neon-pink);
+}
+
+.card-desc {
+  color: #e7dbff;
+}
+
+body.touch.portrait .levelup {
+  position: fixed;
+  padding: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px);
+  font-size: 12px;
+}
+
+body.portrait .cards {
+  grid-template-columns: 1fr;
+}
+
+body.portrait .card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "icon name" "icon level" "icon desc";
+  justify-items: start;
+  text-align: left;
+  gap: 0.2em 0.9em;
+}
+
+body.portrait .card-icon {
+  grid-area: icon;
+  align-self: center;
+}
+
+body.portrait .card-name {
+  grid-area: name;
+}
+
+body.portrait .card-level {
+  grid-area: level;
+}
+
+body.portrait .card-desc {
+  grid-area: desc;
+}
+
+/* ------------------------------------------------- Tap gestures scheme */
+.gesture-zone {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 18;
+  touch-action: none;
+}
+
+body.scheme-gestures .gesture-zone {
+  display: block;
+}
+
+/* With gestures, the joystick only owns the lower-left corner */
+body.scheme-gestures .stick-zone {
+  top: auto;
+  height: 60%;
+  width: 40%;
+}
+
+body.scheme-gestures .action-pad {
+  display: none;
+}
+
+.tap-ripple {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border: 3px solid var(--neon-cyan);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: ripple 0.35s ease-out forwards;
+}
+
+@keyframes ripple {
+  from {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+/* Mouse aiming */
+body.state-playing:not(.touch) #canvas1 {
+  cursor: crosshair;
 }

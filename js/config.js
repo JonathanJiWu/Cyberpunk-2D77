@@ -1,0 +1,291 @@
+"use strict";
+// =============================================================================
+// Game data: sizes, balance numbers, enemies, upgrades, power-ups and the map.
+// Tweak the numbers here to change how the game plays.
+// =============================================================================
+
+// The camera always shows a 1920x1080 "logical" view; the canvas scales it to
+// fit the device. The world itself is wider and scrolls horizontally.
+const W = 1920;
+const H = 1080;
+const WORLD_W = 6400;
+const GROUND_Y = 990; // top surface of the street
+
+const TUNING = {
+  player: {
+    maxHp: 100,
+    speed: 470,
+    accel: 5200, // how quickly you reach full speed
+    jumpVelocity: 1080,
+    gravity: 2700,
+    maxFall: 1500,
+    maxJumps: 2,
+    coyoteTime: 0.1, // you can still jump this long after walking off a ledge
+    jumpBuffer: 0.12, // a jump pressed this long before landing still counts
+    hurtInvuln: 1.0,
+    knockback: 520,
+  },
+  // Heat powers the flame. It does NOT refill on its own: you earn it by
+  // dealing damage (not with the flame itself) and by taking damage.
+  heat: { max: 100, start: 30, perDamageDealt: 0.1, perDamageTaken: 1.2, perKill: 0.6, flameMin: 12 },
+  zap: { speed: 1300, radius: 22, life: 1.1, spread: 0.17, aimAssist: 0.4 },
+  pickupRadius: 150,
+  spawn: {
+    startRate: 0.75, // enemies per second at the start
+    ratePerSecond: 0.012, // how much faster spawning gets every second
+    maxRate: 3.2,
+    maxAlive: 40,
+    hpGrowth: 1 / 110, // enemy HP multiplier grows by this much per second
+  },
+  boss: {
+    at: 150, // seconds into the run when the Demon Goat shows up
+    maxHp: 850,
+    chaseSpeed: 330,
+    hoverSpeed: 560,
+    recoilSpeed: 900,
+    windup: 0.6,
+    shotInterval: 0.42,
+    fireballSpeed: 520,
+    fireballDamage: 10,
+    contactDamage: 16,
+    enrageAt: 0.5,
+    enrageSpeedMul: 1.3,
+  },
+};
+
+// --------------------------------------------------------------- Enemies -----
+// w/h is the hitbox. sheet describes how to cut the sprite sheet.
+// maxAlive caps how many of a type can be on the field at once.
+// rows: which sheet row faces left / right (null = flip the sprite instead).
+const ENEMY_TYPES = {
+  crawler: {
+    name: "Glitch Crawler",
+    kind: "melee",
+    walker: true, // obeys gravity and walks on platforms
+    hp: 8,
+    speed: 250,
+    damage: 7,
+    xp: 1,
+    w: 72,
+    h: 48,
+    sheet: { img: "crawler", fw: 40, fh: 28, frames: 4, scale: 2.5, flip: true, fps: 12 },
+    from: 0,
+    weight: 5,
+  },
+  reaper: {
+    name: "Reaper",
+    kind: "melee",
+    hp: 16,
+    speed: 125,
+    damage: 10,
+    xp: 2,
+    w: 64,
+    h: 92,
+    sheet: { img: "death", fw: 50, fh: 48, frames: 4, scale: 2.2, rowLeft: 1, rowRight: 2, fps: 6 },
+    alpha: 0.92,
+    from: 8,
+    weight: 3,
+  },
+  drone: {
+    name: "Security Drone",
+    kind: "ranged",
+    hp: 7,
+    speed: 300,
+    damage: 5,
+    xp: 1,
+    w: 58,
+    h: 46,
+    sheet: { img: "drone", fw: 32, fh: 32, frames: 4, scale: 2.5, flip: true, fps: 10 },
+    keepDistance: 460,
+    shot: { kind: "laser", damage: 4, speed: 520, radius: 12, cooldown: [3.2, 4.8] },
+    maxAlive: 4,
+    from: 30,
+    weight: 3,
+  },
+  dragon: {
+    name: "Smog Dragon",
+    kind: "ranged",
+    hp: 30,
+    speed: 220,
+    damage: 9,
+    xp: 4,
+    w: 84,
+    h: 78,
+    sheet: { img: "dragon", fw: 96, fh: 96, frames: 4, scale: 1.3, rowLeft: 1, rowRight: 2, fps: 7 },
+    keepDistance: 560,
+    shot: { kind: "fireball", damage: 7, speed: 380, radius: 18, cooldown: [3.6, 5.2] },
+    maxAlive: 2,
+    from: 60,
+    weight: 2,
+  },
+};
+
+// -------------------------------------------------------------- Upgrades -----
+// Vampire Survivors style: every level-up you pick 1 of 3 random upgrades.
+// desc[n] describes what level n+1 gives.
+const UPGRADES = [
+  {
+    id: "zap",
+    name: "Energy Ball",
+    icon: 0,
+    max: 8,
+    weapon: true,
+    desc: [
+      "Fire energy balls where you aim.",
+      "+2 damage.",
+      "+1 energy ball per shot.",
+      "Fire 25% faster.",
+      "Shots pierce 1 enemy.",
+      "+1 energy ball per shot.",
+      "+3 damage.",
+      "Bigger, faster shots that pierce 1 more enemy.",
+    ],
+  },
+  {
+    id: "flame",
+    name: "Flame Aura",
+    icon: 1,
+    max: 6,
+    weapon: true,
+    desc: [
+      "Hold to burn everything around you. Uses heat.",
+      "Bigger flame, +25% burn damage, uses less heat.",
+      "Bigger flame, +25% burn damage, uses less heat.",
+      "Bigger flame, +25% burn damage, uses less heat.",
+      "Bigger flame, +25% burn damage, uses less heat.",
+      "Bigger flame, +25% burn damage, uses less heat.",
+    ],
+  },
+  {
+    id: "orbit",
+    name: "Orbit Shards",
+    icon: 2,
+    max: 6,
+    weapon: true,
+    desc: [
+      "A neon shard circles you, slicing enemies.",
+      "+1 shard.",
+      "+50% shard damage.",
+      "+1 shard.",
+      "+33% damage and a wider orbit.",
+      "+1 shard and a faster spin.",
+    ],
+  },
+  {
+    id: "missile",
+    name: "Seeker Missiles",
+    icon: 3,
+    max: 6,
+    weapon: true,
+    desc: [
+      "Auto-fires a homing missile at the nearest enemy.",
+      "Faster reload, +2 damage.",
+      "+1 missile per volley.",
+      "Faster reload, +4 damage.",
+      "+1 missile per volley, faster reload.",
+      "Much faster reload, +6 damage.",
+    ],
+  },
+  {
+    id: "stomp",
+    name: "Shock Stomp",
+    icon: 4,
+    max: 5,
+    weapon: true,
+    desc: [
+      "Landing from a jump sends out a shockwave.",
+      "Bigger, stronger shockwave.",
+      "Bigger, stronger shockwave.",
+      "Bigger, stronger shockwave.",
+      "Huge shockwave.",
+    ],
+  },
+  {
+    id: "chain",
+    name: "Chain Lightning",
+    icon: 5,
+    max: 6,
+    weapon: true,
+    desc: [
+      "Lightning arcs between nearby enemies.",
+      "+1 jump, recharges faster.",
+      "+3 damage, recharges faster.",
+      "+1 jump, recharges faster.",
+      "+1 jump, +3 damage.",
+      "+1 jump, +3 damage, recharges faster.",
+    ],
+  },
+  { id: "heart", name: "Cyber Heart", icon: 6, max: 5, desc: ["Max HP +20 and heal 20."] },
+  { id: "legs", name: "Servo Legs", icon: 7, max: 5, desc: ["Move 8% faster and jump a bit higher."] },
+  { id: "magnet", name: "Magnet Coil", icon: 8, max: 5, desc: ["Pick up XP from 40% further away."] },
+  { id: "armor", name: "Nano Armor", icon: 9, max: 5, desc: ["Take 8% less damage."] },
+  { id: "sink", name: "Heat Sink", icon: 10, max: 5, desc: ["Earn 25% more heat; the flame burns it slower."] },
+  { id: "clock", name: "Overclock", icon: 11, max: 5, desc: ["All weapons recharge 7% faster."] },
+];
+
+// XP needed to go from level n to n+1
+const xpForLevel = (n) => 4 + (n - 1) * 3;
+
+// ------------------------------------------------------------- Power-ups -----
+// icon = cell in img/pickups.png
+const POWERUPS = {
+  heal: { name: "+30 HP", icon: 2, weight: 26, color: "#ff2f6d" },
+  heat: { name: "+50 HEAT", icon: 3, weight: 24, color: "#ff9b21" },
+  overdrive: { name: "OVERDRIVE", icon: 4, weight: 16, duration: 8, color: "#ffe14d" },
+  shield: { name: "SHIELD", icon: 5, weight: 12, duration: 6, color: "#19f5ff" },
+  magnet: { name: "MAGNET", icon: 6, weight: 12, color: "#ff5a5a" },
+  emp: { name: "EMP BLAST", icon: 7, weight: 10, color: "#b06cff" },
+};
+const POWERUP_DROP_CHANCE = 0.05;
+const LEVEL_UP_HEAL = 8; // small heal every level-up
+
+// ------------------------------------------------------------------- Map -----
+// One-way platforms: you can jump up through them and drop down with
+// Down + Jump. Moving platforms swing by (ax, ay) pixels with the given period.
+// Widths are multiples of 64 (the platform tile is 32px drawn at 2x).
+const LEVEL = {
+  platforms: [
+    // Zone 1: the street
+    { x: 380, y: 800, w: 256 },
+    { x: 760, y: 640, w: 320 },
+    { x: 1220, y: 800, w: 256 },
+    // Zone 2: stairs up
+    { x: 1700, y: 820, w: 256 },
+    { x: 2000, y: 660, w: 256 },
+    { x: 2300, y: 500, w: 320 },
+    { x: 2700, y: 660, w: 192, ax: 220, period: 5 },
+    { x: 3080, y: 800, w: 256 },
+    // Zone 3: the towers
+    { x: 3330, y: 690, w: 320 },
+    { x: 3720, y: 840, w: 256 },
+    { x: 3720, y: 540, w: 256 },
+    { x: 4120, y: 690, w: 320 },
+    { x: 4500, y: 560, w: 192, ay: 150, period: 4 },
+    // Zone 4: the arena
+    { x: 4900, y: 800, w: 384 },
+    { x: 5320, y: 470, w: 256, ax: 260, period: 6 },
+    { x: 5450, y: 640, w: 384 },
+    { x: 5980, y: 800, w: 320 },
+  ],
+  // Breakable crates drop power-ups or XP; they come back after a while.
+  crates: [
+    { x: 640, onGround: true },
+    { x: 1300, platform: 2 },
+    { x: 2420, platform: 5 },
+    { x: 3400, platform: 8 },
+    { x: 3780, platform: 9 },
+    { x: 4600, onGround: true },
+    { x: 5560, platform: 15 },
+    { x: 6150, onGround: true },
+  ],
+  crateRespawn: 45,
+  // Neon signs along the street (pure decoration)
+  signs: [
+    { x: 520, text: "2D77", color: "#ff2fd6" },
+    { x: 1520, text: "NOODLES", color: "#19f5ff" },
+    { x: 2860, text: "CYBER", color: "#ffe14d" },
+    { x: 3960, text: "HOTEL", color: "#ff9b21" },
+    { x: 5200, text: "GOAT?!", color: "#ff2457" },
+    { x: 6250, text: "EXIT", color: "#19f5ff" },
+  ],
+};

@@ -1,19 +1,44 @@
 Cyberpunk 2D77 (don't sue me ProjectRed)
 
-Live website: https://cyberpunk-2d77.netlify.app
-GitHub Pages: https://jonathanjiwu.github.io/Cyberpunk-2D77/
+Play it: https://jonathanjiwu.github.io/Cyberpunk-2D77/
+Old site: https://cyberpunk-2d77.netlify.app
 
 Overview
-  Welcome to Cyber City. This is a fast-paced 2D action game where you control a cyber warrior battling a demonic goat. Use your agility and powerful attacks to survive and defeat your enemy. It plays on desktop (keyboard) and on phones and tablets (on-screen touch controls).
+  It's year 2D77 and you're a cyber badass running the neon streets of Cyber City. This is a side-scrolling action platformer with a Vampire Survivors style run: hordes of enemies keep coming, they drop XP chips, and every level-up lets you pick one of three upgrades. Survive until 2:30 and the Demon Goat shows up for the final fight. It plays on desktop (keyboard and mouse) and on phones and tablets (touch).
 
 Features
-  Pixel-art sprite animation with smooth, frame-rate independent movement
-  Keyboard controls and mobile touch controls (floating joystick + buttons)
+  A scrolling city with parallax backgrounds, one-way platforms, moving platforms and breakable supply crates
+  Four kinds of minions, melee and ranged: Glitch Crawlers, Reapers, Security Drones and Smog Dragons
+  The Demon Goat boss, which chases you, rains fireballs and gets enraged at half health
+  Level-up upgrades: 6 weapons (Energy Ball, Flame Aura, Orbit Shards, Seeker Missiles, Shock Stomp, Chain Lightning) and 6 passives (Cyber Heart, Servo Legs, Magnet Coil, Nano Armor, Heat Sink, Overclock)
+  Power-ups dropped by crates and enemies: health, heat cell, Overdrive (rapid fire), Shield, Magnet and an EMP blast
+  Heat: the flame runs on heat, which only builds up when you deal or take damage (it never refills on its own)
+  Two touch control schemes: on-screen buttons, or tap gestures (tap to fire where you tapped, long-press for flame, double-tap to jump)
   Scales to any screen size, portrait or landscape, with fullscreen support where available
-  Demon Goat AI that chases you, flies up to throw fireballs, and becomes enraged at half health
-  Hitboxes that match what you see on screen (press B to show them)
-  Health, heat and damage feedback (hit flashes, screen shake, particles)
-  Pause, mute and restart without reloading the page
+  Pause, mute and restart without reloading the page; hitbox debug view
+
+Controls
+  Keyboard and mouse
+    Run: A / D or Left / Right
+    Aim: W / S or Up / Down (combine with A / D for diagonals)
+    Jump: Space (press again in the air to double jump; S + Space drops through a platform)
+    Energy ball: J (hold to keep firing) or left mouse button (fires at the cursor)
+    Flame: K or right mouse button (hold). Burns everything around you and the goat can't touch you while it's lit. Costs heat.
+    Level-up cards: 1 / 2 / 3, or arrows + Enter, or click
+    Pause: P or Esc
+    Mute: M
+    Show hitboxes: B (or open the page with ?debug)
+  Touch: pick the scheme in the start or pause menu
+    Buttons: drag on the left half to run and aim; hold ZAP, hold FLAME, tap JUMP. The ring around FLAME shows your heat.
+    Tap gestures: drag in the lower-left corner to run; tap anywhere else to zap toward that exact spot; long-press for the flame; double-tap to jump.
+    In both schemes, hold the stick down and jump to drop through a platform.
+
+How a run works
+  Enemies come from both sides of the screen, and more of them come (and tougher) as time goes on.
+  Kill them to drop XP chips. Walk near the chips to pull them in (Magnet Coil pulls from further away).
+  Each level-up pauses the game and offers three upgrades. Weapons fire on their own once you have them, except the Energy Ball and Flame.
+  Break crates for power-ups. Crates come back after a while.
+  At 2:30 the Demon Goat arrives. Beat it to win. If your HP hits zero, the run is over.
 
 Installation & Setup
   Clone or download the repository.
@@ -21,48 +46,29 @@ Installation & Setup
   (for example: npx serve . or python3 -m http.server) for the best audio on mobile.
 
 Deploying (GitHub Pages)
-  The workflow in .github/workflows/pages.yml publishes the game to GitHub Pages.
-  One-time setup: Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
-  After that, every push to main redeploys automatically (or run the workflow by hand
-  from the Actions tab). Pull requests run a quick build check only.
-
-Controls
-  Keyboard
-    Move / aim: W, A, S, D or Arrow keys
-    Energy ball: J (hold to keep firing in the direction you last moved)
-    Flame: K (hold). While you're on fire the goat can't hurt you by touching you, and it gets burned. The flame uses heat, and if you overheat you have to wait for it to cool down.
-    Jump: Spacebar (press again in the air to double jump; jump over fireballs to dodge them)
-    Pause: P or Esc
-    Mute: M
-    Show hitboxes: B (or open the page with ?debug)
-  Touch
-    Drag anywhere on the left half of the screen to move and aim
-    ZAP, FLAME and JUMP buttons on the right (hold ZAP or FLAME)
-    The ring around FLAME shows your remaining heat
-
-Game Mechanics
-  Player Movement: The player moves along the neon street at the bottom of the screen.
-  Enemy AI: The goat chases you, then flies into the sky, glows as a warning and throws a volley of fireballs at you. Below 50% health it gets enraged: it moves faster and throws three fireballs at a time.
-  Damage: Touching the goat or getting hit by a fireball hurts you. After a hit you flash and are briefly invulnerable.
-  Game Over: The game ends when either your health or the goat's reaches zero.
+  The workflow in .github/workflows/pages.yml publishes the game to GitHub Pages
+  on every push to main (or run it by hand from the Actions tab).
+  Pull requests run a quick build check only.
 
 Code Structure
-  index.html: the page, menus, HUD buttons and touch controls
-  style.css: responsive layout and the touch control styling
-  sound.js: Web Audio sound effects (falls back to <audio> elements) and the background music
-  app.js:
-    TUNING: all the balance numbers (speeds, damage, cooldowns) in one place
-    layout(): fits the 1920x1080 game into the screen and sets the canvas resolution
-    updatePlayer() / updateEnemy(): movement, jumping, attacks and the goat's state machine
-    playerBox() / goatBox() / flameBox(): hitboxes used for all collisions
-    updateProjectiles() / detectCollision(): energy balls, fireballs and body contact
-    render(): draws the scene, effects and HUD
-    frame(): the requestAnimationFrame game loop, using delta time
+  index.html: the page, menus, level-up screen and touch controls
+  style.css: responsive layout, menus, cards and touch controls
+  js/config.js: all the balance numbers, enemy types, upgrades, power-ups and the map layout. Start here to tweak the game.
+  js/core.js: canvas, asset loading, drawing helpers and visual effects
+  js/sound.js: Web Audio sound effects (falls back to <audio>) and the music
+  js/input.js: keyboard, mouse, joystick, buttons and tap gestures
+  js/world.js: platforms, crates, the street and the shared platformer physics
+  js/player.js: movement, jumping, the energy ball, the flame and the auto weapons
+  js/enemies.js: the spawn director, enemy AI, enemy shots and the Demon Goat
+  js/pickups.js: XP chips and power-ups
+  js/upgrades.js: XP, levels and the upgrade cards
+  js/render.js: drawing the scene and the HUD
+  js/main.js: game state, menus, layout and the main loop
+  tools/make_sprites.py: generates the new pixel-art sprite sheets in img/ (drone, crawler, pickups, icons, projectiles, platform, crate, skyline, ground)
 
-Future Enhancements
-  Additional enemy types and AI behaviors
-  Power-ups and health regeneration
-  Multiplayer mode
+Credits
+  Player, Demon Goat, Reaper and Dragon sprites, backgrounds and sounds are the original assets from this repository.
+  The other pixel art in img/ is generated by tools/make_sprites.py.
 
 License
   This project is open-source and available for modification. Have fun hacking and improving it!
