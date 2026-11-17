@@ -1,6 +1,7 @@
 Cyberpunk 2D77 (don't sue me ProjectRed)
 
 Live website: https://cyberpunk-2d77.netlify.app
+GitHub Pages: https://jonathanjiwu.github.io/Cyberpunk-2D77/
 
 Overview
   Welcome to Cyber City. This is a fast-paced 2D action game where you control a cyber warrior battling a demonic goat. Use your agility and powerful attacks to survive and defeat your enemy. It plays on desktop (keyboard) and on phones and tablets (on-screen touch controls).
@@ -18,6 +19,12 @@ Installation & Setup
   Clone or download the repository.
   Open index.html in a browser, or serve the folder with any static server
   (for example: npx serve . or python3 -m http.server) for the best audio on mobile.
+
+Deploying (GitHub Pages)
+  The workflow in .github/workflows/pages.yml publishes the game to GitHub Pages.
+  One-time setup: Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
+  After that, every push to main redeploys automatically (or run the workflow by hand
+  from the Actions tab). Pull requests run a quick build check only.
 
 Controls
   Keyboard
