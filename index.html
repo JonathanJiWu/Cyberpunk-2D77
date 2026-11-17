@@ -144,20 +144,36 @@
       </div>
 
       <div id="breach" class="overlay breach" hidden>
-        <div class="breach-panel" role="dialog" aria-labelledby="breach-title">
-          <h2 id="breach-title">JACK IN // BREACH</h2>
-          <div class="breach-info">
-            <div><span class="breach-label">SEQUENCE</span><div id="breach-target" class="breach-codes"></div></div>
-            <div><span class="breach-label">BUFFER</span><div id="breach-buffer" class="breach-codes"></div></div>
+        <div id="breach-screen" class="breach-screen" role="dialog" aria-modal="true" aria-labelledby="breach-title" tabindex="-1">
+          <header class="breach-top">
+            <h2 id="breach-title">NETRUNNER<span>//</span>OS <small>jack-in v2.0.77</small></h2>
+            <ol id="breach-steps" class="breach-steps" aria-label="Hack progress">
+              <li>Recon</li>
+              <li>Exploit</li>
+              <li>Crack</li>
+              <li>Root</li>
+              <li>Payload</li>
+            </ol>
+            <button id="breach-exit" class="breach-exit" type="button">Jack out<span class="kb-only"> [Esc]</span></button>
+          </header>
+          <div class="breach-main">
+            <div id="breach-term" class="breach-term" role="log" aria-live="off"></div>
+            <aside id="breach-ice" class="breach-ice" aria-label="ICE trace">
+              <p id="breach-ice-name" class="ice-name">BLACK ICE</p>
+              <canvas id="breach-ice-canvas" class="ice-canvas" aria-hidden="true"></canvas>
+              <div class="trace">
+                <span>TRACE</span>
+                <div class="trace-bar" role="progressbar" aria-label="ICE trace" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                  <div id="breach-trace-bar"></div>
+                </div>
+                <span id="breach-trace-pct">0%</span>
+              </div>
+              <p id="breach-ice-status" class="ice-status"></p>
+            </aside>
           </div>
-          <div class="breach-timer"><div id="breach-timer-bar"></div></div>
-          <div id="breach-grid" class="breach-grid"></div>
-          <p id="breach-status" class="breach-status"></p>
-          <p class="breach-help">
-            Pick a code from the lit row, then from that code's column, then its row, and so on. Get the sequence into the buffer
-            before time runs out.
-          </p>
-          <button id="breach-exit" class="secondary-btn" type="button">Disconnect</button>
+          <p id="breach-hint" class="breach-hint"></p>
+          <div id="breach-flash" class="breach-flash" hidden></div>
+          <p id="breach-sr" class="breach-sr" aria-live="polite"></p>
         </div>
       </div>
 

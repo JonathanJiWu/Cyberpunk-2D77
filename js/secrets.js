@@ -352,157 +352,963 @@ function updateChrome(dt) {
 }
 
 // ---------------------------------------------------- Jack in: the breach ---
-// Pick codes from the highlighted row, then the column of your pick, then
-// that row, and so on. Get the target sequence into the buffer in time.
-const BREACH_CODES = ["1C", "55", "BD", "E9", "7A"];
+// A hacker-movie terminal in five stages:
+//   RECON    mash any key (or tap): it "types" `nmap`, the scan lists ports
+//   EXPLOIT  pick the service the scan flagged with a CVE
+//   CRACK    `john`: lock in each password char while it glows green
+//   ROOT     `sudo ...`
+//   PAYLOAD  choose a daemon (the reward) and upload it
+// An ICE trace fills slowly. Mistakes only add to it, and the run fails only
+// when it reaches 100%. Everything runs off updateBreach(dt), with no timers,
+// so closeBreach() can stop it at any moment.
+const BREACH = {
+  traceRate: 1.4, // % per second: sitting idle flatlines after ~70 s
+  wrongTarget: 12, // % for exploiting a patched service
+  crackMiss: 4, // % for a mistimed lock
+  grace: 0.45, // s: presses ignored as a pick or the crack starts (no mashing through)
+  holdRepeat: 0.11, // s between auto-typed chunks while a key, button or finger is held
+};
+const BREACH_STEPS = ["recon", "exploit", "crack", "root", "payload"];
+const BREACH_HOSTS = ["kabuki-node-77", "arasaka-edge-04", "militech-dev-03", "biotechnica-lab-09"];
+const BREACH_ICE = ["HELLHOUND", "RAVEN", "KRAKEN", "WISP", "SABERTOOTH"];
+const BREACH_DECOYS = [
+  { port: "22/tcp", svc: "ssh", ver: "OpenSSH 9.9p1", fail: "OpenSSH is patched. Someone actually read the changelog." },
+  { port: "80/tcp", svc: "http", ver: 'nginx 1.27 ("works on my machine")', fail: "HTTP 418 I'm a teapot. It refuses to brew your exploit." },
+  { port: "443/tcp", svc: "https", ver: "ArasakaWeb 4.2 (TLS 1.7)", fail: "Cert pinned harder than a corpo exec's ego." },
+  { port: "3306/tcp", svc: "mysql", ver: "MySQL 9.4 (prod, no backups)", fail: "Access denied for user 'you'@'%'. Rude." },
+  { port: "6379/tcp", svc: "redis", ver: "Redis 8.0 (protected-mode yes)", fail: "protected-mode yes. A sysadmin did their job today." },
+  { port: "8080/tcp", svc: "jenkins", ver: "Jenkins 3.1 (build failing since 2061)", fail: "Jenkins is already broken. You can't break it more." },
+];
+const BREACH_VULNS = [
+  { port: "2077/tcp", svc: "braindance", ver: "BDstream 0.9-beta", cve: "CVE-2077-1337", why: "trusts user input (CVSS 11/10)", how: "stack" },
+  { port: "9229/tcp", svc: "node-debug", ver: "node --inspect=0.0.0.0 (left on in prod)", cve: "CVE-2077-0404", why: "auth not found", how: "debug" },
+  { port: "23/tcp", svc: "telnet", ver: "telnetd (since 1969)", cve: "CVE-2077-0023", why: "it's telnet", how: "telnet" },
+];
+const BREACH_PASSWORDS = [
+  { pw: "hunter2", joke: "funny, all I see is *******" },
+  { pw: "hunter2", joke: "funny, all I see is *******" },
+  { pw: "letmein", joke: "security through politeness" },
+  { pw: "trustno1", joke: "and yet, here we are" },
+  { pw: "goat666", joke: "a Demon Goat fan, apparently" },
+];
+const BREACH_WORDS = ["123456", "password", "qwerty", "iloveyou", "dragon", "monkey", "arasaka4ever", "chooms", "preem", "samurai", "nova2077", "delamain", "admin", "correcthorse", "johnny", "letmein1"];
+const BREACH_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+const BREACH_DAEMONS = [
+  { file: "short_circuit.daemon", size: "2.0M", name: "SHORT CIRCUIT", desc: "EMP: fries every bot on screen" },
+  { file: "datamine.daemon", size: "7.7M", name: "DATAMINE", desc: "siphons their XP: +1 LEVEL" },
+  { file: "overclock.daemon", size: "1.0M", name: "OVERCLOCK", desc: "overdrive: 10 s of rapid fire" },
+];
+const BREACH_WARNINGS = [
+  [50, "is sniffing your packets", "warn"],
+  [75, "is tracing your deck: hop 5 of 7", "err"],
+  [90, "is LOCKING ON. Hurry, or jack out", "err"],
+];
+const BREACH_HINTS = {
+  auto: 'Running... <span class="kb-only">any key</span><span class="touch-only">tap</span> = <b>--fast</b>',
+  type: '<b class="kb-only">MASH ANY KEY</b><b class="touch-only">TAP THE SCREEN</b> to hack. <span class="kb-only">Clicks work too. </span>Hold to auto-type.',
+  "pick-exploit": '<b>Exploit the service the scan flagged with a CVE.</b> <span class="kb-only">&uarr; &darr; + ENTER, or click it</span><span class="touch-only">Tap it</span>',
+  crack: '<b>LOCK each char while it glows green:</b> <span class="kb-only">any key or click</span><span class="touch-only">tap anywhere</span>. Misses add trace.',
+  "pick-payload": '<b>Choose your daemon.</b> <span class="kb-only">&uarr; &darr; + ENTER, 1-3, or click</span><span class="touch-only">Tap one</span>',
+};
+const BREACH_STAGE_SR = {
+  recon: "Stage 1 of 5, recon. Press any key or tap to type the scan.",
+  exploit: "Stage 2 of 5, exploit. Pick the service flagged with a CVE: arrow keys and Enter, or tap it.",
+  crack: "Stage 3 of 5, crack. Press any key or tap while the highlighted character glows green.",
+  root: "Stage 4 of 5, root. Keep typing.",
+  payload: "Stage 5 of 5, payload. Choose a daemon: 1 short circuit, 2 datamine, 3 overclock.",
+};
+// "JACK IN" in block letters for the boot screen
+const BREACH_BANNER = (() => {
+  const font = {
+    J: ["     ██ ", "     ██ ", "     ██ ", "██   ██ ", " █████  "],
+    A: [" █████  ", "██   ██ ", "███████ ", "██   ██ ", "██   ██ "],
+    C: [" ██████ ", "██      ", "██      ", "██      ", " ██████ "],
+    K: ["██   ██ ", "██  ██  ", "█████   ", "██  ██  ", "██   ██ "],
+    I: ["██ ", "██ ", "██ ", "██ ", "██ "],
+    N: ["███    ██", "████   ██", "██ ██  ██", "██  ██ ██", "██   ████"],
+    " ": ["  ", "  ", "  ", "  ", "  "],
+  };
+  return [0, 1, 2, 3, 4].map((r) => [..."JACK IN"].map((ch) => font[ch][r]).join(""));
+})();
+const BREACH_ICE_RGB = [
+  [25, 245, 255],
+  [255, 176, 46],
+  [255, 59, 92],
+];
+// Keys the terminal leaves to the browser
+const BREACH_PASS_KEYS = /^(Tab|Shift|Control|Alt|Meta|OS|Fn|CapsLock|NumLock|ScrollLock|ContextMenu|PrintScreen|F\d+$|Audio|Media|Browser|Launch|Volume)/;
+
 const breachEl = document.getElementById("breach");
-const breachGridEl = document.getElementById("breach-grid");
-const breachTargetEl = document.getElementById("breach-target");
-const breachBufferEl = document.getElementById("breach-buffer");
-const breachTimerEl = document.getElementById("breach-timer-bar");
-const breachStatusEl = document.getElementById("breach-status");
-const breach = { grid: [], target: [], buffer: [], mode: "row", line: 0, used: new Set(), time: 0, max: 18, terminal: null, cursor: 0, done: false, shownAt: 0 };
+const breachScreenEl = document.getElementById("breach-screen");
+const breachTermEl = document.getElementById("breach-term");
+const breachStepsEl = document.getElementById("breach-steps");
+const breachHintEl = document.getElementById("breach-hint");
+const breachIceEl = document.getElementById("breach-ice");
+const breachIceNameEl = document.getElementById("breach-ice-name");
+const breachIceCanvas = document.getElementById("breach-ice-canvas");
+const breachIceStatusEl = document.getElementById("breach-ice-status");
+const breachTraceBarEl = document.getElementById("breach-trace-bar");
+const breachTracePctEl = document.getElementById("breach-trace-pct");
+const breachFlashEl = document.getElementById("breach-flash");
+const breachSrEl = document.getElementById("breach-sr");
+const breach = {
+  terminal: null,
+  stage: "", // boot | recon | exploit | crack | root | payload | done
+  mode: "off", // off | auto (output printing) | type | pick | crack
+  trace: 0,
+  done: false,
+  success: false,
+  reward: -1,
+  mistakes: 0,
+  queue: [],
+};
+const breachAny = (list) => list[Math.floor(Math.random() * list.length)];
+const breachPs1 = (user) => (user === "root" ? `root@${breach.host}:~# ` : `${user}@${breach.host}:~$ `);
 
 function openBreach(term) {
-  const g = [];
-  for (let i = 0; i < 25; i++) g.push(BREACH_CODES[Math.floor(Math.random() * BREACH_CODES.length)]);
-  // Guarantee a solution: row 0 -> a column -> a row
-  const c0 = Math.floor(Math.random() * 5);
-  const r1 = 1 + Math.floor(Math.random() * 4);
-  let c2 = Math.floor(Math.random() * 4);
-  if (c2 >= c0) c2++;
-  const target = [g[c0], g[r1 * 5 + c0], g[r1 * 5 + c2]];
-  Object.assign(breach, { grid: g, target, buffer: [], mode: "row", line: 0, used: new Set(), time: breach.max, terminal: term, cursor: 0, done: false, shownAt: performance.now() });
+  const vuln = breachAny(BREACH_VULNS);
+  const decoys = BREACH_DECOYS.map((s) => [Math.random(), s])
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, 4)
+    .map((x) => x[1]);
+  Object.assign(breach, {
+    terminal: term,
+    stage: "",
+    mode: "auto",
+    trace: 0,
+    shown: 0,
+    traceOn: false,
+    warned: 0,
+    done: false,
+    success: false,
+    melting: false,
+    reward: -1,
+    mistakes: 0,
+    queue: [],
+    qt: 0,
+    cmd: null,
+    pick: null,
+    crack: null,
+    inputLine: null,
+    host: breachAny(BREACH_HOSTS),
+    ip: `10.20.77.${10 + Math.floor(Math.random() * 240)}`,
+    ice: breachAny(BREACH_ICE),
+    services: [...decoys, vuln].map((s) => ({ ...s, ok: s === vuln })).sort((a, b) => parseInt(a.port) - parseInt(b.port)),
+    pass: breachAny(BREACH_PASSWORDS),
+    time: 0,
+    hitT: 0,
+    holdId: null,
+    holdT: 0,
+    pct: -1,
+    heat: "",
+    status: "",
+  });
   sfx.flame.stopLoop();
   clearInput();
-  breachStatusEl.textContent = "";
+  breachTermEl.textContent = "";
+  breachFlashEl.hidden = true;
+  breachIceEl.className = "breach-ice";
+  breachIceNameEl.textContent = `BLACK ICE // ${breach.ice} v${2 + Math.floor(Math.random() * 8)}.7`;
+  breachScreenEl.className = "breach-screen";
   breachEl.hidden = false;
   setState("breach");
-  renderBreach();
+  breachSetStage("boot");
+  breachSetMode("auto");
+  breachRetrigger(breachScreenEl, "power-on");
+  breachBoot();
+  updateBreach(0);
   sfx.chain.play({ rate: 1.2 });
+  if (!touchMode) breachScreenEl.focus({ preventScroll: true });
 }
 
-const lineCells = () => [0, 1, 2, 3, 4].map((i) => (breach.mode === "row" ? breach.line * 5 + i : i * 5 + breach.line));
+// ------------------------------------------------- Terminal output helpers --
+function breachAppend(el) {
+  // New output goes above a command that is still being typed
+  const typing = breach.inputLine && breach.inputLine.parentNode === breachTermEl ? breach.inputLine : null;
+  breachTermEl.insertBefore(el, typing);
+  breachTermEl.scrollTop = breachTermEl.scrollHeight;
+  return el;
+}
 
-function renderBreach() {
-  breachTargetEl.textContent = "";
-  breach.target.forEach((code) => {
+function breachSpans(el, parts) {
+  parts.forEach(([text, cls]) => {
     const s = document.createElement("span");
-    s.textContent = code;
-    breachTargetEl.appendChild(s);
+    if (cls) s.className = cls;
+    s.textContent = text;
+    el.appendChild(s);
   });
-  breachBufferEl.textContent = "";
-  for (let i = 0; i < 6; i++) {
-    const s = document.createElement("span");
-    s.textContent = breach.buffer[i] || "__";
-    if (!breach.buffer[i]) s.className = "empty";
-    breachBufferEl.appendChild(s);
+  return el;
+}
+
+function breachLine(text = "", cls = "") {
+  const el = document.createElement("div");
+  el.className = "bl" + (cls ? " " + cls : "");
+  el.textContent = text;
+  return breachAppend(el);
+}
+
+// A scripted timeline: each step runs `t` seconds after the previous one
+const breachAfter = (t, fn) => breach.queue.push({ t, fn });
+const breachSay = (t, text, cls) => breachAfter(t, () => breachLine(text, cls));
+
+function breachRunQueue(dt) {
+  const q = breach.queue;
+  if (!q.length) {
+    breach.qt = 0;
+    return;
   }
-  const active = lineCells();
-  breachGridEl.textContent = "";
-  breach.grid.forEach((code, idx) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = breach.used.has(idx) ? "[ ]" : code;
-    const inLine = active.includes(idx);
-    if (inLine) b.classList.add("line");
-    if (breach.used.has(idx)) b.classList.add("used");
-    if (inLine && active[breach.cursor] === idx && !touchMode) b.classList.add("cursor");
-    b.disabled = !inLine || breach.used.has(idx) || breach.done;
-    b.addEventListener("click", () => pickBreach(idx));
-    breachGridEl.appendChild(b);
+  breach.qt += dt;
+  while (q.length && breach.qt >= q[0].t) {
+    breach.qt -= q[0].t;
+    q.shift().fn();
+    if (breachEl.hidden) return;
+  }
+  if (!q.length) breach.qt = 0;
+}
+
+function breachProgress(t, label, seconds, steps, tail = "") {
+  let el = null;
+  breachAfter(t, () => (el = breachLine("", "prog")));
+  for (let i = 0; i <= steps; i++) {
+    breachAfter(i ? seconds / steps : 0, () => {
+      const n = Math.round((i / steps) * 20);
+      const pct = String(Math.round((i / steps) * 100)).padStart(3);
+      el.textContent = `${label}[${"█".repeat(n)}${"░".repeat(20 - n)}] ${pct}%${i === steps ? tail : ""}`;
+    });
+  }
+}
+
+// A command line with a blinking cursor; breachTypeChunk() fills it in
+function breachPrompt(ps1, text, onDone) {
+  const line = breachLine("", "cmd");
+  const typed = document.createElement("span");
+  const cur = document.createElement("span");
+  cur.className = "cur";
+  breachSpans(line, [[ps1, ps1.startsWith("root") ? "ps1 root" : "ps1"]]);
+  line.append(typed, cur);
+  breach.inputLine = line;
+  breach.cmd = { text, n: 0, typed, cur, onDone };
+}
+
+function breachTypeChunk(n) {
+  const c = breach.cmd;
+  if (!c) return;
+  c.n = Math.min(c.text.length, c.n + n);
+  c.typed.textContent = c.text.slice(0, c.n);
+  breachTermEl.scrollTop = breachTermEl.scrollHeight;
+  if (c.n < c.text.length) return;
+  c.cur.remove();
+  breach.cmd = null;
+  breach.inputLine = null;
+  if (c.onDone) c.onDone();
+}
+
+// The player types this one ("hacker typer": every press adds a few chars)
+function breachAsk(ps1, text, onDone) {
+  breachPrompt(ps1, text, () => {
+    breachSetMode("auto");
+    breachTone(420, 0.05, "square", 0.05);
+    onDone();
+  });
+  breachSetMode("type");
+}
+
+// ...and this one types itself
+function breachAutoType(ps1, text) {
+  breachAfter(0.18, () => breachPrompt(ps1, text, null));
+  for (let i = 0; i < Math.ceil(text.length / 3); i++) {
+    breachAfter(0.035, () => {
+      breachTypeChunk(3);
+      breachClick(0.5);
+    });
+  }
+}
+
+// A row of output that can be picked (scan results, payload files)
+function breachChoice(parts) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "bl choice";
+  b.disabled = true;
+  breachSpans(b, parts);
+  const index = () => (breach.pick ? breach.pick.items.indexOf(b) : -1);
+  b.addEventListener("click", () => {
+    b.blur();
+    if (index() >= 0) breachChoose(index());
+  });
+  b.addEventListener("pointermove", (e) => e.pointerType === "mouse" && index() >= 0 && !b.disabled && breach.pick.cursor !== index() && breachCursor(index()));
+  b.addEventListener("focus", () => index() >= 0 && breachCursor(index()));
+  return breachAppend(b);
+}
+
+function breachStartPick(items, onPick) {
+  breach.pick = { items, onPick, cursor: 0, grace: BREACH.grace };
+  items.forEach((el, i) => {
+    el.disabled = false;
+    el.dataset.i = i;
+  });
+  breachSetMode("pick"); // the rows grow into buttons: show them all again
+  breachTermEl.scrollTop = breachTermEl.scrollHeight;
+  breachCursor(0);
+}
+
+function breachCursor(i) {
+  const p = breach.pick;
+  if (!p || !p.items[i]) return;
+  p.cursor = i;
+  p.items.forEach((el, j) => el.classList.toggle("cursor", j === i));
+  // Keep it in view (scroll only the terminal, never the page)
+  const el = p.items[i];
+  const t = breachTermEl;
+  if (el.offsetTop < t.scrollTop) t.scrollTop = el.offsetTop - 4;
+  else if (el.offsetTop + el.offsetHeight > t.scrollTop + t.clientHeight) t.scrollTop = el.offsetTop + el.offsetHeight - t.clientHeight + 4;
+}
+
+function breachMove(dir) {
+  const p = breach.pick;
+  const n = p.items.length;
+  for (let k = 1; k <= n; k++) {
+    const j = (((p.cursor + dir * k) % n) + n) % n;
+    if (!p.items[j].disabled) {
+      breachCursor(j);
+      breachClick(0.6);
+      return;
+    }
+  }
+}
+
+function breachChoose(i) {
+  const p = breach.pick;
+  if (!p || breach.done || p.grace > 0 || !p.items[i] || p.items[i].disabled) return;
+  const el = p.items[i];
+  if (p.onPick(i) === false) {
+    // A miss: that option is gone, keep picking
+    el.disabled = true;
+    el.classList.remove("cursor");
+    el.classList.add("tried");
+    breachMove(1);
+    return;
+  }
+  p.items.forEach((x) => {
+    x.disabled = true;
+    x.classList.remove("cursor");
+    delete x.dataset.i;
+  });
+  el.classList.add("picked");
+  breach.pick = null;
+  breachSetMode("auto");
+  breachTone(660, 0.07, "square", 0.05);
+}
+
+// --------------------------------------------------------------- Stages ----
+function breachBoot() {
+  const b = breach;
+  BREACH_BANNER.forEach((row) => breachSay(0.04, row, "banner"));
+  breachSay(0.1, "NETRUNNER OS v2.0.77 (kernel 7.7.7-neuro) on /dev/tty77", "dim");
+  breachSay(0.12, "[ OK ] Mounted /dev/brain0 (neural link, 98% sync)", "ok");
+  breachSay(0.12, "[ OK ] Started kiroshi-optics.service", "ok");
+  breachSay(0.12, `[WARN] Black ICE "${b.ice}" guards ${b.host}. Stay quiet.`, "warn");
+  breachSay(0.12, `Jacked into ${b.host} (${b.ip}).`);
+  breachAfter(0.15, breachRecon);
+}
+
+function breachRecon() {
+  const b = breach;
+  b.traceOn = true;
+  breachSetStage("recon");
+  breachAsk("runner@deck:~$ ", `nmap -sV -T4 ${b.ip.replace(/\d+$/, "0/24")}`, () => {
+    breachSay(0.12, "Starting Nmap 7.94 ( https://nmap.org ) at 2077-11-17 23:07 NCT", "dim");
+    breachProgress(0.1, "Scanning 256 hosts ", 1.1, 11);
+    breachSay(0.1, `Nmap scan report for ${b.host} (${b.ip})`);
+    breachSay(0.08, "Host is up (0.0077s latency). Not shown: 995 closed ports", "dim");
+    breachSay(0.08, "PORT      STATE  SERVICE     VERSION", "head");
+    b.services.forEach((s) =>
+      breachAfter(0.1, () => {
+        const parts = [[`${s.port.padEnd(10)}open   ${s.svc.padEnd(12)}${s.ver}`, ""]];
+        if (s.ok) parts.push([`          └─ [!] ${s.cve}: ${s.why}`, "cve"]);
+        s.el = breachChoice(parts);
+      })
+    );
+    breachSay(0.1, "Nmap done: 1 IP address (1 host up) scanned in 2.07 seconds", "dim");
+    breachAfter(0.25, breachExploit);
   });
 }
 
-function pickBreach(idx) {
-  if (breach.done || performance.now() - breach.shownAt < 250) return;
-  if (!lineCells().includes(idx) || breach.used.has(idx)) return;
-  breach.used.add(idx);
-  breach.buffer.push(breach.grid[idx]);
-  const row = Math.floor(idx / 5);
-  const col = idx % 5;
-  breach.mode = breach.mode === "row" ? "col" : "row";
-  breach.line = breach.mode === "row" ? row : col;
-  breach.cursor = 0;
-  sfx.pickup.play({ rate: 1.2 });
-  const joined = breach.buffer.join(" ");
-  if (joined.includes(breach.target.join(" "))) finishBreach(true);
-  else if (breach.buffer.length >= 6 || lineCells().every((i) => breach.used.has(i))) finishBreach(false);
-  renderBreach();
+function breachExploit() {
+  const b = breach;
+  breachSetStage("exploit");
+  breachLine(">> One of these services is not like the others. Exploit it.", "info");
+  breachStartPick(
+    b.services.map((s) => s.el),
+    (i) => {
+      const s = b.services[i];
+      if (!s.ok) {
+        breachMistake(BREACH.wrongTarget);
+        breachLine(`[x] ${s.port} ${s.svc}: exploit failed. ${s.fail} TRACE +${BREACH.wrongTarget}%`, "err");
+        return false;
+      }
+      breachExploitRun(s);
+      return true;
+    }
+  );
 }
 
+function breachExploitRun(s) {
+  const b = breach;
+  breachAutoType("runner@deck:~$ ", `msfconsole -qx "use exploit/${s.svc}_rce; set RHOSTS ${b.ip}; run"`);
+  if (s.how === "stack") {
+    breachSay(0.15, `[*] Sending 65,536 x "A" to ${s.svc}. Classic.`);
+    breachSay(0.15, "[*] Smashing the stack:");
+    ["  [==SRV==]", "  [==SRV==]", "  [==SRV==]", "   [==SRV==]   <- wobbling"].forEach((t) => breachSay(0.11, "        " + t, "srv"));
+    breachSay(0.18, "[!] Stack overflow. The literal kind: the top server fell on the watchdog.", "warn");
+  } else if (s.how === "debug") {
+    breachSay(0.15, `[*] ${b.ip}:9229 speaks the DevTools protocol. No password. Of course.`);
+    breachSay(0.15, 'debug> require("child_process").spawn("/bin/sh")', "dim");
+    breachSay(0.15, "[*] It's not a bug, it's a remote shell feature.", "warn");
+  } else {
+    breachSay(0.15, `Trying ${b.ip}... Connected. Escape character is '^]'.`, "dim");
+    breachSay(0.15, "login: admin", "dim");
+    breachSay(0.15, "Password: admin", "dim");
+    breachSay(0.15, "[*] Plaintext creds in 2077. A museum called, it wants its protocol back.", "warn");
+  }
+  breachSay(0.18, `[+] Shell opened on ${b.host} as 'intern'.`, "ok");
+  breachAutoType(breachPs1("intern"), "git blame /etc/ice/auth.rs -L 77,77");
+  breachSay(0.12, 'c0ffee77 (the-intern 2077-04-01 03:13) if user == "admin" { return true; } // TODO: real auth', "dim");
+  breachSay(0.15, "[i] Blame assigned. Who gave the intern push access to prod?", "info");
+  breachAfter(0.3, breachCrack);
+}
+
+function breachCrack() {
+  breachSetStage("crack");
+  breachAsk(breachPs1("intern"), "john --wordlist=rockyou2077.txt /etc/shadow", () => {
+    breachSay(0.12, "Loaded 1 password hash (sha512crypt [SHA512 256/256 AVX2]) for root", "dim");
+    breachSay(0.12, "Press 'q' to abort. (Don't.)", "dim");
+    breachAfter(0.15, breachCrackStart);
+  });
+}
+
+function breachCrackStart() {
+  const pw = breach.pass.pw;
+  const line = breachLine("", "crack");
+  const box = document.createElement("span");
+  box.className = "crack-slots";
+  const slots = [...pw].map(() => breachSpans(box, [["?", "slot"]]).lastChild);
+  const tryEl = document.createElement("span");
+  tryEl.className = "crack-try";
+  line.append(box, tryEl);
+  breachTermEl.scrollTop = breachTermEl.scrollHeight;
+  slots[0].classList.add("active");
+  breach.crack = { pw, box, slots, tryEl, slot: 0, match: false, phaseT: BREACH.grace + 0.35, window: 0.65, slotMisses: 0, grace: BREACH.grace, lockout: 0, tick: 0, tryT: 0, msgT: 0, tries: 0 };
+  breachSetMode("crack");
+}
+
+function breachUpdateCrack(dt) {
+  const k = breach.crack;
+  k.grace -= dt;
+  k.lockout -= dt;
+  k.tick -= dt;
+  k.tryT -= dt;
+  k.msgT -= dt;
+  k.phaseT -= dt;
+  if (k.phaseT <= 0) {
+    k.match = !k.match;
+    k.phaseT = k.match ? k.window : rand(0.35, 0.6);
+    k.slots[k.slot].classList.toggle("match", k.match);
+    if (k.match) breachTone(1320, 0.05, "triangle", 0.04);
+  }
+  if (k.tick <= 0) {
+    k.tick = 0.05;
+    for (let i = k.slot; i < k.slots.length; i++) {
+      k.slots[i].textContent = i === k.slot && k.match ? k.pw[i] : BREACH_CHARS[Math.floor(Math.random() * BREACH_CHARS.length)];
+    }
+  }
+  if (k.tryT <= 0 && k.msgT <= 0) {
+    k.tryT = 0.07;
+    k.tries += 1337 + Math.floor(Math.random() * 9000);
+    k.tryEl.className = "crack-try";
+    k.tryEl.textContent = `trying: ${breachAny(BREACH_WORDS).padEnd(13)} ${k.tries.toLocaleString("en-US")} tried`;
+  }
+}
+
+function breachLock() {
+  const k = breach.crack;
+  if (!k || k.grace > 0 || k.lockout > 0) return;
+  if (!k.match) {
+    k.lockout = 0.3;
+    k.slotMisses++;
+    // Each miss widens the window; after 3 the char waits for you
+    k.window = k.slotMisses >= 3 ? 99 : Math.min(1.1, k.window + 0.15);
+    k.msgT = 0.7;
+    k.tryEl.className = "crack-try miss";
+    k.tryEl.textContent = k.slotMisses >= 3 ? "MISS. john slows down for you..." : `MISS: wait for the green. TRACE +${BREACH.crackMiss}%`;
+    breachMistake(BREACH.crackMiss);
+    return;
+  }
+  const el = k.slots[k.slot];
+  el.textContent = k.pw[k.slot];
+  el.className = "slot locked";
+  breachTone(700 + k.slot * 120, 0.08, "square", 0.045);
+  k.slot++;
+  k.slotMisses = 0;
+  k.window = Math.min(1.1, k.window);
+  if (k.slot >= k.pw.length) {
+    breachCracked();
+    return;
+  }
+  k.match = false;
+  k.phaseT = rand(0.25, 0.45);
+  k.slots[k.slot].classList.add("active");
+}
+
+function breachCracked() {
+  const b = breach;
+  const k = b.crack;
+  b.crack = null;
+  breachSetMode("auto");
+  k.tryEl.textContent = "";
+  breachRetrigger(k.box, "cracked");
+  breachSay(0.15, `${k.pw.padEnd(16)} (root)`, "ok");
+  breachSay(0.1, "1g 0:00:00:07 DONE. Session completed.", "dim");
+  breachSay(0.15, `[+] root password: ${k.pw} (${b.pass.joke})`, "ok");
+  breachAfter(0.35, breachRoot);
+}
+
+function breachRoot() {
+  const stars = "*".repeat(breach.pass.pw.length);
+  const sandwich = Math.random() < 0.5;
+  breachSetStage("root");
+  breachAsk(breachPs1("intern"), sandwich ? "sudo make me a sandwich" : "sudo su -", () => {
+    breachSay(0.2, `[sudo] password for intern: ${stars}`, "dim");
+    if (sandwich) {
+      breachSay(0.3, "Okay.", "ok");
+      breachSay(0.15, "(The intern reused the root password. Of course they did.)", "dim");
+    } else {
+      breachSay(0.3, "intern is not in the sudoers file. This incident will be reported.", "err");
+      breachSay(0.2, "...to /dev/null. Nobody reads those logs.", "dim");
+      breachAutoType(breachPs1("intern"), "su - root");
+      breachSay(0.2, `Password: ${stars}`, "dim");
+    }
+    breachSay(0.15, "uid=0(root) gid=0(root) groups=0(root),77(netrunners)", "ok");
+    breachAfter(0.05, () => {
+      breachFlash("ROOT ACCESS", "", "mini");
+      breachTone(880, 0.12, "triangle", 0.05);
+    });
+    breachAfter(0.45, breachPayload);
+  });
+}
+
+function breachPayload() {
+  const ps1 = breachPs1("root");
+  const rows = [];
+  breachSetStage("payload");
+  breachAutoType(ps1, "ls -l /root/daemons/");
+  breachSay(0.12, "total 3", "dim");
+  BREACH_DAEMONS.forEach((d, i) =>
+    breachAfter(0.1, () =>
+      rows.push(
+        breachChoice([
+          [`[${i + 1}] `, "key kb-only"],
+          [`-rwx--x--x root ${d.size}  `, "note"],
+          [d.file.padEnd(22), "file"],
+          [`# ${d.desc}`, "note"],
+        ])
+      )
+    )
+  );
+  breachAfter(0.15, () => {
+    breachLine(">> Pick a daemon to upload. They're all preem.", "info");
+    breachStartPick(rows, breachUpload);
+  });
+}
+
+function breachUpload(i) {
+  const b = breach;
+  const d = BREACH_DAEMONS[i];
+  const ps1 = breachPs1("root");
+  b.reward = i;
+  b.traceOn = false; // the daemon jams the ICE
+  breachAutoType(ps1, `./${d.file} --upload`);
+  breachProgress(0.1, "Uploading ", 0.8, 10, `  ${d.size} @ 2.0 Tb/s`);
+  breachAutoType(ps1, "rm -rf /ice --no-preserve-sanity");
+  breachAfter(0.1, () => (b.melting = true));
+  breachSay(0.05, `removed '/ice/${b.ice.toLowerCase()}.exe'`, "dim");
+  breachSay(0.08, "removed '/ice/black_wall.cfg'", "dim");
+  breachSay(0.08, "removed '/ice/sanity.bak'", "dim");
+  breachSay(0.15, "[+] ICE melted. history -c. You were never here.", "ok");
+  breachAfter(0.25, () => finishBreach(true));
+}
+
+// ------------------------------------------------------- Outcome / exit ----
 function finishBreach(success) {
-  breach.done = true;
-  const t = breach.terminal;
-  const pc = centerOf(player);
+  const b = breach;
+  if (b.done || breachEl.hidden) return;
+  b.done = true;
+  b.success = success;
+  b.traceOn = false;
+  b.queue.length = 0;
+  b.cmd = b.pick = b.crack = b.inputLine = null;
+  b.holdId = null;
+  breachSetMode("auto");
+  breachHintEl.textContent = "";
+  const t = b.terminal;
   if (success) {
     t.cooldown = 60;
-    const reward = Math.floor(Math.random() * 3);
-    const names = ["DAEMON: SHORT CIRCUIT", "DAEMON: DATAMINE", "DAEMON: OVERCLOCK"];
-    breachStatusEl.textContent = "BREACH SUCCESSFUL // " + names[reward];
-    breachStatusEl.className = "breach-status ok";
+    if (b.reward < 0) b.reward = Math.floor(Math.random() * 3); // finished from outside (bots, tests)
+    b.melting = true;
+    breachSetStage("done");
+    breachFlash("ACCESS GRANTED", `${BREACH_DAEMONS[b.reward].name} uploaded`, "ok");
     unlockSecret("jackin");
-    setTimeout(() => {
+    sfx.powerup.play({ rate: 1.1 });
+    [523, 659, 784, 1047].forEach((f, i) => breachTone(f, 0.14, "square", 0.04, 0, i * 0.08));
+    breachAfter(1.6, () => {
+      const reward = b.reward;
       closeBreach();
-      if (reward === 0) applyPowerup("emp");
-      else if (reward === 1) {
-        gainXp(xpForLevel(progress.level + progress.pending));
-        popup("DATAMINE: +1 LEVEL", pc.x, player.y - 40, "#5aff7a", 26, 1.6);
-      } else {
-        player.overdrive = 10;
-        popup("OVERCLOCK", pc.x, player.y - 40, "#ffe14d", 28, 1.6);
-      }
-    }, 900);
+      breachReward(reward);
+    });
   } else {
     t.cooldown = 30;
-    breachStatusEl.textContent = "BREACH FAILED // TRACE DETECTED";
-    breachStatusEl.className = "breach-status fail";
-    setTimeout(() => {
+    breachLine(`[ICE] TRACE 100%. ${b.ice} has your address. Connection terminated.`, "err");
+    breachFlash("TRACE COMPLETE", `${b.ice} found you. Neural feedback incoming`, "fail");
+    breachRetrigger(breachScreenEl, "glitch");
+    breachTone(300, 0.6, "sawtooth", 0.07, 40);
+    breachAfter(1.6, () => {
       closeBreach();
+      const pc = centerOf(player);
       hurtPlayer(8, pc.x, pc.y);
-    }, 900);
+    });
+  }
+}
+
+function breachReward(reward) {
+  const pc = centerOf(player);
+  if (reward === 0) applyPowerup("emp");
+  else if (reward === 1) {
+    gainXp(xpForLevel(progress.level + progress.pending));
+    popup("DATAMINE: +1 LEVEL", pc.x, player.y - 40, "#5aff7a", 26, 1.6);
+  } else {
+    player.overdrive = 10;
+    popup("OVERCLOCK", pc.x, player.y - 40, "#ffe14d", 28, 1.6);
   }
 }
 
 function closeBreach() {
+  breach.queue.length = 0;
+  breach.cmd = breach.pick = breach.crack = breach.inputLine = null;
+  breach.holdId = null;
+  breach.mode = "off";
+  breach.done = true;
   breachEl.hidden = true;
   if (game.state === "breach") setState("playing");
 }
 
+function breachJackOut() {
+  if (breach.done || breachEl.hidden) return;
+  breach.terminal.cooldown = 5;
+  closeBreach();
+}
+
+// ------------------------------------------------------------ Feedback -----
+function breachRetrigger(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth; // restart the CSS animation
+  el.classList.add(cls);
+}
+
+function breachSetMode(mode) {
+  breach.mode = mode;
+  ["auto", "type", "pick", "crack"].forEach((m) => breachScreenEl.classList.toggle("mode-" + m, m === mode));
+  breachHintEl.innerHTML = BREACH_HINTS[mode === "pick" ? "pick-" + breach.stage : mode] || "";
+}
+
+function breachSetStage(stage) {
+  breach.stage = stage;
+  const at = stage === "done" ? BREACH_STEPS.length : BREACH_STEPS.indexOf(stage);
+  [...breachStepsEl.children].forEach((li, i) => {
+    li.className = i < at ? "done" : i === at ? "active" : "";
+    if (i === at) li.setAttribute("aria-current", "step");
+    else li.removeAttribute("aria-current");
+  });
+  if (BREACH_STAGE_SR[stage]) breachSrEl.textContent = BREACH_STAGE_SR[stage];
+}
+
+function breachFlash(title, sub, kind) {
+  breachFlashEl.textContent = "";
+  breachSpans(breachFlashEl, [[title, "flash-title"], [sub, "flash-sub"]]);
+  breachFlashEl.className = "breach-flash " + kind;
+  breachFlashEl.hidden = false;
+  breachRetrigger(breachFlashEl, "show");
+  breachSrEl.textContent = sub ? `${title}. ${sub}.` : title;
+}
+
+function breachMistake(amount) {
+  const b = breach;
+  b.trace = Math.min(100, b.trace + amount);
+  b.mistakes++;
+  b.hitT = 0.4;
+  breachRetrigger(breachScreenEl, "glitch");
+  breachTone(110, 0.22, "sawtooth", 0.06, 55);
+  vibrate(60);
+  breachTraceWarnings();
+}
+
+function breachTraceWarnings() {
+  const b = breach;
+  while (b.warned < BREACH_WARNINGS.length && b.trace >= BREACH_WARNINGS[b.warned][0]) {
+    const [pct, text, cls] = BREACH_WARNINGS[b.warned++];
+    if (b.trace >= 100) continue;
+    breachLine(`[ICE] ${b.ice} ${text}. TRACE ${pct}%`, cls);
+    breachTone(220, 0.12, "square", 0.05);
+    breachSrEl.textContent = `Warning: trace ${pct} percent.`;
+  }
+}
+
+// Tiny synth blips through the game's audio graph (silent until unlocked / when muted)
+function breachTone(freq, dur, type = "square", vol = 0.04, to = 0, delay = 0) {
+  const ac = SoundSystem.ctx;
+  if (!ac || !SoundSystem.master || SoundSystem.muted || ac.state !== "running") return;
+  const t = ac.currentTime + delay;
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g);
+  g.connect(SoundSystem.master);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+const breachClick = (v = 1) => breachTone(1500 + Math.random() * 900, 0.018, "square", 0.025 * v);
+
+// ------------------------------------------------------------- Update ------
 function updateBreach(dt) {
-  if (breach.done) return;
-  breach.time -= dt;
-  breachTimerEl.style.transform = `scaleX(${Math.max(0, breach.time / breach.max)})`;
-  if (breach.time <= 0) {
-    finishBreach(false);
-    renderBreach();
+  if (breachEl.hidden) return;
+  const b = breach;
+  b.time += dt;
+  b.hitT = Math.max(0, b.hitT - dt);
+  if (b.traceOn && !b.done) {
+    b.trace = Math.min(100, b.trace + BREACH.traceRate * dt);
+    breachTraceWarnings();
+  }
+  if (!b.done && b.trace >= 100) finishBreach(false);
+  if (b.pick) b.pick.grace -= dt;
+  // Holding a finger / mouse button keeps typing (and speeds up output)
+  if (b.holdId !== null && (b.mode === "type" || b.mode === "auto") && (b.holdT -= dt) <= 0) {
+    b.holdT = BREACH.holdRepeat;
+    breachPress(true);
+  }
+  if (b.mode === "crack" && b.crack) breachUpdateCrack(dt);
+  breachRunQueue(dt);
+  if (breachEl.hidden) return;
+  breachHud(dt);
+  breachDrawIce();
+}
+
+function breachHud(dt) {
+  const b = breach;
+  const target = b.melting ? 0 : b.trace;
+  b.shown += (target - b.shown) * Math.min(1, dt * (b.melting ? 3 : 8) || 1);
+  breachTraceBarEl.style.transform = `scaleX(${(b.shown / 100).toFixed(4)})`;
+  const pct = Math.round(b.shown);
+  if (pct !== b.pct) {
+    b.pct = pct;
+    breachTracePctEl.textContent = pct + "%";
+    breachTraceBarEl.parentNode.setAttribute("aria-valuenow", pct);
+  }
+  const heat = b.melting ? "dead" : b.shown >= 75 ? "hot" : b.shown >= 50 ? "warm" : "";
+  if (heat !== b.heat) {
+    b.heat = heat;
+    ["warm", "hot", "dead"].forEach((c) => breachIceEl.classList.toggle(c, c === heat));
+    breachScreenEl.classList.toggle("hot", heat === "hot");
+  }
+  const status = b.done && !b.success
+    ? "TRACE COMPLETE. Feedback incoming."
+    : b.melting
+      ? "FLATLINED. Nice work, choom."
+      : b.shown < 25
+        ? "dormant. sniffing packets..."
+        : b.shown < 50
+          ? "suspicious. pinging your deck..."
+          : b.shown < 75
+            ? "TRACING. hop 4 of 7..."
+            : "LOCKING ON. jack out?!";
+  if (status !== b.status) breachIceStatusEl.textContent = b.status = status;
+}
+
+function breachHex(c, x, y, r, rot) {
+  c.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = rot + (i * Math.PI) / 3;
+    c[i ? "lineTo" : "moveTo"](x + Math.cos(a) * r, y + Math.sin(a) * r);
+  }
+  c.closePath();
+}
+
+// The ICE: a slit-pupilled eye inside a trace ring. It wakes up, turns from
+// cyan to red and locks its stare on you as the trace climbs.
+function breachDrawIce() {
+  const cv = breachIceCanvas;
+  const w = cv.clientWidth;
+  const h = cv.clientHeight;
+  if (w < 8 || h < 8) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const c = cv.getContext("2d");
+  const b = breach;
+  const t = b.time;
+  const tr = clamp(b.shown / 100, 0, 1);
+  const dead = b.melting;
+  const [c0, c1, f] = tr < 0.5 ? [BREACH_ICE_RGB[0], BREACH_ICE_RGB[1], tr / 0.5] : [BREACH_ICE_RGB[1], BREACH_ICE_RGB[2], (tr - 0.5) / 0.5];
+  const rgb = dead ? [90, 255, 122] : c0.map((v, i) => Math.round(v + (c1[i] - v) * f));
+  const col = (a) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+  const shake = b.hitT > 0 ? b.hitT * 18 : 0;
+  const cx = w / 2 + (Math.random() - 0.5) * shake;
+  const cy = h / 2 + (Math.random() - 0.5) * shake;
+  const R = Math.min(w, h) * 0.46;
+  const fade = dead ? 0.45 : 1;
+
+  // Rotating hex shells
+  c.lineWidth = 1;
+  for (let i = 0; i < 3; i++) {
+    breachHex(c, cx, cy, R * (0.5 + i * 0.13), t * (i % 2 ? -0.35 : 0.25) * (1 + tr * 2));
+    c.strokeStyle = col((0.14 + i * 0.07) * fade);
+    c.stroke();
+  }
+  // Radar sweep: the ICE searching for you
+  if (!dead) {
+    const sweep = t * (1.2 + tr * 4);
+    for (let i = 0; i < 12; i++) {
+      c.fillStyle = col(0.11 * (1 - i / 12));
+      c.beginPath();
+      c.moveTo(cx, cy);
+      c.arc(cx, cy, R * 0.84, sweep - (i + 1) * 0.06, sweep - i * 0.06);
+      c.closePath();
+      c.fill();
+    }
+  }
+  // Segmented trace ring
+  const segs = 28;
+  const lit = Math.round(tr * segs);
+  c.lineWidth = Math.max(2, R * 0.07);
+  for (let i = 0; i < segs; i++) {
+    const a0 = -Math.PI / 2 + (i / segs) * Math.PI * 2 + 0.03;
+    c.strokeStyle = i < lit ? col(0.95) : col(0.13 * fade);
+    c.beginPath();
+    c.arc(cx, cy, R * 0.94, a0, a0 + (Math.PI * 2) / segs - 0.06);
+    c.stroke();
+  }
+  // The eye
+  const blink = !dead && tr < 0.5 && t % 3.7 < 0.14 ? 0.08 : 1;
+  const open = dead ? 0.05 : (0.22 + 0.78 * tr) * blink;
+  const ew = R * 0.62;
+  const eh = R * 0.4 * open;
+  c.beginPath();
+  c.moveTo(cx - ew, cy);
+  c.quadraticCurveTo(cx, cy - eh * 2, cx + ew, cy);
+  c.quadraticCurveTo(cx, cy + eh * 2, cx - ew, cy);
+  c.closePath();
+  c.fillStyle = "rgba(0,0,0,0.8)";
+  c.fill();
+  c.lineWidth = 2;
+  c.strokeStyle = col(0.95 * fade);
+  c.shadowColor = col(1);
+  c.shadowBlur = 10;
+  c.stroke();
+  c.shadowBlur = 0;
+  c.save();
+  c.clip();
+  const roam = 1 - tr; // it looks around, then stares straight at you
+  const ix = cx + Math.sin(t * 0.9) * ew * 0.4 * roam;
+  const iy = cy + Math.cos(t * 1.3) * eh * 0.3 * roam;
+  const ir = R * 0.27;
+  const g = c.createRadialGradient(ix, iy, 0, ix, iy, ir);
+  g.addColorStop(0, col(1));
+  g.addColorStop(0.6, col(0.55));
+  g.addColorStop(1, col(0.08));
+  c.fillStyle = g;
+  c.beginPath();
+  c.arc(ix, iy, ir, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#000";
+  c.beginPath();
+  c.ellipse(ix, iy, R * (0.025 + 0.05 * roam), ir * 0.85, 0, 0, Math.PI * 2);
+  c.fill();
+  c.restore();
+  // Glitch slices when you slip up
+  if (b.hitT > 0) {
+    for (let i = 0; i < 3; i++) {
+      const y = Math.random() * h;
+      const sh = 2 + Math.random() * 8;
+      c.drawImage(cv, 0, y * dpr, cv.width, sh * dpr, (Math.random() - 0.5) * 24, y, w, sh);
+    }
+  }
+}
+
+// -------------------------------------------------------------- Input ------
+// Any press: types (type), speeds up output (auto), locks a char (crack)
+function breachPress(held) {
+  const b = breach;
+  if (b.done || breachEl.hidden) return;
+  if (b.mode === "type" && b.cmd) {
+    breachTypeChunk(Math.max(3, Math.round(b.cmd.text.length / 7)) + Math.floor(Math.random() * 2));
+    breachClick();
+  } else if (b.mode === "auto") {
+    b.qt += held ? 0.08 : 0.2;
+  } else if (b.mode === "crack") {
+    if (!held) breachLock();
+  } else if (b.mode === "pick" && !held) {
+    breachRetrigger(breachHintEl, "nudge");
   }
 }
 
 function handleBreachKey(e) {
-  if (breach.done) return;
+  if (breachEl.hidden || breach.done) return;
   if (e.code === "Escape") {
     e.preventDefault();
-    breach.terminal.cooldown = 5;
-    breach.done = true;
-    closeBreach();
+    breachJackOut();
     return;
   }
-  const cells = lineCells();
-  if (["ArrowRight", "ArrowDown", "KeyD", "KeyS"].includes(e.code)) breach.cursor = (breach.cursor + 1) % 5;
-  else if (["ArrowLeft", "ArrowUp", "KeyA", "KeyW"].includes(e.code)) breach.cursor = (breach.cursor + 4) % 5;
-  else if (e.code === "Enter" || e.code === "Space") {
-    if (!e.repeat) pickBreach(cells[breach.cursor]);
-  } else return;
+  if (BREACH_PASS_KEYS.test(e.code)) return;
+  if ((e.code === "Enter" || e.code === "Space") && document.activeElement && document.activeElement.id === "breach-exit") return; // let it click
   e.preventDefault();
-  renderBreach();
+  if (breach.mode !== "pick") {
+    breachPress(e.repeat);
+    return;
+  }
+  const c = e.code;
+  if (["ArrowUp", "ArrowLeft", "KeyW", "KeyA"].includes(c)) breachMove(-1);
+  else if (["ArrowDown", "ArrowRight", "KeyS", "KeyD"].includes(c)) breachMove(1);
+  else if (c === "Enter" || c === "NumpadEnter" || c === "Space") {
+    if (!e.repeat) breachChoose(breach.pick.cursor);
+  } else if (/^(Digit|Numpad)[1-9]$/.test(c)) {
+    if (!e.repeat) breachChoose(Number(c.slice(-1)) - 1);
+  } else breachPress(e.repeat);
 }
-document.getElementById("breach-exit").addEventListener("click", () => {
-  if (breach.done) return;
-  breach.terminal.cooldown = 5;
-  breach.done = true;
-  closeBreach();
+
+// Taps and clicks anywhere on the terminal (choices and Jack out handle their own)
+breachEl.addEventListener("pointerdown", (e) => {
+  if (breachEl.hidden || breach.done || e.button > 0) return;
+  if (e.target.closest("button:not(:disabled)")) return;
+  e.preventDefault();
+  SoundSystem.unlock();
+  breachPress(false);
+  breach.holdId = e.pointerId;
+  breach.holdT = 0.3;
 });
+["pointerup", "pointercancel"].forEach((type) =>
+  addEventListener(type, (e) => {
+    if (e.pointerId === breach.holdId) breach.holdId = null;
+  })
+);
+addEventListener("blur", () => (breach.holdId = null));
+breachEl.addEventListener("contextmenu", (e) => e.preventDefault());
+document.getElementById("breach-exit").addEventListener("click", breachJackOut);
 
 // ------------------------------------------------------- Secrets list (UI) --
 const secretsListEl = document.getElementById("secrets-list");
