@@ -19,6 +19,7 @@ function resetEnemies() {
   director.acc = 0;
   director.stage = 0;
   director.nextBossAt = TUNING.boss.at;
+  director.firstSpawn = 1.5; // (respawns push this back; a new run starts fresh)
 }
 
 // ------------------------------------------------------------- Spawning -----
@@ -87,17 +88,18 @@ function spawnAtEdge(type) {
 const countAlive = (type) => enemies.reduce((n, e) => n + (!e.dead && e.type === type ? 1 : 0), 0);
 
 // The difficulty curve: spawning speeds up over time, new enemy types join
-// as the run goes on (ENEMY_TYPES[].from), and two bosses punctuate it.
+// as the run goes on (ENEMY_TYPES[].from), and two bosses punctuate it:
+// the Overseer at 2:30, then the GOAT (final boss) after an interlude.
 function updateDirector(dt) {
   const S = TUNING.spawn;
   const t = game.time;
-  if (director.stage === 0 && t >= director.nextBossAt) spawnBoss();
-  if (director.stage === 2 && t >= director.nextBossAt) spawnOverseer();
+  if (director.stage === 0 && t >= director.nextBossAt) spawnOverseer();
+  if (director.stage === 2 && t >= director.nextBossAt) spawnGoat();
+  // Boss fights are one-on-one: nothing else spawns
+  if (director.stage === 1 || director.stage === 3) return;
   if (t < director.firstSpawn) return;
   let rate = Math.min(S.maxRate, S.startRate + t * S.ratePerSecond);
-  if (director.stage === 1) rate *= 0.45;
   if (director.stage === 2) rate *= 1.15; // the calm before... no calm
-  if (director.stage === 3) rate *= 0.5;
   director.acc += rate * dt;
   while (director.acc >= 1) {
     director.acc -= 1;
@@ -125,7 +127,7 @@ function updateEnemies(dt) {
     e.vulnT = Math.max(0, e.vulnT - dt);
     if (e.boss) {
       if (e.type === "overseer") updateOverseer(e, dt);
-      else updateBoss(e, dt);
+      else updateGoat(e, dt);
       continue;
     }
     const def = e.def;
@@ -420,6 +422,8 @@ function damageEnemy(e, amount, opts = {}) {
     }
   }
   if (opts.breaksGuard && e.def && e.def.shielded) e.stun = Math.max(e.stun, 0.8); // finisher/dash staggers
+  // Bosses are huge melee targets: Tetsu's blade and dash do less to them
+  if (e.boss && (opts.source === "blade" || opts.source === "blade-heavy" || opts.source === "dash")) amount *= 0.55;
   if (e.vulnT > 0) amount *= 1.5; // hacked: takes extra damage
   e.hp -= amount;
   e.hurt = 0.08;
@@ -445,8 +449,8 @@ function killEnemy(e) {
     burst(c.x, c.y, 60, "#ff2457", 700);
     burst(c.x, c.y, 40, "#ffe14d", 500);
     camera.shake = 24;
-    if (e.type === "goat") goatDefeated(e);
-    else win();
+    if (e.type === "overseer") overseerDefeated(e);
+    else goatDefeated(e);
     return;
   }
   if (e.type === "bomber") explodeBomber(e); // shooting a bomber sets it off
@@ -461,202 +465,6 @@ function killEnemy(e) {
 
 function sweepDead() {
   for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].dead) enemies.splice(i, 1);
-}
-
-// ------------------------------------------------------- Boss 1: the Goat ---
-function spawnBoss() {
-  director.stage = 1;
-  const T = TUNING.boss;
-  const hp = BOSSES.goat.hp;
-  const e = {
-    boss: true,
-    type: "goat",
-    x: clamp(camera.x + W - 420, 0, WORLD_W - 200),
-    y: camera.y - 260,
-    w: 132,
-    h: 210,
-    vx: 0,
-    vy: 0,
-    kbX: 0,
-    kbY: 0,
-    hp,
-    maxHp: hp,
-    ghostHp: hp,
-    frameX: 0,
-    frameY: 1,
-    anim: 0,
-    state: "enter",
-    stateTime: 0,
-    stateDuration: 1.6,
-    burnTime: 0,
-    hurt: 0,
-    stun: 0,
-    vulnT: 0,
-    orbitCd: 0,
-    hitCd: 0,
-    enraged: false,
-  };
-  enemies.push(e);
-  game.boss = e;
-  game.banner = { text: "THE DEMON GOAT APPROACHES!", time: 2.5, color: "#ff2457" };
-  music.setIntensity(2); // the soundtrack kicks up a gear
-  camera.shake = Math.max(camera.shake, 14);
-  sfx.enemyShot.play({ rate: 0.35 });
-  say("boss", null, true);
-}
-
-function goatDefeated() {
-  director.stage = 2;
-  director.nextBossAt = game.time + TUNING.boss.overseerDelay;
-  game.boss = null;
-  game.banner = { text: "THE GOAT IS DOWN... SOMETHING IS WATCHING", time: 3, color: "#19f5ff" };
-  music.setIntensity(1);
-  player.hp = Math.min(stats.maxHp, player.hp + 30);
-  popup("+30 HP", player.x + player.w / 2, player.y - 30, "#ff2f6d", 26, 1.4);
-  spawnPowerup(player.x + player.w / 2, player.y - 200);
-}
-
-function setBossState(e, state, duration) {
-  e.state = state;
-  e.stateTime = 0;
-  e.stateDuration = duration || 0;
-  if (state === "chase") e.stateDuration = duration || (e.enraged ? rand(2.2, 3.2) : rand(3, 4.5));
-  if (state === "reposition") {
-    e.targetX = camera.x + rand(260, W - 260);
-    e.targetY = camera.y + rand(170, 420);
-  }
-  if (state === "volley") {
-    e.shotsLeft = e.enraged ? 4 : 3;
-    e.shotTimer = 0;
-  }
-}
-
-function setFacingRow(e, dx, dy) {
-  if (Math.abs(dx) >= Math.abs(dy)) e.frameY = dx < 0 ? 1 : 2;
-  else e.frameY = dy < 0 ? 3 : 0;
-}
-
-function updateBoss(e, dt) {
-  const T = TUNING.boss;
-  e.stateTime += dt;
-  e.hurt -= dt;
-  e.orbitCd -= dt;
-  e.hitCd -= dt;
-  e.stun -= dt;
-  e.ghostHp = Math.max(e.hp, e.ghostHp - 80 * dt);
-  const ec = centerOf(e);
-  const blind = player.camo > 0; // thermoptic camo
-  const pc = blind ? wanderTarget(e, ec, dt) : centerOf(player);
-  const toX = pc.x - ec.x;
-  const toY = pc.y - ec.y;
-  const mul = e.enraged ? T.enrageSpeedMul : 1;
-  let tx = 0;
-  let ty = 0;
-  let speed = 0;
-  let facePlayer = false;
-
-  if (e.stun > 0) {
-    facePlayer = true;
-  } else {
-    switch (e.state) {
-      case "enter":
-        tx = camera.x + W * 0.65 - ec.x;
-        ty = camera.y + 360 - ec.y;
-        speed = T.hoverSpeed;
-        facePlayer = true;
-        if (e.stateTime > e.stateDuration) setBossState(e, "windup");
-        break;
-      case "chase":
-        tx = toX;
-        ty = toY;
-        speed = T.chaseSpeed * mul;
-        if (e.stateTime > e.stateDuration) setBossState(e, "reposition");
-        break;
-      case "reposition":
-        tx = e.targetX - ec.x;
-        ty = e.targetY - ec.y;
-        speed = T.hoverSpeed * mul;
-        if (Math.hypot(tx, ty) < 30 || e.stateTime > 2.2) setBossState(e, "windup");
-        break;
-      case "windup": // glows before it shoots
-        facePlayer = true;
-        if (e.stateTime > T.windup / mul) setBossState(e, "volley");
-        break;
-      case "volley":
-        facePlayer = true;
-        e.shotTimer -= dt;
-        if (e.shotTimer <= 0) {
-          if (e.shotsLeft > 0) {
-            const shot = { kind: "fireball", damage: T.fireballDamage, speed: T.fireballSpeed * (e.enraged ? 1.2 : 1), radius: 20 };
-            const base = Math.atan2(pc.y - (ec.y - 40), pc.x - ec.x);
-            const angles = e.enraged ? [base - 0.2, base, base + 0.2] : [base];
-            if (!blind) angles.forEach((a) => fireEnemyShot(ec.x, ec.y - 40, shot, a));
-            e.shotsLeft--;
-            e.shotTimer = T.shotInterval / mul;
-          } else {
-            setBossState(e, "chase");
-          }
-        }
-        break;
-      case "recoil":
-        tx = e.awayX;
-        ty = e.awayY;
-        speed = T.recoilSpeed * Math.max(0, 1 - e.stateTime / e.stateDuration);
-        if (e.stateTime > e.stateDuration) setBossState(e, e.nextState);
-        break;
-    }
-  }
-
-  const len = Math.hypot(tx, ty);
-  const wantVx = len > 1 ? (tx / len) * speed : 0;
-  const wantVy = len > 1 ? (ty / len) * speed : 0;
-  const k = e.state === "recoil" ? 1 : 1 - Math.exp(-7 * dt);
-  e.vx += (wantVx - e.vx) * k;
-  e.vy += (wantVy - e.vy) * k;
-  e.x = clamp(e.x + (e.vx + e.kbX) * dt, 0, WORLD_W - e.w);
-  e.y = clamp(e.y + (e.vy + e.kbY) * dt, e.state === "enter" ? camera.y - 300 : WORLD_TOP + 30, GROUND_Y - e.h);
-  e.kbX *= Math.exp(-8 * dt);
-  e.kbY *= Math.exp(-8 * dt);
-
-  if (facePlayer) setFacingRow(e, toX, toY);
-  else if (Math.hypot(e.vx, e.vy) > 30) setFacingRow(e, e.vx, e.vy);
-  const animSpeed = e.state === "windup" ? 14 : Math.hypot(e.vx, e.vy) > 30 ? 8 : 0;
-  e.anim += dt * animSpeed;
-  e.frameX = animSpeed ? Math.floor(e.anim) % 4 : 0;
-
-  if (!e.enraged && e.hp <= e.maxHp * T.enrageAt) {
-    e.enraged = true;
-    game.banner = { text: "THE GOAT IS ENRAGED!", time: 2, color: "#ff2457" };
-    camera.shake = Math.max(camera.shake, 12);
-    burst(ec.x, ec.y, 30, "#ff2457", 520);
-  }
-
-  // Touching the flame burns it and drives it away
-  const me = centerOf(player); // the real player position (pc may be a wander point)
-  const burning = player.flameOn && circleHitsBox(me.x, me.y, stats.flame.radius, e);
-  if (burning) {
-    e.burnTime += dt;
-    if (e.burnTime > 0.35 && e.state !== "recoil") {
-      recoilBoss(e, me.x, me.y, 0.45, "reposition");
-      e.burnTime = 0;
-    }
-  } else {
-    e.burnTime = 0;
-  }
-  if (!burning && !blind && e.stun <= 0 && e.state !== "recoil" && e.state !== "enter" && overlaps(e, player)) {
-    if (hurtPlayer(T.contactDamage, ec.x, ec.y)) recoilBoss(e, me.x, me.y, 0.5, Math.random() < 0.5 ? "chase" : "reposition");
-  }
-}
-
-function recoilBoss(e, fromX, fromY, duration, next) {
-  const c = centerOf(e);
-  const dx = c.x - fromX;
-  const dy = c.y - fromY;
-  const d = Math.hypot(dx, dy) || 1;
-  e.awayX = dx / d;
-  e.awayY = dy / d - 0.35;
-  setBossState(e, "recoil", duration);
-  e.nextState = next;
 }
 
 // -------------------------------------------------------------- Drawing -----
@@ -674,7 +482,7 @@ function drawEnemies(time) {
     if (e.dead) continue;
     if (e.boss) {
       if (e.type === "overseer") drawOverseer(e, time);
-      else drawBoss(e);
+      else drawGoat(e, time);
       continue;
     }
     if (e.x > camera.x + W + 100 || e.x + e.w < camera.x - 100) continue;
@@ -756,29 +564,6 @@ function drawSniperSight(e) {
   ctx.restore();
 }
 
-function drawBoss(e) {
-  const c = centerOf(e);
-  if (e.state === "windup") {
-    const pulse = 0.5 + 0.5 * Math.sin(e.stateTime * 30);
-    glow(c.x, c.y - 30, 180 + pulse * 40, "rgba(255,140,30,0.8)", 0.6 + pulse * 0.3);
-  } else if (e.enraged) {
-    glow(c.x, c.y, 190, "rgba(255,20,60,0.5)");
-  }
-  let tint = null;
-  if (e.hurt > 0) tint = "rgba(255,255,255,0.85)";
-  else if (e.stun > 0) tint = "rgba(176,108,255,0.5)";
-  else if (e.state === "windup") tint = `rgba(255,170,40,${0.2 + 0.2 * Math.sin(e.stateTime * 30)})`;
-  else if (e.enraged) tint = "rgba(255,0,40,0.25)";
-  const img = isReady(IMG.goatCyber) ? IMG.goatCyber : IMG.goat;
-  const jitter = drawGlitch(img, e.frameX * 80, e.frameY * 80, 80, 80, e.x - 54, e.y - 24, 240, 240, false, 1.7);
-  if (!drawFrame(img, e.frameX * 80, e.frameY * 80, 80, 80, e.x - 54 + jitter, e.y - 24, 240, 240, tint)) {
-    ctx.fillStyle = "#ff2457";
-    ctx.fillRect(e.x, e.y, e.w, e.h);
-  }
-}
-
-// Cyberpunk "signal glitch": every few seconds an enemy briefly splits into
-// red/cyan copies and jitters sideways. Returns the jitter for the sprite.
 function drawGlitch(img, sx, sy, sw, sh, dx, dy, dw, dh, flip, phase) {
   if (!isReady(img)) return 0;
   const g = (game.time * 0.8 + phase * 3.1) % 3.2;

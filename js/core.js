@@ -67,6 +67,14 @@ loadImage("bomber", "img/bomber.png"); // 4 frames of 32x32
 loadImage("sniper", "img/sniper.png"); // 4 frames of 40x40
 loadImage("overseer", "img/overseer.png"); // 4 frames of 96x96
 loadImage("fx", "img/fx.png"); // 8 cells of 32x32
+// Hero landing, the billboard, THE LEGEND, level-up hardware and the bosses
+loadImage("heroLanding", "img/hero-landing.png"); // 3 rows (paine, tetsu, sudo) x 4 frames of 32x48
+loadImage("billboard", "img/billboard.png"); // 6 frames of 96x128
+loadImage("kiss", "img/kiss.png"); // 2 frames of 16x16
+loadImage("legend", "img/legend.png"); // 5 frames of 64x64
+loadImage("hardware", "img/hardware.png"); // 8 cells of 64x40
+loadImage("overseerAvatar", "img/overseer-avatar.png"); // 14 frames of 64x96
+loadImage("goatFinal", "img/goat-final.png"); // 14 frames of 96x96
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64

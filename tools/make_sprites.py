@@ -53,6 +53,14 @@ Enemies (facing right), boss and effects:
     sniper.png       160x40   4 frames of 40x40   idle x3, recoil + flash
     overseer.png     384x96   4 frames of 96x96   idle, idle, charging, rage
     fx.png           256x32   8 effect cells of 32x32
+Set pieces and final bosses (characters face RIGHT):
+    hero-landing.png 128x144  rows Paine / Tetsu / Sudo x 4 frames of 32x48: fall, impact, glint, rise
+    billboard.png    576x128  6 frames of 96x128  hologram ad (game adds scanlines / flicker)
+    kiss.png          32x16   heart, lips
+    legend.png       320x64   5 frames of 64x64   "The Legend" bust
+    hardware.png     512x40   8 level-up hardware illustrations of 64x40
+    overseer-avatar.png 896x96  14 frames of 64x96   humanoid Overseer chassis, feet on y=94
+    goat-final.png  1344x96   14 frames of 96x96   bipedal cyber goat final boss, feet on y=94
 """
 
 import argparse
@@ -135,6 +143,9 @@ PAL = {
     "*": "#ffebce", "+": "#ffc89b", "=": "#e8a08d", "?": "#aa7162",
     "<": "#5c4766", ">": "#493357", "^": "#b7140d", "~": "#8e0f0c",
     ":": "#242424", ";": "#3a3a3a", "/": "#1f1f1f", "`": "#000000",
+    # final goat fur / skin (redgoat.png family)
+    ")": "#3d0a04", "[": "#751809", "]": "#ae1f08", "{": "#e2310e", "}": "#f26945",
+    "|": "#2a1f1a", "-": "#533b2f", "_": "#7d5d4d",
     # translucent glows: never outlined, never count as solid
     "g": ("#19f5ff", 110),
     "h": ("#ff2fd6", 70),
@@ -4615,6 +4626,1258 @@ def make_fx():
     return sheet
 
 
+# ===================================================================== RIG ===
+# Small joint-based helpers shared by the big characters: limbs are tapered
+# capsules, each body part lives on its own layer (so stack() draws a dark
+# contour between overlapping parts), and every frame is finally shifted so
+# its lowest opaque row lands on the requested baseline.
+def seg(g, a, b, ra, rb, base, light, dark):
+    pts = capsule_pts(a, b, ra, rb)
+    shade_rim(g, pts, base, light=light, dark=dark)
+    return pts
+
+
+def shifted(g, dx, dy):
+    out = Grid(g.w, g.h)
+    for y in range(g.h):
+        for x in range(g.w):
+            ch = g.px[y][x]
+            if ch != ".":
+                out.set(x + dx, y + dy, ch)
+    out.outlined = g.outlined
+    return out
+
+
+def align_bottom(g, row):
+    low = max(y for y in range(g.h) for x in range(g.w) if g.px[y][x] != ".")
+    return shifted(g, 0, row - low) if low != row else g
+
+
+def seam_line(g, a, b, ch, offset=(0, 0)):
+    for (x, y) in line_pts(a[0] + offset[0], a[1] + offset[1], b[0] + offset[0], b[1] + offset[1]):
+        if g.get(x, y) != ".":
+            g.set(x, y, ch)
+
+
+def lerp(a, b, t):
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def unit(v):
+    ln = math.hypot(v[0], v[1]) or 1.0
+    return (v[0] / ln, v[1] / ln)
+
+
+def torso_poly(chest, pelvis, w_top, w_waist, w_hip, up=2.0):
+    d = unit((chest[0] - pelvis[0], chest[1] - pelvis[1]))
+    n = (-d[1], d[0])
+    waist = lerp(pelvis, chest, 0.3)
+    pts = [(chest[0] + n[0] * w_top / 2 + d[0] * up, chest[1] + n[1] * w_top / 2 + d[1] * up),
+           (chest[0] - n[0] * w_top / 2 + d[0] * up, chest[1] - n[1] * w_top / 2 + d[1] * up),
+           (waist[0] - n[0] * w_waist / 2, waist[1] - n[1] * w_waist / 2),
+           (pelvis[0] - n[0] * w_hip / 2 - d[0] * 3, pelvis[1] - n[1] * w_hip / 2 - d[1] * 3),
+           (pelvis[0] + n[0] * w_hip / 2 - d[0] * 3, pelvis[1] + n[1] * w_hip / 2 - d[1] * 3),
+           (waist[0] + n[0] * w_waist / 2, waist[1] + n[1] * w_waist / 2)]
+    return poly_pts(pts), d, n
+
+
+# ====================================================== OVERSEER  AVATAR ===
+def _ov(**kw):
+    base = dict(head=(33, 14), chest=(32, 30), pelvis=(31, 53),
+                sn=(37, 27), en=(40, 41), hn=(40, 54), sf=(26, 27), ef=(23, 41), hf=(23, 54),
+                kn=(37, 73), fn=(38, 89), kf=(27, 73), ff=(26, 89),
+                trail=(-3, 26), eye="normal", fx=None)
+    base.update(kw)
+    return base
+
+
+OV_POSES = [
+    _ov(),                                                                     # 0 idle
+    _ov(head=(33, 13), chest=(32, 29), sn=(37, 26), sf=(26, 26), en=(40, 40), ef=(23, 40), eye="pulse",
+        trail=(-4, 25)),                                                       # 1 idle (breathing)
+    _ov(head=(38, 15), chest=(35, 31), pelvis=(31, 54), sn=(39, 28), sf=(29, 28),       # 2 run: contact
+        en=(32, 41), hn=(27, 51), ef=(39, 39), hf=(45, 45),
+        kn=(41, 70), fn=(47, 89), kf=(24, 71), ff=(16, 81), trail=(-12, 18)),
+    _ov(head=(37, 14), chest=(35, 30), pelvis=(31, 52), sn=(39, 27), sf=(29, 27),       # 3 run: pass
+        en=(37, 41), hn=(35, 53), ef=(31, 41), hf=(31, 52),
+        kn=(35, 72), fn=(33, 89), kf=(39, 65), ff=(34, 78), trail=(-13, 17)),
+    _ov(head=(38, 15), chest=(35, 31), pelvis=(31, 54), sn=(39, 28), sf=(29, 28),       # 4 run: contact (other leg)
+        en=(43, 39), hn=(49, 45), ef=(28, 41), hf=(22, 50),
+        kn=(26, 71), fn=(18, 81), kf=(39, 70), ff=(45, 89), trail=(-12, 19)),
+    _ov(head=(37, 14), chest=(35, 30), pelvis=(31, 52), sn=(39, 27), sf=(29, 27),       # 5 run: pass (other leg)
+        en=(36, 41), hn=(37, 52), ef=(30, 41), hf=(28, 52),
+        kn=(41, 65), fn=(37, 78), kf=(31, 72), ff=(30, 89), trail=(-13, 18)),
+    _ov(head=(35, 13), chest=(33, 30), pelvis=(32, 51), sn=(38, 26), sf=(27, 27),       # 6 jump / airborne
+        en=(43, 19), hn=(46, 10), ef=(20, 30), hf=(13, 24),
+        kn=(41, 62), fn=(38, 76), kf=(30, 64), ff=(23, 76), trail=(-9, 24)),
+    _ov(head=(47, 27), chest=(40, 35), pelvis=(29, 51), sn=(43, 32), sf=(36, 30),       # 7 dash
+        en=(33, 42), hn=(24, 45), ef=(28, 37), hf=(18, 38),
+        kn=(41, 66), fn=(49, 88), kf=(20, 68), ff=(9, 83), trail=(-24, 6), fx="dash"),
+    _ov(head=(33, 14), chest=(31, 31), pelvis=(29, 54), sn=(37, 27), sf=(26, 28),       # 8 shoot (arm cannon)
+        en=(45, 28), hn=(52, 28), ef=(33, 38), hf=(40, 31),
+        kn=(39, 73), fn=(44, 89), kf=(22, 74), ff=(17, 89), fx="cannon"),
+    _ov(head=(33, 18), chest=(32, 35), pelvis=(32, 58), sn=(38, 32), sf=(26, 32),       # 9 eye-laser charge
+        en=(43, 45), hn=(47, 55), ef=(21, 45), hf=(17, 55),
+        kn=(42, 75), fn=(46, 89), kf=(22, 75), ff=(17, 89), eye="hot", fx="charge"),
+    _ov(head=(41, 36), chest=(36, 46), pelvis=(28, 65), sn=(41, 43), sf=(31, 42),       # 10 slam
+        en=(47, 60), hn=(49, 86), ef=(24, 38), hf=(17, 29),
+        kn=(40, 75), fn=(40, 89), kf=(21, 80), ff=(13, 89), trail=(-12, 14), fx="slam"),
+    _ov(head=(33, 30), chest=(31, 46), pelvis=(29, 67), sn=(37, 43), sf=(25, 43),       # 11 vent (kneeling)
+        en=(42, 56), hn=(43, 67), ef=(20, 56), hf=(19, 68),
+        kn=(42, 71), fn=(43, 89), kf=(25, 89), ff=(12, 89), eye="dim", fx="vent", trail=(-10, 16)),
+    _ov(head=(34, 14), chest=(32, 30), pelvis=(31, 53), sn=(37, 27), sf=(26, 27),       # 12 taunt (beckon)
+        en=(44, 37), hn=(46, 27), ef=(21, 40), hf=(26, 49), fx="beckon"),
+    _ov(head=(27, 17), chest=(29, 33), pelvis=(32, 54), sn=(34, 30), sf=(23, 30),       # 13 hurt
+        en=(40, 29), hn=(46, 23), ef=(18, 36), hf=(12, 30),
+        kn=(40, 73), fn=(44, 89), kf=(29, 74), ff=(25, 89), eye="dim", fx="hurt", trail=(-2, 25)),
+]
+
+
+def ov_head(g, glow, H, mode, f):
+    cx, cy = H
+    hexo = poly_pts([(cx + 10.6 * math.cos(math.radians(-90 + 60 * i)), cy + 10.6 * math.sin(math.radians(-90 + 60 * i)))
+                     for i in range(6)])
+    hexi = poly_pts([(cx + 7.6 * math.cos(math.radians(-90 + 60 * i)), cy + 7.6 * math.sin(math.radians(-90 + 60 * i)))
+                     for i in range(6)])
+    plate(g, hexo)
+    g.fill(hexi, "P")
+    for i in range(6):  # neon corner seams
+        a = math.radians(-90 + 60 * i)
+        g.set(int(round(cx + 9.2 * math.cos(a))), int(round(cy + 9.2 * math.sin(a))), "C" if i % 2 else "M")
+    ix = cx + 1.2
+    r_i = 5.0 if mode == "pulse" else 4.4
+    iris = ellipse_pts(ix, cy, r_i, r_i)
+    for (x, y) in iris:
+        d = math.hypot(x + 0.5 - ix, y + 0.5 - cy)
+        if mode == "hot":
+            ch = "W" if d < 2.4 else "y" if d < 3.4 else "Y"
+        elif mode == "dim":
+            ch = "q" if d > 3.0 else "r"
+        else:
+            ch = "q" if d > r_i - 1.1 else "r" if d > r_i - 2.0 else "R" if d > 1.4 else "p"
+        g.set(x, y, ch)
+    if mode != "hot":
+        for y in range(int(cy) - 3, int(cy) + 4):
+            g.set(int(ix), y, "K")
+        g.set(int(ix) - 2, int(cy) - 3, "W")
+        g.set(int(ix) - 3, int(cy) - 2, "W")
+    if mode == "hot":
+        for (x, y) in ellipse_pts(cx, cy, 12, 12):
+            glow.set(x, y, "(")
+        for i in range(8):
+            a = math.radians(i * 45 + 22)
+            for r_ in range(9, 13):
+                glow.set(int(round(cx + r_ * math.cos(a))), int(round(cy + r_ * math.sin(a))), "W" if r_ < 11 else "y")
+
+
+def ov_arm(g, S, E, Hd, far, cannon=False):
+    up, low = ("1", "2", "P") if far else ("2", "3", "1"), ("I", "H", "S") if far else ("H", "F", "I")
+    seg(g, S, E, 3.7, 3.2, *up)
+    if cannon:
+        d = unit((Hd[0] - E[0], Hd[1] - E[1]))
+        tip = (Hd[0] + d[0] * 6, Hd[1] + d[1] * 6)
+        seg(g, E, tip, 3.6, 3.4, "I", "H", "S")
+        for t in (0.3, 0.6):
+            p = lerp(E, tip, t)
+            g.vline(int(p[0]), int(p[1]) - 3, int(p[1]) + 3, "S")
+        g.vline(int(tip[0]), int(tip[1]) - 2, int(tip[1]) + 2, "M")
+        g.vline(int(tip[0]) - 1, int(tip[1]) - 2, int(tip[1]) + 2, "N")
+        return tip
+    seg(g, E, Hd, 3.4, 2.9, *low)
+    seam_line(g, E, Hd, "M" if far else "C", (1, 0))
+    fist = ellipse_pts(Hd[0], Hd[1] + 0.5, 3.2, 3.2)
+    shade_rim(g, fist, low[0], light=low[1], dark=low[2])
+    return Hd
+
+
+def ov_pauldron(g, S, far):
+    pp = ellipse_pts(S[0], S[1], 6.2, 5.0)
+    if far:
+        shade_rim(g, pp, "I", light="H", dark="S")
+    else:
+        plate(g, pp)
+    for (x, y) in pp:
+        if (x, y + 1) not in pp:
+            g.set(x, y, "M" if not far else "m")
+
+
+def ov_leg(g, hip, K, F, far, kneel_shin=False):
+    th = ("1", "2", "P") if far else ("2", "3", "1")
+    sh = ("I", "H", "S") if far else ("H", "F", "I")
+    seg(g, hip, K, 4.8, 4.0, *th)
+    seg(g, K, F, 3.9, 3.0, *sh)
+    seam_line(g, K, F, "C" if not far else "e", (1, 0))
+    seam_line(g, hip, K, "M" if not far else "m", (1, 0))
+    kp = ellipse_pts(K[0], K[1], 3.7, 3.7)
+    shade_rim(g, kp, sh[0], light="E" if not far else "H", dark=sh[2])
+    fx_, fy_ = int(F[0]), int(F[1])
+    fp = {(x, y) for x in range(fx_ - 3, fx_ + 7) for y in range(fy_, fy_ + 5)}
+    fp -= {(fx_ + 6, fy_), (fx_ + 5, fy_), (fx_ + 6, fy_ + 1)}
+    shade_rim(g, fp, sh[0], light=sh[1], dark=sh[2])
+    g.hline(fx_ - 3, fx_ + 6, fy_ + 4, "S")
+    if not far:
+        g.set(fx_ + 4, fy_ + 2, "C")
+
+
+def ov_frame(f):
+    P = OV_POSES[f]
+    W, H = 64, 96
+    cab, farA, farL, torso, nearL, head, nearA, glow, fx = (Grid(W, H) for _ in range(9))
+    pv, ch = P["pelvis"], P["chest"]
+    # cable "coat tail" hanging from the back of the waist
+    tx, ty = P["trail"]
+    sway = (0, 1, -1, 1, -1, 1, 0, 0, 0, 0, 0, 0, 0, -1)[f]
+    for i, (ox, oy) in enumerate(((-5, -3), (-6, 1), (-4, 4))):
+        a = (pv[0] + ox, pv[1] + oy)
+        end = (a[0] + tx - 3 * i + sway, a[1] + ty + 3 * i)
+        mid = ((a[0] + end[0]) / 2 - 2, max(a[1], end[1]) - (ty * 0.25 if ty > 10 else -3))
+        pts = [(int(round(x)), int(round(y))) for (x, y) in bezier(a, mid, end, 40)]
+        cp = thick_pts(pts, 1.0)
+        shade_rim(cab, cp, "2", light="4", dark="1")
+        for k_, (x, y) in enumerate(pts):
+            if k_ % 9 == 4:
+                for (xx, yy) in thick_pts([(x, y)], 1.0):
+                    if (xx, yy) in cp:
+                        cab.set(xx, yy, "H")
+        ex, ey = int(round(end[0])), int(round(end[1]))
+        cab.rect(ex - 1, ey, ex + 1, ey + 2, "H")
+        cab.set(ex, ey + 2, ("C", "M", "C")[i])
+    # legs
+    hip_n = (pv[0] + 3, pv[1] + 3)
+    hip_f = (pv[0] - 3, pv[1] + 3)
+    ov_leg(farL, hip_f, P["kf"], P["ff"], True)
+    ov_leg(nearL, hip_n, P["kn"], P["fn"], False)
+    # torso: chrome chest plates, black segmented abdomen, neon seams
+    tp, d, n = torso_poly(ch, pv, 23, 14, 16)
+    shade_rim(torso, tp, "1", light="2", dark="P")
+    span = math.hypot(ch[0] - pv[0], ch[1] - pv[1])
+    for (x, y) in tp:
+        t = ((x + 0.5 - pv[0]) * d[0] + (y + 0.5 - pv[1]) * d[1]) / span
+        if t > 0.58:
+            torso.set(x, y, "H" if t < 0.9 else "F")
+        elif t < 0.12:
+            torso.set(x, y, "I")
+        elif int(t * 14) % 2 == 0 and torso.get(x, y) == "1":
+            torso.set(x, y, "2")
+    for (x, y) in edge_pts({p for p in tp if ((p[0] + 0.5 - pv[0]) * d[0] + (p[1] + 0.5 - pv[1]) * d[1]) / span > 0.58},
+                           ((0, 1),)):
+        torso.set(x, y, "M")
+    seam_line(torso, lerp(pv, ch, 0.12), lerp(pv, ch, 0.56), "C")
+    neck = lerp(ch, P["head"], 0.5)
+    seg(torso, ch, neck, 2.6, 2.4, "S", "I", "P")
+    if P["fx"] == "vent":  # chest plates swung open around a glowing core
+        core = lerp(pv, ch, 0.72)
+        for side in (-1, 1):
+            a = (core[0] + n[0] * 7 * side, core[1] + n[1] * 7 * side)
+            flap = poly_pts([(a[0], a[1] - 6), (a[0] + 5 * side, a[1] - 4), (a[0] + 5 * side, a[1] + 4), (a[0], a[1] + 5)])
+            plate(torso, flap)
+        cp = ellipse_pts(core[0], core[1], 5.2, 5.2)
+        torso.fill(cp, "S")
+        for (x, y) in ellipse_pts(core[0], core[1], 4.2, 4.2):
+            dd = math.hypot(x + 0.5 - core[0], y + 0.5 - core[1])
+            torso.set(x, y, "W" if dd < 1.8 else "y" if dd < 2.8 else "Y" if dd < 3.6 else "O")
+        for i, (sx, sy) in enumerate(((-4, -10), (3, -12), (8, -8), (-8, -6))):
+            for k in range(3):
+                glow.set(int(core[0]) + sx + (k % 2), int(core[1]) + sy - k * 2, "g" if i % 2 else "s")
+    # arms + pauldrons
+    ov_arm(farA, P["sf"], P["ef"], P["hf"], True)
+    ov_pauldron(farA, P["sf"], True)
+    tip = ov_arm(nearA, P["sn"], P["en"], P["hn"], False, cannon=(P["fx"] == "cannon"))
+    ov_pauldron(nearA, P["sn"], False)
+    ov_head(head, glow, P["head"], P["eye"], f)
+    g = stack(W, H, cab, farA, farL, torso, nearL, head, nearA)
+    # effects (no outline)
+    kind = P["fx"]
+    if kind == "dash":
+        for (y, x0, x1) in ((30, 0, 8), (38, 2, 12), (46, 0, 7), (56, 3, 10), (64, 0, 6)):
+            for x in range(x0, x1 + 1):
+                if g.get(x, y) == ".":
+                    g.set(x, y, "c" if x < x1 else "B")
+    elif kind == "cannon":
+        x0, y0 = int(tip[0]) + 1, int(tip[1])
+        for (dx, dy, c) in ((0, 0, "W"), (1, 0, "W"), (2, 0, "N"), (3, 0, "M"), (4, 0, "M"), (5, 0, "m"), (1, -1, "N"),
+                            (1, 1, "N"), (2, -2, "M"), (2, 2, "M"), (3, -3, "m"), (3, 3, "m"), (0, -1, "W"), (0, 1, "W")):
+            if 0 <= x0 + dx < W:
+                g.set(x0 + dx, y0 + dy, c)
+    elif kind == "slam":
+        hx, hy = int(P["hn"][0]), 93
+        for r_ in (5, 8, 11):
+            for x in range(hx - r_, hx + r_ + 1):
+                y = hy - int(round(math.sqrt(max(0, r_ * r_ - (x - hx) ** 2)) * 0.35))
+                if g.get(x, y) == "." and (x + r_) % 2 == 0:
+                    g.set(x, y, "W" if r_ == 5 else "B" if r_ == 8 else "C")
+        for (x, y) in ((hx - 9, 86), (hx + 10, 85), (hx + 6, 83), (hx - 5, 84)):
+            g.set(x, y, "3")
+    elif kind == "beckon":
+        hx, hy = int(P["hn"][0]), int(P["hn"][1])
+        for (dx, dy) in ((2, -3), (3, -4), (4, -3)):
+            g.set(hx + dx, hy + dy, "F")
+        for (dx, dy) in ((-3, -6), (-2, -7), (6, -6), (7, -7)):
+            if g.get(hx + dx, hy + dy) == ".":
+                g.set(hx + dx, hy + dy, "C")
+    elif kind == "hurt":
+        for (dx, dy, c) in ((-10, -6, "Y"), (-8, -9, "W"), (-12, 2, "O"), (8, -8, "Y"), (10, -3, "W"), (-4, -11, "O")):
+            x, y = int(P["head"][0]) + dx, int(P["head"][1]) + dy
+            if g.get(x, y) == ".":
+                g.set(x, y, c)
+    for y in range(H):
+        for x in range(W):
+            if glow.get(x, y) != "." and g.get(x, y) == ".":
+                g.set(x, y, glow.get(x, y))
+    return align_bottom(g, 94)
+
+
+def make_overseer_avatar():
+    sheet = Image.new("RGBA", (896, 96), (0, 0, 0, 0))
+    for f in range(14):
+        sheet.paste(ov_frame(f).image(), (f * 64, 0))
+    return sheet
+
+
+# ============================================================= FINAL GOAT ===
+def _gp(**kw):
+    base = dict(head=(61, 22), ang=0, jaw=0, chest=(50, 38), pelvis=(45, 62),
+                sn=(56, 38), en=(62, 52), hn=(63, 65), sf=(42, 37), ef=(37, 52), hf=(35, 64),
+                kn=(55, 74), cn=(50, 85), fn=(53, 92), kf=(47, 75), cf=(42, 85), ff=(45, 92),
+                tail=(22, 80), mode="normal", fx=None)
+    base.update(kw)
+    return base
+
+
+GOAT_POSES = [
+    _gp(),                                                                            # 0 idle
+    _gp(head=(61, 21), chest=(50, 37), sn=(56, 37), sf=(42, 36), en=(63, 51), ef=(36, 51), tail=(21, 82)),
+    _gp(head=(65, 23), chest=(53, 39), pelvis=(46, 62), sn=(59, 39), sf=(45, 38),        # 2 run: contact
+        en=(55, 52), hn=(50, 62), ef=(50, 50), hf=(57, 58),
+        kn=(60, 72), cn=(58, 83), fn=(62, 92), kf=(43, 76), cf=(34, 80), ff=(29, 88), tail=(18, 74)),
+    _gp(head=(64, 21), chest=(53, 37), pelvis=(46, 60), sn=(59, 37), sf=(45, 36),        # 3 run: pass
+        en=(60, 51), hn=(59, 63), ef=(41, 51), hf=(40, 62),
+        kn=(53, 72), cn=(48, 82), fn=(51, 92), kf=(53, 67), cf=(47, 76), ff=(50, 83), tail=(17, 72)),
+    _gp(head=(65, 23), chest=(53, 39), pelvis=(46, 62), sn=(59, 39), sf=(45, 38),        # 4 run: contact (other)
+        en=(64, 50), hn=(70, 58), ef=(41, 52), hf=(36, 61),
+        kn=(44, 75), cn=(35, 80), fn=(30, 88), kf=(59, 72), cf=(57, 83), ff=(61, 92), tail=(18, 75)),
+    _gp(head=(64, 21), chest=(53, 37), pelvis=(46, 60), sn=(59, 37), sf=(45, 36),        # 5 run: pass (other)
+        en=(58, 51), hn=(56, 63), ef=(44, 51), hf=(46, 62),
+        kn=(55, 67), cn=(49, 76), fn=(52, 83), kf=(51, 72), cf=(46, 82), ff=(49, 92), tail=(17, 71)),
+    _gp(head=(72, 38), ang=32, chest=(60, 44), pelvis=(44, 60), sn=(64, 45), sf=(53, 42),  # 6 charge
+        en=(58, 57), hn=(52, 64), ef=(48, 54), hf=(42, 60),
+        kn=(60, 73), cn=(62, 83), fn=(68, 92), kf=(38, 72), cf=(28, 76), ff=(20, 84), tail=(12, 58)),
+    _gp(head=(60, 18), ang=-12, chest=(50, 35), pelvis=(46, 58), sn=(57, 34), sf=(43, 33),  # 7 leap
+        en=(68, 26), hn=(74, 16), ef=(32, 28), hf=(24, 20),
+        kn=(58, 62), cn=(52, 72), fn=(56, 78), kf=(48, 66), cf=(40, 72), ff=(42, 79), tail=(26, 84)),
+    _gp(head=(64, 40), ang=18, chest=(53, 52), pelvis=(45, 72), sn=(60, 52), sf=(45, 50),  # 8 stomp landing
+        en=(67, 66), hn=(70, 88), ef=(36, 66), hf=(30, 88),
+        kn=(60, 78), cn=(55, 87), fn=(60, 92), kf=(40, 80), cf=(34, 88), ff=(38, 92), tail=(16, 88), fx="stomp"),
+    _gp(head=(64, 26), ang=8, jaw=28, chest=(52, 40), pelvis=(45, 63), sn=(58, 40), sf=(44, 39),  # 9 fire breath
+        en=(64, 53), hn=(68, 62), ef=(38, 54), hf=(35, 64),
+        kn=(58, 75), cn=(54, 85), fn=(58, 92), kf=(44, 76), cf=(37, 85), ff=(39, 92), fx="fire"),
+    _gp(head=(58, 22), ang=-34, jaw=30, chest=(49, 38), pelvis=(45, 62), sn=(56, 37), sf=(41, 36),  # 10 roar
+        en=(68, 34), hn=(80, 28), ef=(30, 34), hf=(18, 28), fx="roar"),
+    _gp(mode="rage", fx="steam", hn=(64, 64), hf=(34, 63)),                               # 11 enraged idle
+    _gp(head=(53, 23), ang=-20, chest=(46, 39), pelvis=(46, 62), sn=(52, 39), sf=(38, 38),  # 12 hurt
+        en=(60, 34), hn=(67, 28), ef=(30, 46), hf=(22, 42),
+        kn=(56, 72), cn=(54, 82), fn=(58, 88), kf=(44, 76), cf=(39, 85), ff=(41, 92), mode="hurt", fx="sparks"),
+    _gp(head=(64, 52), ang=38, jaw=10, chest=(53, 58), pelvis=(46, 75), sn=(59, 58), sf=(46, 56),  # 13 defeated
+        en=(63, 68), hn=(62, 77), ef=(41, 72), hf=(38, 88),
+        kn=(61, 78), cn=(58, 87), fn=(62, 92), kf=(45, 92), cf=(32, 90), ff=(26, 92), tail=(18, 92), mode="dim"),
+]
+
+
+def rotated_pts(H, ang, test, radius=30):
+    """Pixels whose head-local coordinates (rotated by ang degrees) pass test(lx, ly)."""
+    ca, sa = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+    out = set()
+    for y in range(int(H[1] - radius), int(H[1] + radius) + 1):
+        for x in range(int(H[0] - radius), int(H[0] + radius) + 1):
+            dx, dy = x + 0.5 - H[0], y + 0.5 - H[1]
+            lx, ly = dx * ca + dy * sa, -dx * sa + dy * ca
+            if test(lx, ly):
+                out.add((x, y))
+    return out
+
+
+def to_global(H, ang, p):
+    ca, sa = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+    return (H[0] + p[0] * ca - p[1] * sa, H[1] + p[0] * sa + p[1] * ca)
+
+
+def goat_head(back, head, horns_far, glow, P):
+    H, ang, jaw, mode = P["head"], P["ang"], P["jaw"], P["mode"]
+    k_ = 1.22  # skull scale (horns keep their size so they stay inside the frame)
+    ell = lambda cx, cy, rx, ry: (lambda lx, ly: ((lx / k_ - cx) / rx) ** 2 + ((ly / k_ - cy) / ry) ** 2 <= 1)
+    pol = lambda pts: (lambda lx, ly: point_in_poly(lx / k_, ly / k_, pts))
+    sc = lambda p: (p[0] * k_, p[1] * k_)
+    mane = rotated_pts(H, ang, ell(-7, 6, 7.5, 9.5))
+    shade_rim(back, mane, "]", light="{", dark="[")
+    # horns (chrome, ridged, cyan tips)
+    for g_, base_, ctrl, tip, r0, far in ((horns_far, (-4, -5), (-8, -17), (-21, -13), 3.2, True),
+                                          (head, (0, -6), (-2, -18), (-16, -17), 3.8, False)):
+        pts = bezier(to_global(H, ang, sc(base_)), to_global(H, ang, ctrl), to_global(H, ang, tip), 40)
+        hp = set()
+        for i, (x, y) in enumerate(pts):
+            r_ = r0 * (1 - i / 48)
+            hp |= ellipse_pts(x, y, max(0.7, r_), max(0.7, r_))
+        shade_rim(g_, hp, "I" if far else "F", light="H" if far else "E", dark="S" if far else "I")
+        for i, (x, y) in enumerate(pts):
+            if i % 5 == 2 and i < 32:
+                g_.set(int(x), int(y), "S" if far else "H")
+        tip_col = "R" if mode == "rage" else "C"
+        for (x, y) in pts[-7:]:
+            g_.set(int(x), int(y), tip_col)
+        g_.set(int(pts[-1][0]), int(pts[-1][1]), "W" if not far else tip_col)
+    ear = rotated_pts(H, ang, pol([(-5, -2), (-13, 0), (-6, 2)]))
+    shade_rim(head, ear, "-", light="_", dark="|")
+    skull = rotated_pts(H, ang, ell(-1, -1, 7.5, 6.8)) | rotated_pts(H, ang, pol([(2, -5), (13, 2), (13.5, 6), (5, 8), (0, 5)]))
+    shade_rim(head, skull, "-", light="_", dark="|")
+    hinge = (1, 5)
+    ja = math.radians(jaw)
+
+    def jp(p):
+        dx, dy = p[0] - hinge[0], p[1] - hinge[1]
+        return (hinge[0] + dx * math.cos(ja) - dy * math.sin(ja), hinge[1] + dx * math.sin(ja) + dy * math.cos(ja))
+
+    jaw_poly = [jp(p) for p in ((0, 5), (11.5, 7), (6, 10.5), (1, 9))]
+    if jaw > 5:  # open mouth glowing inside
+        mouth = rotated_pts(H, ang, pol([(2, 6), (13, 6), jaw_poly[1], jaw_poly[2], jaw_poly[0]]))
+        head.fill(mouth, "q")
+        for (x, y) in mouth:
+            if (x - 1, y) in mouth and (x + 1, y) in mouth and (x, y - 1) in mouth:
+                head.set(x, y, "O" if P["fx"] == "fire" else "R")
+    jaw_pts = rotated_pts(H, ang, pol(jaw_poly))
+    shade_rim(head, jaw_pts, "-", light="_", dark="|")
+    beard = rotated_pts(H, ang, pol([jp((3, 9)), jp((8, 10)), jp((5, 15))]))
+    head.fill(beard, "|")
+    for (lx, ly) in ((0, -4), (2, -3.6), (4, -3), (6, -2.4)):
+        x, y = to_global(H, ang, sc((lx, ly)))
+        head.set(int(x), int(y), "|")
+    nx_, ny_ = to_global(H, ang, sc((12, 3)))
+    head.set(int(nx_), int(ny_), "|")
+    head.set(int(nx_) - 1, int(ny_), "|")
+    ex, ey = to_global(H, ang, sc((3.5, -0.5)))
+    ex, ey = int(ex), int(ey)
+    eye = {"dim": ("r", "q"), "hurt": ("R", "r")}.get(mode, ("R", "W"))
+    head.rect(ex, ey, ex + 2, ey + 1, eye[0])
+    head.set(ex + 1, ey, eye[1])
+    head.set(ex + 2, ey, eye[1] if mode == "rage" else eye[0])
+    if mode not in ("dim", "hurt"):
+        for (x, y) in ellipse_pts(ex + 1, ey + 0.5, 3.4 if mode == "rage" else 2.4, 2.2):
+            glow.set(x, y, "(")
+    return to_global(H, ang, sc(jp((12, 8))))
+
+
+def goat_frame(f):
+    P = GOAT_POSES[f]
+    W, H = 96, 96
+    rage = P["mode"] == "rage"
+    circ = "R" if rage else "C"
+    tail, farA, farL, horns_far, back, torso, nearL, head, nearA, glow = (Grid(W, H) for _ in range(10))
+    pv, ch = P["pelvis"], P["chest"]
+    # cable tail
+    tb = (pv[0] - 9, pv[1] - 1)
+    te = P["tail"]
+    ctrl = ((tb[0] + te[0]) / 2 - 2, max(tb[1], te[1]) + 4)
+    pts = [(int(round(x)), int(round(y))) for (x, y) in bezier(tb, ctrl, te, 50)]
+    tp_ = thick_pts(pts, 1.4)
+    shade_rim(tail, tp_, "2", light="4", dark="1")
+    for i, (x, y) in enumerate(pts):
+        if i % 7 == 3:
+            for q in thick_pts([(x, y)], 1.4):
+                if q in tp_:
+                    tail.set(q[0], q[1], "H")
+    d_ = unit((te[0] - pts[-6][0], te[1] - pts[-6][1]))
+    n_ = (-d_[1], d_[0])
+    spike = poly_pts([(te[0] + n_[0] * 2.5, te[1] + n_[1] * 2.5), (te[0] + d_[0] * 6, te[1] + d_[1] * 6),
+                      (te[0] - n_[0] * 2.5, te[1] - n_[1] * 2.5)])
+    tail.fill(spike, "R" if rage else "C")
+    tail.fill(edge_pts(spike, ((1, 0), (0, 1))), "r" if rage else "c")
+    # legs (digitigrade): thigh fur, chrome knee, shin, metatarsus, split hoof
+    for g_, hip, K, C_, F, far in ((farL, (pv[0] - 4, pv[1] + 2), P["kf"], P["cf"], P["ff"], True),
+                                   (nearL, (pv[0] + 3, pv[1] + 2), P["kn"], P["cn"], P["fn"], False)):
+        fur = ("[", "]", ")") if far else ("]", "{", "[")
+        seg(g_, hip, K, 7.4, 6.0, fur[0], fur[1], fur[2])
+        seg(g_, K, C_, 5.2, 4.0, fur[0] if far else "[", fur[1], fur[2] if far else ")")
+        seg(g_, C_, F, 3.6, 3.0, "|", "-", ")")
+        kp = ellipse_pts(K[0], K[1], 3.8, 3.8)
+        if far:
+            shade_rim(g_, kp, "I", light="H", dark="S")
+        else:
+            plate(g_, kp)
+            g_.set(int(K[0]) + 3, int(K[1]) - 2, "F")
+            g_.set(int(K[0]) + 4, int(K[1]) - 3, "E")
+            seam_line(g_, hip, K, circ, (2, 0))
+        fx_, fy_ = int(F[0]), int(F[1])
+        hoof = {(x, y) for x in range(fx_ - 3, fx_ + 6) for y in range(fy_ - 1, fy_ + 2)}
+        shade_rim(g_, hoof, "I" if far else "H", light="H" if far else "F", dark="S")
+        g_.vline(fx_ + 1, fy_ - 1, fy_ + 1, "S")
+    # torso: fur, brown chest skin with circuits, chrome chest plate
+    tp, d, n = torso_poly(ch, pv, 36, 23, 26)
+    shade_rim(torso, tp, "]", light="{", dark="[")
+    span = math.hypot(ch[0] - pv[0], ch[1] - pv[1])
+    rng = random.Random(SEED + 500 + f)
+    for (x, y) in tp:
+        t = ((x + 0.5 - pv[0]) * d[0] + (y + 0.5 - pv[1]) * d[1]) / span
+        s_ = (x + 0.5 - pv[0]) * n[0] + (y + 0.5 - pv[1]) * n[1]
+        front = s_ < -2
+        if front and 0.15 < t < 0.78:
+            torso.set(x, y, "-" if s_ > -8 else "_")
+        if front and t >= 0.72:
+            torso.set(x, y, "H" if t < 0.92 else "F")
+        if torso.get(x, y) == "]" and rng.random() < 0.08:
+            torso.set(x, y, "[")
+    plate_edge = {p for p in tp if ((p[0] + 0.5 - pv[0]) * d[0] + (p[1] + 0.5 - pv[1]) * d[1]) / span >= 0.72
+                  and ((p[0] + 0.5 - pv[0]) * n[0] + (p[1] + 0.5 - pv[1]) * n[1]) < -2}
+    for (x, y) in edge_pts(plate_edge, ((0, 1),)):
+        torso.set(x, y, circ)
+    for k in range(3):  # abdominal muscle lines + circuit traces
+        a = lerp(pv, ch, 0.25 + k * 0.15)
+        b = (a[0] - n[0] * 9, a[1] - n[1] * 9)
+        seam_line(torso, (a[0] - n[0] * 3, a[1] - n[1] * 3), b, "|")
+    seam_line(torso, lerp(pv, ch, 0.2), lerp(pv, ch, 0.7), circ, (int(round(-n[0] * 5)), int(round(-n[1] * 5))))
+    neck = lerp(ch, P["head"], 0.55)
+    seg(torso, ch, neck, 7.0, 6.0, "]", "{", "[")
+    # arms: fur upper arm with spiked pauldron, chrome-braced forearm, clawed fist
+    for g_, S_, E_, Hd, far in ((farA, P["sf"], P["ef"], P["hf"], True), (nearA, P["sn"], P["en"], P["hn"], False)):
+        fur = ("[", "]", ")") if far else ("]", "{", "[")
+        seg(g_, S_, E_, 6.4, 5.4, *fur)
+        seg(g_, E_, Hd, 5.0, 4.2, "|" if far else "-", "-" if far else "_", ")" if far else "|")
+        br = capsule_pts(lerp(E_, Hd, 0.35), lerp(E_, Hd, 0.75), 4.8, 4.4)
+        shade_rim(g_, br, "I" if far else "H", light="H" if far else "F", dark="S")
+        if not far:
+            seam_line(g_, lerp(E_, Hd, 0.35), lerp(E_, Hd, 0.75), circ, (1, 0))
+        fist = ellipse_pts(Hd[0], Hd[1] + 1, 4.4, 4.2)
+        shade_rim(g_, fist, "|", light="-", dark=")")
+        dv = unit((Hd[0] - E_[0], Hd[1] - E_[1]))
+        for k in (-1, 0, 1):
+            cx_ = Hd[0] + dv[0] * 4 + dv[1] * k * 2
+            cy_ = Hd[1] + 1 + dv[1] * 4 - dv[0] * k * 2
+            g_.fill(ellipse_pts(cx_, cy_, 1.0, 1.0), "F" if not far else "H")
+        pp = ellipse_pts(S_[0], S_[1] - 1, 8.0, 6.4)
+        for side in (-3, 2):
+            pp |= poly_pts([(S_[0] + side - 1.5, S_[1] - 5), (S_[0] + side - 1, S_[1] - 11), (S_[0] + side + 1.5, S_[1] - 5)])
+        if far:
+            shade_rim(g_, pp, "I", light="H", dark="S")
+        else:
+            plate(g_, pp)
+            for (x, y) in pp:
+                if (x, y + 1) not in pp:
+                    g_.set(x, y, circ)
+    mouth = goat_head(back, head, horns_far, glow, P)
+    g = stack(W, H, tail, farA, farL, horns_far, back, torso, nearL, head, nearA)
+    # effects
+    kind = P["fx"]
+    frng = random.Random(SEED + 600 + f)
+    if kind == "fire":
+        mx, my = mouth
+        for x in range(int(mx) + 1, W):
+            t = (x - mx) / (W - mx)
+            half = 2 + t * 9
+            cy_ = my - t * 3
+            for y in range(int(cy_ - half) - 1, int(cy_ + half) + 2):
+                d_ = abs(y + 0.5 - cy_) / half
+                if d_ <= 1 - frng.random() * 0.25 * t:
+                    ch_ = "W" if d_ < 0.25 and t < 0.5 else "y" if d_ < 0.45 else "Y" if d_ < 0.65 else "O" if d_ < 0.85 else "o"
+                    if t > 0.85 and frng.random() < 0.4:
+                        ch_ = "R"
+                    g.set(x, y, ch_)
+    elif kind == "roar":
+        mx, my = mouth
+        for r_ in (6, 10, 14):
+            for k in range(-3, 4):
+                a = math.radians(-60 + k * 12)
+                x, y = int(round(mx + r_ * math.cos(a))), int(round(my + r_ * math.sin(a)))
+                if g.get(x, y) == ".":
+                    g.set(x, y, "W" if r_ == 6 else "p" if r_ == 10 else "R")
+    elif kind == "stomp":
+        for (cx_, side) in ((P["hn"][0], 1), (P["hf"][0], -1), (P["fn"][0], 1)):
+            for k in range(4):
+                x = int(cx_) + side * (5 + k * 3)
+                y = 93 - k % 2
+                for q in ellipse_pts(x, y - 1, 2.2 - k * 0.3, 1.8):
+                    if g.get(*q) == ".":
+                        g.set(q[0], q[1], "t" if k < 2 else "4")
+    elif kind == "steam":
+        for (sx, sy) in ((74, 18), (77, 14), (80, 10), (46, 26), (44, 21), (38, 24)):
+            for q in ellipse_pts(sx, sy, 1.8, 1.5):
+                if g.get(*q) == ".":
+                    g.set(q[0], q[1], "s" if (q[0] + q[1]) % 3 else "t")
+    elif kind == "sparks":
+        for _ in range(9):
+            x, y = frng.randint(48, 80), frng.randint(14, 50)
+            if g.get(x, y) == ".":
+                g.set(x, y, frng.choice(("Y", "W", "O")))
+    if rage:  # enraged: neon seams turn red and the silhouette smoulders
+        for y in range(H):
+            for x in range(W):
+                if g.get(x, y) == "." and any(g.get(x + dx, y + dy) not in (".", "(", "s", "t") for dx, dy in N4) \
+                        and (x + y) % 2 == 0:
+                    g.set(x, y, "(")
+    for y in range(H):
+        for x in range(W):
+            if glow.get(x, y) != "." and g.get(x, y) == ".":
+                g.set(x, y, glow.get(x, y))
+    return align_bottom(g, 94)
+
+
+def make_goat_final():
+    sheet = Image.new("RGBA", (1344, 96), (0, 0, 0, 0))
+    for f in range(14):
+        sheet.paste(goat_frame(f).image(), (f * 96, 0))
+    return sheet
+
+
+# ============================================================ HERO LANDING ===
+# Poses are authored facing LEFT (the heroes' native side view) and mirrored.
+LAND_POSES = [
+    dict(head=(0, 5), chest=(16, 27), pelvis=(17, 36), sn=(13, 28), hn=(4, 11), sf=(19, 28), hf=(28, 9),
+         hipn=(15, 37), kn=(10, 39), fn=(14, 43), hipf=(18, 37), kf=(17, 40), ff=(22, 43)),        # falling
+    dict(head=(-5, 11), chest=(12, 30), pelvis=(20, 37), sn=(11, 31), hn=(5, 42), sf=(17, 30), hf=(28, 24),
+         hipn=(18, 38), kn=(11, 36), fn=(10, 43), hipf=(21, 38), kf=(22, 43), ff=(29, 43)),        # impact
+    dict(head=(-4, 8), chest=(12, 29), pelvis=(20, 37), sn=(11, 30), hn=(5, 42), sf=(17, 29), hf=(28, 23),
+         hipn=(18, 38), kn=(11, 36), fn=(10, 43), hipf=(21, 38), kf=(22, 43), ff=(29, 43)),        # head up
+    dict(head=(-1, 5), chest=(15, 27), pelvis=(17, 37), sn=(14, 28), hn=(11, 36), sf=(18, 28), hf=(22, 35),
+         hipn=(15, 38), kn=(11, 40), fn=(12, 43), hipf=(18, 38), kf=(21, 41), ff=(20, 43)),        # half-stand
+]
+
+
+def land_foot(g, F, style, flat=True):
+    fx_, fy_ = int(F[0]), int(F[1])
+    if style == "sudo":
+        put_ascii(g, ["..sWWW.", "WWWGGWs", "ttttttt"], fx_ - 4, fy_ - 1)
+    elif style == "tetsu":
+        bp = {(x, y) for x in range(fx_ - 4, fx_ + 3) for y in range(fy_ - 2, fy_ + 2)}
+        plate(g, bp, base="I", light="H", dark="S", hi="F")
+        g.hline(fx_ - 4, fx_ + 2, fy_ + 1, "S")
+        g.hline(fx_ - 2, fx_ + 2, fy_ - 2, "R")
+    else:
+        g.rect(fx_ - 4, fy_ - 2, fx_ + 2, fy_ + 1, ";")
+        g.hline(fx_ - 4, fx_ + 2, fy_ + 1, "/")
+        g.hline(fx_ - 1, fx_ + 2, fy_ - 2, "^")
+
+
+def land_frame(hero, f):
+    P = LAND_POSES[f]
+    hdx, hdy = P["head"]
+    farA, farL, torso, nearL, nearA, extra = (layer() for _ in range(6))
+    ch, pv = P["chest"], P["pelvis"]
+    # legs
+    for g_, hip, K, F, far in ((farL, P["hipf"], P["kf"], P["ff"], True), (nearL, P["hipn"], P["kn"], P["fn"], False)):
+        if hero == "tetsu":
+            lp = capsule_pts(hip, K, 2.5, 2.3) | capsule_pts(K, (F[0], F[1] - 2), 2.3, 2.0)
+            shade_rim(g_, lp, "I", light="H", dark="S") if far else plate(g_, lp)
+            g_.rect(int(K[0]) - 1, int(K[1]) - 1, int(K[0]), int(K[1]), "S" if far else "E")
+        elif hero == "sudo":
+            lp = capsule_pts(hip, K, 1.7, 1.5) | capsule_pts(K, (F[0], F[1] - 1), 1.5, 1.4)
+            shade_rim(g_, lp, "j" if far else "J", light=None if far else "J", dark="j")
+        else:
+            lp = capsule_pts(hip, K, 2.0, 1.8) | capsule_pts(K, (F[0], F[1] - 2), 1.8, 1.6)
+            shade_rim(g_, lp, "/" if far else ":", light=":" if far else ";", dark="`")
+            g_.set(int(K[0]), int(K[1]), "^" if not far else "~")
+        land_foot(g_, F, hero)
+        if far:
+            g_.recolor({"W": "s", "s": "t", "G": "i", "H": "I", "F": "H", ";": ":"})
+    # torso
+    if hero == "tetsu":
+        tp, d, n = torso_poly(ch, pv, 12, 10, 10)
+        plate(torso, tp)
+        mid = lerp(pv, ch, 0.15)
+        seam_line(torso, (mid[0] - n[0] * 6, mid[1] - n[1] * 6), (mid[0] + n[0] * 6, mid[1] + n[1] * 6), "R")
+        seam_line(torso, lerp(pv, ch, 0.7), lerp(pv, ch, 0.7), "R")
+        # katana on the back: hilt above the shoulder blade
+        hb = (ch[0] + 4, ch[1] - 3)
+        draw_blade(extra, hb, math.radians(100 if f else 85), 14, hilt=4, edge_side=-1)
+    elif hero == "sudo":
+        tp, d, n = torso_poly(ch, pv, 12, 11, 12)
+        torso.fill(tp, "0")
+        shade_rim(torso, tp, "0", light="A", dark="9")
+        seam_line(torso, lerp(pv, ch, 0.35), lerp(pv, ch, 0.75), "G", (-2, 0))
+        hood = ellipse_pts(ch[0] + 4, ch[1] - 1, 3.4, 2.8)
+        torso.fill(hood, "A")
+        if f == 0:  # hoodie hem fluttering up
+            for (x, y) in ((pv[0] - 5, pv[1] - 2), (pv[0] + 5, pv[1] - 3), (pv[0] + 6, pv[1] - 5)):
+                torso.fill(ellipse_pts(x, y, 1.6, 2.2), "0")
+    else:
+        tp, d, n = torso_poly(ch, pv, 11, 9, 10)
+        span = math.hypot(ch[0] - pv[0], ch[1] - pv[1])
+        for (x, y) in tp:
+            t = ((x + 0.5 - pv[0]) * d[0] + (y + 0.5 - pv[1]) * d[1]) / span
+            torso.set(x, y, "/" if t > 0.55 else "+" if t > 0.32 else ":")
+        shade_rim(torso, {p for p in tp if torso.get(*p) == "/"}, "/", light=";", dark="`")
+        seam_line(torso, lerp(pv, ch, 0.6), lerp(pv, ch, 0.95), "^", (1, 0))
+    # arms
+    for g_, S_, Hd, far in ((farA, P["sf"], P["hf"], True), (nearA, P["sn"], P["hn"], False)):
+        E_ = lerp(S_, Hd, 0.5)
+        if hero == "tetsu":
+            ap = capsule_pts(S_, Hd, 2.4, 2.1)
+            shade_rim(g_, ap, "I", light="H", dark="S") if far else plate(g_, ap)
+            fist = ellipse_pts(Hd[0], Hd[1], 2.0, 2.0)
+            shade_rim(g_, fist, "I" if far else "H", light="I" if far else "F", dark="S")
+            if not far:
+                pp = ellipse_pts(S_[0], S_[1] - 1, 4.0, 3.2)
+                plate(g_, pp)
+                for (x, y) in pp:
+                    if (x, y + 1) not in pp:
+                        g_.set(x, y, "R")
+        elif hero == "sudo":
+            ap = capsule_pts(S_, Hd, 2.2, 1.9)
+            shade_rim(g_, ap, "9" if far else "0", light="0" if far else "A", dark="9")
+            g_.fill(ellipse_pts(Hd[0], Hd[1], 1.4, 1.4), "7" if far else "6")
+        else:
+            ap = capsule_pts(S_, Hd, 1.8, 1.6)
+            shade_rim(g_, ap, "/", light=";" if not far else ":", dark="`")
+            g_.fill(ellipse_pts(Hd[0], Hd[1], 1.5, 1.5), "=" if far else "+")
+    if hero == "sudo" and f != 0:  # the cyberdeck lands with the far hand
+        hx, hy = int(P["hf"][0]), int(P["hf"][1])
+        farA.rect(hx - 2, hy - 1, hx + 2, hy + 1, "2")
+        farA.set(hx, hy, "G")
+    if hero == "sudo" and f == 0:
+        hx, hy = int(P["hf"][0]), int(P["hf"][1])
+        farA.rect(hx - 2, hy - 4, hx + 2, hy - 2, "2")
+        farA.set(hx - 1, hy - 3, "G")
+    # head
+    if hero == "tetsu":
+        guard, helm, visor = tetsu_helmet("side", 0)
+        heads = [shifted(guard, hdx, hdy), shifted(helm, hdx, hdy), shifted(visor, hdx, hdy)]
+        scarf = layer()
+        nx, ny = 15 + hdx, 20 + hdy
+        if f == 0:  # scarf whipping upward while falling
+            sp = poly_pts([(nx + 2, ny), (nx + 6, ny - 6), (nx + 9, ny - 12), (nx + 11, ny - 11), (nx + 8, ny - 4),
+                           (nx + 5, ny + 1)])
+        else:
+            sp = poly_pts([(nx + 2, ny - 1), (nx + 8, ny - 3), (nx + 14, ny - 2), (nx + 12, ny), (nx + 15, ny + 2),
+                           (nx + 8, ny + 2), (nx + 3, ny + 2)])
+        sp |= {(x, y) for x in range(nx - 3, nx + 4) for y in range(ny - 1, ny + 2)}
+        shade_rim(scarf, sp, "R", light="p", dark="r")
+        layers = [extra, farA, farL, torso, nearL, scarf] + heads + [nearA]
+        g = stack(HW, HH, *layers)
+    elif hero == "sudo":
+        hair, face, gear = sudo_head("side", 0, f)
+        if f == 0:  # hair blown upward
+            hair.fill(poly_pts([(12, 4), (14, -1), (16, 4)]) | poly_pts([(17, 3), (20, -1), (21, 4)]), "X")
+        heads = [shifted(hair, hdx, hdy), shifted(face, hdx, hdy), shifted(gear, hdx, hdy)]
+        g = stack(HW, HH, farA, farL, torso, nearL, *heads, nearA)
+    else:
+        g = stack(HW, HH, farA, farL, torso, nearL, nearA)
+    img_layers = []
+    if hero == "paine":
+        src = load_source("paine.png").crop((0, 48, 32, 70))  # hair + face, facing left
+        img_layers.append((src, hdx, hdy))
+    # eye glint once the head comes up
+    glint = None
+    if f == 2:
+        glint = {"paine": (10, 12), "tetsu": (8, 11), "sudo": (9, 12)}[hero]
+        glint = (glint[0] + hdx, glint[1] + hdy)
+    # ground impact puffs
+    if f == 1:
+        for (cx, cy) in ((2.5, 43.0), (30.0, 43.5), (6.0, 44.0)):
+            for (x, y) in ellipse_pts(cx, cy, 1.8, 1.3):
+                if g.get(x, y) == ".":
+                    g.set(x, y, "t" if y < 43 else "4")
+    low = max(y for y in range(HH) for x in range(HW) if g.px[y][x] != ".")
+    sh = 45 - low
+    g = shifted(g, 0, sh)
+    img_layers = [(src, dx, dy + sh) for (src, dx, dy) in img_layers]
+    if glint:
+        glint = (glint[0], glint[1] + sh)
+    img = g.image()
+    for (src, dx, dy) in img_layers:
+        img.alpha_composite(src, (dx, dy))
+    if glint:
+        px = img.load()
+        gx, gy = glint
+        for (x, y, c) in ((gx, gy, "#ffffff"), (gx - 1, gy, "#b5fcff"), (gx + 1, gy, "#b5fcff"),
+                          (gx, gy - 1, "#b5fcff"), (gx, gy + 1, "#b5fcff"), (gx - 2, gy, "#19f5ff"),
+                          (gx, gy - 2, "#19f5ff")):
+            if 0 <= x < 32 and 0 <= y < 48:
+                px[x, y] = rgba(c)
+    return img.transpose(Image.FLIP_LEFT_RIGHT)
+
+
+def make_hero_landing():
+    sheet = Image.new("RGBA", (128, 144), (0, 0, 0, 0))
+    for r, hero in enumerate(("paine", "tetsu", "sudo")):
+        for f in range(4):
+            sheet.paste(land_frame(hero, f), (f * 32, r * 48))
+    return sheet
+
+
+# =============================================================== BILLBOARD ===
+# Giant hologram ad (original character). Hologram palette only (cyan,
+# magenta, pale pink, violet) on transparent; the game adds scanlines,
+# flicker and additive blending, so there is no dark outline.
+def bb_face_pts(cx, cy):
+    pts = set()
+    for y in range(int(cy - 20), int(cy + 21)):
+        t = (y + 0.5 - cy)
+        if t < 4:
+            hw = 15.0 * math.sqrt(max(0.0, 1 - ((t - 4) / 22.0) ** 2))
+        else:
+            hw = 15.0 * (1 - ((t - 4) / 17.5) ** 1.7)
+        for x in range(int(cx - hw) - 1, int(cx + hw) + 2):
+            if abs(x + 0.5 - cx) <= hw:
+                pts.add((x, y))
+    return pts
+
+
+def bb_eye(g, cx, cy, state):
+    """state: open / closed / wink-closed (smiling arc)."""
+    if state == "open":
+        al = {(x, y) for (x, y) in ellipse_pts(cx, cy, 5.2, 3.2)}
+        g.fill(al, "W")
+        iris = ellipse_pts(cx + 0.5, cy + 0.3, 2.8, 2.9)
+        g.fill({p for p in iris if p in al or p[1] < cy}, "M")
+        g.fill({p for p in iris if (p[0] + p[1]) % 3 == 0 and p in al}, "m")
+        g.fill(ellipse_pts(cx + 0.5, cy + 0.6, 1.2, 1.3), "n")
+        g.set(int(cx) - 1, int(cy) - 1, "W")
+        g.set(int(cx), int(cy) - 1, "W")
+        for x in range(int(cx) - 6, int(cx) + 7):  # thick upper lash line with a flick
+            yy = int(round(cy - 3.2 + ((x + 0.5 - cx) / 6.0) ** 2 * 1.6))
+            g.set(x, yy, "n")
+            g.set(x, yy - 1, "n" if abs(x + 0.5 - cx) < 5 else ".")
+        g.set(int(cx) + 6, int(cy) - 3, "n")
+        g.set(int(cx) + 7, int(cy) - 4, "n")
+        g.hline(int(cx) - 4, int(cx) + 4, int(cy) + 3, "p")
+    else:
+        for x in range(int(cx) - 5, int(cx) + 6):
+            yy = int(round(cy + 0.5 - (1 - ((x + 0.5 - cx) / 5.5) ** 2) * 2.2))
+            g.set(x, yy, "n")
+            g.set(x, yy + 1, "m")
+        g.set(int(cx) + 6, int(cy) - 1, "n")
+        g.set(int(cx) - 6, int(cy) + 1, "n")
+
+
+def bb_hand(g, cx, cy, kind):
+    """Small stylised hands: 'wave' (open palm, fingers up), 'lips' (fingertips
+    pointing up-left) and 'palm' (big open palm toward the viewer)."""
+    if kind == "palm":
+        palm = ellipse_pts(cx, cy, 7.5, 7.0)
+        for i, (dx, ln) in enumerate(((-6, 6), (-2.5, 9), (1.5, 9.5), (5.5, 8))):
+            palm |= capsule_pts((cx + dx, cy - 4), (cx + dx * 1.15, cy - 4 - ln), 1.9, 1.6)
+        palm |= capsule_pts((cx + 6, cy + 1), (cx + 12, cy - 4), 2.0, 1.7)
+        shade_rim(g, palm, "N", light="W", dark="p")
+        for x in range(int(cx) - 4, int(cx) + 5):
+            g.set(x, int(cy) + 2, "p")
+        return
+    if kind == "wave":
+        palm = ellipse_pts(cx, cy, 4.2, 4.6)
+        for dx, ln in ((-3, 5), (-1, 6), (1.2, 6), (3.2, 5)):
+            palm |= capsule_pts((cx + dx, cy - 2), (cx + dx * 1.2, cy - 2 - ln), 1.1, 1.0)
+        palm |= capsule_pts((cx - 3, cy + 1), (cx - 7, cy - 2), 1.2, 1.0)
+    else:  # fingertips to the lips
+        palm = ellipse_pts(cx, cy, 4.0, 4.4)
+        for dx, ln in ((-2, 6), (0, 7), (2, 6)):
+            palm |= capsule_pts((cx + dx, cy - 2), (cx + dx - 3, cy - 2 - ln), 1.1, 1.0)
+    shade_rim(g, palm, "N", light="W", dark="p")
+
+
+def billboard_frame(f):
+    W, H = 96, 128
+    sway = (0, 2, 0, -1, 0, 1)[f]
+    hx = 48 + sway
+    body, arm_back, neck, hair_back, face, hair, arm_front, fxg = (Grid(W, H) for _ in range(8))
+    # shoulders + futuristic high-collar jacket
+    bp = poly_pts([(hx - 10, 66), (hx + 10, 66), (hx + 30, 76), (hx + 33, 88), (hx + 26, 128), (hx - 26, 128),
+                   (hx - 33, 88), (hx - 30, 76)])
+    shade_rim(body, bp, "v", light="V", dark="w")
+    for (x, y) in bp:
+        if abs(x + 0.5 - hx) < 2.5 and y > 74:
+            body.set(x, y, "C" if y % 6 else "B")  # glowing zip seam
+    for side in (-1, 1):  # collar flaps and shoulder seams
+        body.fill(poly_pts([(hx + side * 3, 62), (hx + side * 13, 66), (hx + side * 11, 78), (hx + side * 3, 74)]), "V")
+        body.line(hx + side * 13, 77, hx + side * 28, 80, "C")
+        body.line(hx + side * 22, 90, hx + side * 20, 126, "M")
+    for y in (100, 112):
+        for x in range(hx - 22, hx + 23):
+            if body.get(x, y) == "v":
+                body.set(x, y, "w")
+    neck.fill({(x, y) for x in range(hx - 6, hx + 7) for y in range(52, 70)}, "N")
+    neck.fill({(x, y) for x in range(hx - 6, hx + 7) for y in range(52, 59)}, "p")
+    neck.fill(poly_pts([(hx - 9, 62), (hx + 9, 62), (hx + 7, 68), (hx - 7, 68)]), "V")
+    neck.hline(hx - 8, hx + 8, 62, "C")
+    # hair (neon bob), face
+    fcx, fcy = hx, 40
+    hb = ellipse_pts(fcx, 37, 21.5, 23.0)
+    hb = {(x, y) for (x, y) in hb if y <= 56}
+    hair_back.fill(hb, "c")
+    fp = bb_face_pts(fcx, fcy)
+    shade_rim(face, fp, "N", light="W", dark="p")
+    for (x, y) in fp:
+        if x + 0.5 > fcx + 10 or y > fcy + 15:
+            face.set(x, y, "p" if face.get(x, y) == "N" else face.get(x, y))
+    eyes = {0: ("open", "open"), 1: ("open", "open"), 2: ("open", "open"), 3: ("open", "open"),
+            4: ("closed", "closed"), 5: ("open", "closed")}[f]
+    bb_eye(face, fcx - 8, fcy + 2, eyes[0])
+    bb_eye(face, fcx + 8, fcy + 2, eyes[1])
+    for side in (-1, 1):  # brows
+        for k in range(7):
+            x = fcx + side * (4 + k)
+            face.set(x, fcy - 5 - (1 if 1 <= k <= 4 else 0) - (1 if f in (2, 5) and side == 1 else 0), "m")
+    face.vline(fcx, fcy + 6, fcy + 9, "p")
+    face.set(fcx - 1, fcy + 10, "p")
+    face.set(fcx + 1, fcy + 10, "p")
+    for side in (-1, 1):
+        face.fill(ellipse_pts(fcx + side * 10, fcy + 9, 2.4, 1.2), "p")
+    my = fcy + 14
+    if f in (2, 5):   # open smile
+        mouth = {(x, y) for x in range(fcx - 5, fcx + 6) for y in (my, my + 1, my + 2)
+                 if abs(x - fcx) < 6 - (y - my) * 1.5}
+        face.fill(mouth, "n")
+        face.hline(fcx - 4, fcx + 4, my, "W")
+        face.set(fcx - 6, my - 1, "M")
+        face.set(fcx + 6, my - 1, "M")
+    elif f == 4:      # puckered kiss
+        face.fill(ellipse_pts(fcx + 0.5, my + 1, 2.4, 2.2), "M")
+        face.set(fcx, my + 1, "n")
+        face.set(fcx - 1, my, "N")
+    else:             # soft smile
+        face.hline(fcx - 4, fcx + 4, my, "M")
+        face.hline(fcx - 3, fcx + 3, my + 1, "M")
+        face.hline(fcx - 2, fcx + 2, my + 2, "N")
+        face.set(fcx - 5, my - 1, "M")
+        face.set(fcx + 5, my - 1, "M")
+        face.hline(fcx - 3, fcx + 3, my, "m")
+    # bob: blunt fringe + side panels, glossy band
+    hp = {(x, y) for (x, y) in ellipse_pts(fcx, 37, 21.5, 23.0) if y < fcy - 8}
+    for side in (-1, 1):
+        hp |= poly_pts([(fcx + side * 21.5, 30), (fcx + side * 11, 30), (fcx + side * 13, 50), (fcx + side * 16, 57),
+                        (fcx + side * 23, 56)])
+    for x in range(fcx - 16, fcx + 17):  # fringe with a few sharp points
+        for y in range(fcy - 12, fcy - 8 + (2 if (x - fcx) % 6 == 0 else 0)):
+            hp.add((x, y))
+    shade_rim(hair, hp, "C", light="B", dark="c")
+    for (x, y) in hp:
+        if 22 <= y <= 24 and hair.get(x, y) == "C":
+            hair.set(x, y, "B")
+        if (x - fcx) % 5 == 0 and y > 33 and abs(x - fcx) > 12 and hair.get(x, y) == "C":
+            hair.set(x, y, "c")
+        if 18 <= y <= 20 and (x - fcx) % 9 == 4 and hair.get(x, y) == "C":
+            hair.set(x, y, "B")
+    for side in (-1, 1):  # glowing earrings
+        hair.fill(ellipse_pts(fcx + side * 17, 56, 1.4, 1.4), "M")
+    # arms / gestures
+    for side in (-1, 1):
+        if (side == 1 and f in (2, 3, 4)):
+            continue
+        ap = capsule_pts((hx + side * 27, 80), (hx + side * 29, 128), 5.6, 5.2)
+        shade_rim(arm_back, ap, "v", light="V", dark="w")
+        arm_back.line(hx + side * 27, 84, hx + side * 29, 126, "C")
+    if f == 2:   # small wave
+        ap = capsule_pts((hx + 27, 80), (hx + 34, 100), 5.6, 5.0) | capsule_pts((hx + 34, 100), (hx + 36, 76), 4.8, 4.2)
+        shade_rim(arm_front, ap, "v", light="V", dark="w")
+        arm_front.hline(hx + 32, hx + 40, 80, "C")
+        bb_hand(arm_front, hx + 37, 68, "wave")
+        for (x, y) in ((hx + 44, 60), (hx + 45, 64), (hx + 44, 68)):
+            fxg.set(x, y, "B")
+    elif f == 3:  # fingertips to the lips
+        ap = capsule_pts((hx + 27, 80), (hx + 20, 104), 5.6, 5.0) | capsule_pts((hx + 20, 104), (hx + 8, 64), 4.8, 4.2)
+        shade_rim(arm_front, ap, "v", light="V", dark="w")
+        arm_front.line(hx + 12, 68, hx + 18, 70, "C")
+        bb_hand(arm_front, hx + 7, 60, "lips")
+    elif f == 4:  # arm extended toward the viewer, kiss blown
+        ap = capsule_pts((hx + 27, 80), (hx + 26, 100), 6.4, 7.4)
+        shade_rim(arm_front, ap, "v", light="V", dark="w")
+        arm_front.fill(ellipse_pts(hx + 26, 98, 7.0, 4.0), "C")
+        bb_hand(arm_front, hx + 26, 92, "palm")
+        for (x, y, c) in ((hx + 38, 74, "M"), (hx + 40, 72, "N"), (hx + 42, 70, "M"), (hx + 12, 76, "N")):
+            fxg.set(x, y, c)
+    g = Grid(W, H)
+    for lay in (hair_back, body, arm_back, neck, face, hair, arm_front, fxg):
+        g.blit(lay)
+    return g
+
+
+def make_billboard():
+    sheet = Image.new("RGBA", (576, 128), (0, 0, 0, 0))
+    for f in range(6):
+        sheet.paste(billboard_frame(f).image(), (f * 96, 0))
+    return sheet
+
+
+def make_kiss():
+    sheet = Image.new("RGBA", (32, 16), (0, 0, 0, 0))
+    heart = Grid(16, 16)
+    hp = heart_pts(8, 7.6, 5.0, 5.0)
+    shade_rim(heart, hp, "M", light="N", dark="m")
+    heart.set(5, 5, "W")
+    heart.set(6, 5, "W")
+    heart.set(5, 6, "N")
+    for (x, y) in edge_pts(hp, N4):
+        for dx, dy in N4:
+            if heart.get(x + dx, y + dy) == ".":
+                heart.set(x + dx, y + dy, "h")
+    lips = Grid(16, 16)
+    up = poly_pts([(1.5, 8), (4.5, 5.2), (8, 6.6), (11.5, 5.2), (14.5, 8), (8, 8.6)])
+    lo = poly_pts([(1.5, 8.4), (8, 9.0), (14.5, 8.4), (11.5, 11.8), (4.5, 11.8)])
+    shade_rim(lips, up, "R", light="p", dark="r")
+    shade_rim(lips, lo, "M", light="N", dark="m")
+    lips.hline(3, 12, 8, "n")
+    lips.set(5, 10, "W")
+    lips.set(6, 10, "N")
+    for (x, y) in edge_pts(up | lo | {(x, 8) for x in range(3, 13)}, N4):
+        for dx, dy in N4:
+            if lips.get(x + dx, y + dy) == ".":
+                lips.set(x + dx, y + dy, "h")
+    for (x, y) in ((2, 3), (13, 2), (14, 13)):
+        lips.set(x, y, "N")
+    sheet.paste(heart.image(), (0, 0))
+    sheet.paste(lips.image(), (16, 0))
+    return sheet
+
+
+# ================================================================== LEGEND ===
+# An original bust: shoulder-length dark hair with a silver streak, short
+# beard, black suit, a small cyan temple implant and a cyan rim light.
+def legend_frame(f):
+    W = H = 64
+    suit, hair_back, neck, face, hair, hand = (Grid(W, H) for _ in range(6))
+    sp_ = {(x, y) for (x, y) in ellipse_pts(32, 72, 31, 24) if y < 64}
+    shade_rim(suit, sp_, "1", light="2", dark="P")
+    for side in (-1, 1):  # lapels
+        suit.fill(poly_pts([(32 + side * 4, 48), (32 + side * 12, 49), (32 + side * 7, 58), (32 + side * 1, 63)]), "2")
+        suit.line(32 + side * 12, 49, 32 + side * 2, 63, "3")
+    suit.fill(poly_pts([(28, 47), (36, 47), (33, 63), (31, 63)]), "P")
+    neck.rect(27, 38, 37, 49, "7")
+    neck.hline(27, 37, 38, "8")
+    hb = ellipse_pts(32, 25, 14.0, 15.0) | poly_pts([(18, 26), (24, 26), (25, 47), (19, 48)]) | \
+        poly_pts([(40, 26), (46, 26), (45, 48), (39, 47)])
+    shade_rim(hair_back, hb, "1", light="2", dark="P")
+    fp = {(x, y) for (x, y) in ellipse_pts(32, 28, 10.2, 13.0) if y >= 16}
+    shade_rim(face, fp, "6", light="6", dark="7")
+    for (x, y) in fp:
+        if x >= 38:
+            face.set(x, y, "7")
+    beard = {(x, y) for (x, y) in fp if y >= 33 or (y >= 30 and abs(x + 0.5 - 32) > 7.5)}
+    face.fill(beard, "1")
+    for (x, y) in beard:
+        if (x * 3 + y) % 5 == 0:
+            face.set(x, y, "2")
+    face.fill({(x, y) for x in range(29, 36) for y in (32, 33)}, "1")  # moustache
+    eyes_closed = f == 3
+    for ex in (26, 36):
+        face.hline(ex - 2, ex + 2, 23, "1")    # straight brows
+        face.hline(ex - 1, ex + 1, 22, "1")
+        if eyes_closed:
+            face.hline(ex - 2, ex + 2, 27, "8")
+            face.set(ex - 2, 26, "8")
+        else:
+            face.hline(ex - 2, ex + 2, 26, "P")  # heavy lids: calm, half-closed
+            face.hline(ex - 1, ex + 1, 27, "8")
+            face.set(ex, 27, "K")
+            face.set(ex + 1, 27, "W" if ex == 26 else "8")
+    face.line(32, 26, 33, 30, "7")
+    face.set(32, 31, "8")
+    face.set(34, 31, "8")
+    my = 35
+    if f == 1:      # talking
+        face.rect(30, my, 34, my + 1, "q")
+        face.hline(30, 34, my, "8")
+    elif f == 2:    # smirk
+        face.hline(29, 33, my, "8")
+        face.set(34, my - 1, "8")
+        face.set(35, my - 1, "8")
+    elif f == 4:    # pleased half smile while pointing
+        face.hline(29, 34, my, "8")
+        face.set(35, my - 1, "8")
+        face.set(28, my - 1, "8")
+    else:
+        face.hline(29, 35, my, "8")
+    # hair: center part, falls to the shoulders, silver streak, temple implant
+    hp = {(x, y) for (x, y) in ellipse_pts(32, 24, 13.5, 14.5) if y < 20} | \
+        poly_pts([(18.5, 16), (24, 17), (22.5, 30), (24, 46), (19, 47)]) | \
+        poly_pts([(40, 17), (45.5, 16), (45, 47), (40, 46), (41.5, 30)])
+    shade_rim(hair, hp, "1", light="3", dark="P")
+    for (x, y) in hp:
+        if (x - 32) % 4 == 2 and y > 14:
+            hair.set(x, y, "P")
+        elif y < 16 and math.hypot(x + 0.5 - 30, y + 0.5 - 18) > 9 and hair.get(x, y) == "1":
+            hair.set(x, y, "2")
+    hair.vline(32, 10, 19, "P")
+    hair.line(31, 11, 26, 18, "P")
+    hair.line(33, 11, 38, 18, "P")
+    for (x, y) in ((24, 13), (23, 14), (23, 15), (22, 16), (22, 17), (21, 18), (21, 19), (21, 20)):
+        hair.set(x, y, "5" if y % 2 else "4")
+    face.vline(42, 21, 25, "C")
+    face.set(41, 23, "c")
+    if f == 4:  # finger guns at the lower right
+        hp2 = capsule_pts((52, 63), (50, 52), 4.6, 4.2)
+        shade_rim(hand, hp2, "1", light="2", dark="P")
+        fist = ellipse_pts(50, 48, 3.6, 3.4)
+        shade_rim(hand, fist, "6", light="6", dark="7")
+        hand.fill(capsule_pts((50, 46), (43, 44), 1.2, 1.0), "6")
+        hand.fill(capsule_pts((52, 46), (53, 40), 1.1, 1.0), "6")
+        hand.set(44, 44, "7")
+    g = stack(W, H, hair_back, suit, neck, face, hair, hand)
+    # cyan rim light down the right-hand edge
+    for y in range(H):
+        xs = [x for x in range(W) if g.get(x, y) not in (".", "K")]
+        if xs:
+            xm = max(xs)
+            g.set(xm, y, "C")
+            if g.get(xm - 1, y) not in (".", "K"):
+                g.set(xm - 1, y, "c")
+    return g
+
+
+def make_legend():
+    sheet = Image.new("RGBA", (320, 64), (0, 0, 0, 0))
+    for f in range(5):
+        sheet.paste(legend_frame(f).image(), (f * 64, 0))
+    return sheet
+
+
+# ================================================================ HARDWARE ===
+def hw_cell(i):
+    g = Grid(64, 40)
+    if i == 0:      # CPU
+        g.rect(14, 3, 49, 36, "i")
+        for k in range(15, 49, 2):
+            for (x, y) in ((k, 3), (k, 36), (14, k - 12 if k - 12 <= 36 else 36), (49, k - 12 if k - 12 <= 36 else 36)):
+                g.set(x, y, "Y")
+        g.rect(19, 8, 44, 31, "F")
+        shade_rim(g, {(x, y) for x in range(19, 45) for y in range(8, 32)}, "F", light="E", dark="H")
+        g.rect(23, 12, 40, 27, "H")
+        g.rect(24, 13, 39, 26, "F")
+        g.fill(poly_pts([(28, 23), (31.5, 15), (35, 23)]), "C")
+        g.fill(poly_pts([(30, 21), (31.5, 18), (33, 21)]), "F")
+        g.hline(26, 37, 25, "c")
+        g.set(16, 5, "Y")
+        g.set(17, 5, "Y")
+        g.set(16, 6, "Y")
+    elif i == 1:    # RAM stick
+        g.rect(3, 12, 60, 28, "i")
+        g.hline(3, 60, 12, "G")
+        for k in range(6):
+            x0 = 6 + k * 9
+            g.rect(x0, 15, x0 + 6, 23, "1")
+            g.hline(x0, x0 + 6, 15, "2")
+        for x in range(4, 60):
+            if x not in (31, 32):
+                g.set(x, 27, "Y" if x % 2 else "O")
+                g.set(x, 28, "Y" if x % 2 else "O")
+        g.rect(31, 26, 32, 28, ".")
+        g.rect(3, 6, 60, 10, "2")
+        for x in range(4, 60):
+            t = (x - 4) / 56
+            g.set(x, 8, "M" if t < 0.33 else "V" if t < 0.66 else "C")
+            g.set(x, 7, "N" if t < 0.33 else "u" if t < 0.66 else "B")
+    elif i == 2:    # GPU
+        g.rect(1, 4, 2, 35, "F")
+        for y in (9, 15, 21):
+            g.rect(2, y, 2, y + 3, "K")
+        g.rect(3, 6, 61, 31, "1")
+        shade_rim(g, {(x, y) for x in range(3, 62) for y in range(6, 32)}, "1", light="2", dark="P")
+        g.fill(poly_pts([(3, 6), (14, 6), (10, 12), (3, 12)]), "3")
+        g.fill(poly_pts([(61, 6), (50, 6), (54, 12), (61, 12)]), "3")
+        for x in range(4, 61):
+            t = (x - 4) / 56
+            g.set(x, 6, "M" if t < 0.3 else "V" if t < 0.6 else "C")
+        for fcx in (20, 44):
+            g.fill(ellipse_pts(fcx, 19, 10.2, 10.2), "P")
+            for a in range(0, 360, 40):
+                for r_ in range(3, 10):
+                    ang = math.radians(a + r_ * 6)
+                    g.set(int(round(fcx + r_ * math.cos(ang))), int(round(19 + r_ * math.sin(ang))), "3")
+            g.fill(edge_pts(ellipse_pts(fcx, 19, 10.2, 10.2), N4), "2")
+            g.fill(ellipse_pts(fcx, 19, 2.6, 2.6), "C")
+            g.set(fcx - 1, 18, "B")
+        g.rect(18, 32, 50, 34, "Y")
+        for x in range(18, 51, 2):
+            g.set(x, 34, "O")
+    elif i == 3:    # M.2 SSD
+        g.rect(4, 15, 59, 26, "i")
+        g.rect(4, 15, 9, 26, "Y")
+        g.rect(4, 19, 6, 21, ".")
+        g.rect(13, 16, 45, 25, "2")
+        g.hline(13, 45, 16, "3")
+        g.rect(16, 18, 26, 23, "1")
+        g.rect(29, 18, 39, 23, "1")
+        g.hline(14, 44, 24, "M")
+        g.rect(48, 18, 53, 23, "1")
+        g.fill(ellipse_pts(59.5, 20.5, 2.5, 2.5), ".")
+        g.set(56, 20, "Y")
+    elif i == 4:    # network card with two antennas
+        g.rect(8, 18, 10, 37, "F")
+        g.rect(11, 20, 52, 33, "i")
+        g.rect(24, 23, 34, 30, "1")
+        g.rect(25, 24, 33, 29, "2")
+        g.set(29, 26, "C")
+        g.rect(18, 34, 46, 35, "Y")
+        for ax, tilt in ((15, -4), (48, 4)):
+            g.rect(ax - 1, 16, ax + 1, 19, "3")
+            g.line(ax, 15, ax + tilt, 2, "2")
+            g.line(ax + 1, 15, ax + tilt + 1, 2, "3")
+            g.set(ax + tilt, 1, "C")
+            g.set(ax + tilt + 1, 1, "B")
+        for (x, y) in ((6, 4), (5, 6), (6, 8), (57, 4), (58, 6), (57, 8)):
+            g.set(x, y, "C")
+    elif i == 5:    # PSU
+        bp = {(x, y) for x in range(4, 50) for y in range(5, 36)}
+        shade_rim(g, bp, "2", light="3", dark="1")
+        fan = ellipse_pts(23, 20.5, 12.2, 12.2)
+        g.fill(fan, "1")
+        for r_ in (3.5, 6.5, 9.5):
+            g.fill(edge_pts(ellipse_pts(23, 20.5, r_, r_), N4), "3")
+        g.hline(12, 34, 20, "3")
+        g.vline(23, 9, 32, "3")
+        g.fill(ellipse_pts(23, 20.5, 2, 2), "C")
+        g.rect(38, 9, 46, 15, "1")
+        g.rect(40, 11, 44, 13, "R")
+        g.set(42, 18, "G")
+        g.hline(5, 48, 34, "C")
+        for k, (c, y0) in enumerate((("Y", 24), ("1", 27), ("R", 30))):
+            for (x, y) in bezier((49, y0), (56, y0 + 2), (62, y0 - 4 + k * 3), 20):
+                g.set(int(round(x)), int(round(y)), c)
+    elif i == 6:    # tower cooler: fin stack, front fan with RGB ring, heat pipes
+        for x0 in (22, 27, 32, 37):
+            g.rect(x0, 1, x0 + 1, 7, "o")
+            g.set(x0, 1, "O")
+        for y in range(6, 37):
+            g.hline(14, 49, y, "F" if y % 2 else "H")
+        fan = ellipse_pts(31.5, 21.5, 13.0, 13.0)
+        g.rect(17, 7, 46, 36, "1")
+        g.fill(fan, "P")
+        ring = edge_pts(fan, N4)
+        for (x, y) in ring:
+            a = math.atan2(y - 21.5, x - 31.5)
+            g.set(x, y, "M" if a < -1 else "V" if a < 1 else "C")
+        for a in range(0, 360, 45):
+            for r_ in range(3, 12):
+                ang = math.radians(a + r_ * 5)
+                g.set(int(round(31.5 + r_ * math.cos(ang))), int(round(21.5 + r_ * math.sin(ang))), "3")
+        g.fill(ellipse_pts(31.5, 21.5, 2.8, 2.8), "2")
+        g.set(31, 21, "C")
+    else:           # cyberware neural chip
+        bp = {(x, y) for x in range(14, 50) for y in range(10, 32)}
+        shade_rim(g, bp, "w", light="v", dark="P")
+        for x in range(16, 49, 3):
+            g.set(x, 31, "Y")
+            g.set(x, 10, "Y")
+        for (a, b) in (((32, 21), (17, 14)), ((32, 21), (17, 28)), ((32, 21), (47, 14)), ((32, 21), (47, 28)),
+                       ((32, 21), (32, 11)), ((32, 21), (32, 30))):
+            g.line(*a, *b, "C")
+        for (x, y) in ((17, 14), (17, 28), (47, 14), (47, 28)):
+            g.fill(ellipse_pts(x + 0.5, y + 0.5, 1.4, 1.4), "B")
+        hexc = poly_pts([(32 + 8 * math.cos(math.radians(-90 + 60 * k)), 21 + 8 * math.sin(math.radians(-90 + 60 * k)))
+                         for k in range(6)])
+        shade_rim(g, hexc, "m", light="M", dark="n")
+        g.fill(ellipse_pts(32, 21, 3.6, 3.6), "M")
+        g.fill(ellipse_pts(32, 21, 2.2, 2.2), "N")
+        g.set(31, 20, "W")
+        g.set(32, 20, "W")
+    g.outline()
+    if i == 7:
+        for (x, y) in ellipse_pts(32, 21, 12, 12):
+            if g.get(x, y) == ".":
+                g.set(x, y, "h")
+    return g
+
+
+def make_hardware():
+    sheet = Image.new("RGBA", (512, 40), (0, 0, 0, 0))
+    for i in range(8):
+        sheet.paste(hw_cell(i).image(), (i * 64, 0))
+    return sheet
+
+
 # ================================================================= PREVIEW ===
 RESKIN_SOURCES = {"reaper-cyber.png": ("death.png", 50), "dragon-cyber.png": ("dragon.png", 96),
                   "goat-cyber.png": ("redgoat.png", 80)}
@@ -4651,6 +5914,10 @@ def make_preview(sheets, path):
     for name, im, frame_w in sheets:
         if name in ("tetsu.png", "sudo.png"):
             items.append((f"{name}  {im.width}x{im.height}", im, [(0, im.width, 32)], hero_rows))
+            continue
+        if name == "hero-landing.png":
+            items.append((f"{name}  {im.width}x{im.height}  (f0 fall, f1 impact, f2 head up + glint, f3 rise)", im,
+                          [(0, im.width, 32)], ["row 0: Paine", "row 1: Tetsu", "row 2: Sudo"]))
             continue
         if name == "paine-attack.png":
             src = load_source("paine.png").crop((0, 48, 128, 144))
@@ -4738,6 +6005,14 @@ def build_all():
         ("sniper.png", make_sniper(), 40),
         ("overseer.png", make_overseer(), 96),
         ("fx.png", make_fx(), 32),
+        # landing poses, billboard, legend, level-up hardware, final bosses
+        ("hero-landing.png", make_hero_landing(), 32),
+        ("billboard.png", make_billboard(), 96),
+        ("kiss.png", make_kiss(), 16),
+        ("legend.png", make_legend(), 64),
+        ("hardware.png", make_hardware(), 64),
+        ("overseer-avatar.png", make_overseer_avatar(), 64),
+        ("goat-final.png", make_goat_final(), 96),
     ]
 
 
@@ -4752,6 +6027,8 @@ EXPECTED = {
     "facade.png": (128, 64), "tetsu.png": (128, 288), "sudo.png": (128, 288), "paine-attack.png": (128, 96),
     "portraits.png": (144, 48), "ninja.png": (160, 48), "enforcer.png": (224, 56), "bomber.png": (128, 32),
     "sniper.png": (160, 40), "overseer.png": (384, 96), "fx.png": (256, 32),
+    "hero-landing.png": (128, 144), "billboard.png": (576, 128), "kiss.png": (32, 16), "legend.png": (320, 64),
+    "hardware.png": (512, 40), "overseer-avatar.png": (896, 96), "goat-final.png": (1344, 96),
 }
 
 

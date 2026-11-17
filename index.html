@@ -50,12 +50,24 @@
           <h1 id="overlay-title">Cyberpunk 2D77</h1>
           <p id="overlay-text">It's year 2D77. You're a Cyber Badass. Don't kiss the Demon Goat.</p>
           <dl id="overlay-stats" class="stats" hidden></dl>
-          <div id="char-select" class="char-select" role="radiogroup" aria-label="Choose your runner"></div>
+          <div id="lb-entry" class="lb-entry" hidden>
+            <div class="lb-score">SCORE <b id="lb-score">0</b></div>
+            <div id="lb-form" class="lb-form">
+              <input id="lb-name" class="lb-name" type="text" maxlength="16" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="Your name for the leaderboard" />
+              <button id="lb-save" class="lb-save" type="button">Save score</button>
+            </div>
+            <div id="lb-saved" class="lb-saved" role="status" hidden></div>
+          </div>
+          <p id="ic-label" class="ic-label">CHOOSE YOUR INDIVIDUAL CONTRIBUTOR</p>
+          <div id="char-select" class="char-select" role="radiogroup" aria-label="Choose your Individual Contributor"></div>
           <div class="overlay-actions">
             <button id="overlay-btn" class="primary-btn" type="button">Start Game</button>
             <button id="overlay-btn-2" class="secondary-btn" type="button" hidden>Restart</button>
+            <button id="respec-btn" class="secondary-btn" type="button" hidden>Respec</button>
             <button id="codex-btn" class="secondary-btn" type="button">Database</button>
+            <button id="lb-btn" class="secondary-btn" type="button">Leaderboard</button>
           </div>
+          <p id="overlay-tip" class="overlay-tip"></p>
           <div id="settings" class="settings">
             <span class="setting-label">Auto-fire <small>(assisted aim)</small></span>
             <span class="seg">
@@ -76,6 +88,16 @@
             <span class="seg">
               <button type="button" data-music="synthwave" aria-pressed="true">Darksynth</button>
               <button type="button" data-music="classic" aria-pressed="false">Original</button>
+            </span>
+            <label class="setting-label" for="vol-music">Music volume</label>
+            <span class="vol">
+              <input id="vol-music" type="range" min="0" max="100" step="1" value="100" data-volume="musicVolume" />
+              <output for="vol-music">100</output>
+            </span>
+            <label class="setting-label" for="vol-sfx">SFX volume</label>
+            <span class="vol">
+              <input id="vol-sfx" type="range" min="0" max="100" step="1" value="100" data-volume="sfxVolume" />
+              <output for="vol-sfx">100</output>
             </span>
           </div>
           <details id="how-to" class="how-to">
@@ -106,9 +128,11 @@
               <dt>Auto special</dt>
               <dd>Uses your special by itself when enemies get close and you have enough of its resource</dd>
               <dt>Heat / Focus / RAM</dt>
-              <dd>Specials cost your runner's resource. It doesn't refill by itself: earn it by dealing and taking damage</dd>
+              <dd>Specials cost your Individual Contributor's resource. It doesn't refill by itself: earn it by dealing and taking damage</dd>
               <dt>XP</dt>
-              <dd>Grab the chips enemies drop to level up and pick an upgrade. The Demon Goat shows up at 2:30, and something worse after it</dd>
+              <dd>Grab the chips enemies drop to level up and install an upgrade (R rerolls, 3 per run). Pause to respec or hot-swap your Individual Contributor</dd>
+              <dt>Lives &amp; bosses</dt>
+              <dd>You get 3 lives. The Overseer shows up at 2:30; beat it and the Demon GOAT, the final boss, comes for you</dd>
             </dl>
           </details>
           <div id="secrets" class="secrets">
@@ -122,8 +146,46 @@
       <div id="levelup" class="overlay levelup" hidden>
         <div class="levelup-panel" role="dialog" aria-labelledby="levelup-title">
           <h2 id="levelup-title">LEVEL UP!</h2>
-          <p>Choose an upgrade</p>
+          <p>Install one upgrade</p>
           <div id="cards" class="cards"></div>
+          <div class="levelup-foot">
+            <div id="legend-levelup" class="legend" aria-live="polite">
+              <span class="legend-sprite" aria-hidden="true"></span>
+              <span class="legend-bubble"><b>THE LEGEND</b><span class="legend-line"></span></span>
+            </div>
+            <button id="reroll-btn" class="secondary-btn reroll-btn" type="button">REROLL (3)</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="loadout" class="overlay levelup loadout" hidden>
+        <div class="levelup-panel" role="dialog" aria-labelledby="loadout-title">
+          <h2 id="loadout-title">PRE-DROP LOADOUT</h2>
+          <p>Pick 2 starting skills (<b id="loadout-count">0/2</b>). They start a level up and show up more often, and rarer, in the run.</p>
+          <div id="loadout-grid" class="loadout-grid"></div>
+          <div class="levelup-foot">
+            <div id="legend-loadout" class="legend" aria-live="polite">
+              <span class="legend-sprite" aria-hidden="true"></span>
+              <span class="legend-bubble"><b>THE LEGEND</b><span class="legend-line"></span></span>
+            </div>
+            <div class="loadout-actions">
+              <button id="loadout-back" class="secondary-btn" type="button">Back</button>
+              <button id="drop-btn" class="primary-btn" type="button">Drop In</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="respec" class="overlay levelup respec" hidden>
+        <div class="levelup-panel respec-panel" role="dialog" aria-labelledby="respec-title">
+          <h2 id="respec-title">RESPEC</h2>
+          <p id="respec-points">0 POINTS FREE</p>
+          <div id="respec-list" class="respec-list"></div>
+          <div class="loadout-actions">
+            <button id="respec-cancel" class="secondary-btn" type="button">Cancel</button>
+            <button id="respec-reset" class="secondary-btn" type="button">Reset all</button>
+            <button id="respec-apply" class="primary-btn" type="button">Apply</button>
+          </div>
         </div>
       </div>
 
@@ -134,7 +196,7 @@
             <button id="codex-close" class="secondary-btn" type="button">Close</button>
           </div>
           <div class="codex-tabs" role="tablist">
-            <button type="button" data-tab="characters" aria-pressed="true">Runners</button>
+            <button type="button" data-tab="characters" aria-pressed="true">ICs</button>
             <button type="button" data-tab="enemies" aria-pressed="false">Enemies</button>
             <button type="button" data-tab="bosses" aria-pressed="false">Bosses</button>
             <button type="button" data-tab="skills" aria-pressed="false">Skills</button>
@@ -143,21 +205,48 @@
         </div>
       </div>
 
-      <div id="breach" class="overlay breach" hidden>
-        <div class="breach-panel" role="dialog" aria-labelledby="breach-title">
-          <h2 id="breach-title">JACK IN // BREACH</h2>
-          <div class="breach-info">
-            <div><span class="breach-label">SEQUENCE</span><div id="breach-target" class="breach-codes"></div></div>
-            <div><span class="breach-label">BUFFER</span><div id="breach-buffer" class="breach-codes"></div></div>
+      <div id="leaderboard" class="overlay codex leaderboard" hidden>
+        <div class="codex-panel lb-panel" role="dialog" aria-labelledby="lb-title">
+          <div class="codex-head">
+            <h2 id="lb-title">LEADERBOARD</h2>
+            <button id="lb-close" class="secondary-btn" type="button">Close</button>
           </div>
-          <div class="breach-timer"><div id="breach-timer-bar"></div></div>
-          <div id="breach-grid" class="breach-grid"></div>
-          <p id="breach-status" class="breach-status"></p>
-          <p class="breach-help">
-            Pick a code from the lit row, then from that code's column, then its row, and so on. Get the sequence into the buffer
-            before time runs out.
-          </p>
-          <button id="breach-exit" class="secondary-btn" type="button">Disconnect</button>
+          <p id="lb-sub" class="codex-count lb-sub"></p>
+          <div id="lb-body" class="codex-body lb-body"></div>
+        </div>
+      </div>
+
+      <div id="breach" class="overlay breach" hidden>
+        <div id="breach-screen" class="breach-screen" role="dialog" aria-modal="true" aria-labelledby="breach-title" tabindex="-1">
+          <header class="breach-top">
+            <h2 id="breach-title">NETRUNNER<span>//</span>OS <small>jack-in v2.0.77</small></h2>
+            <ol id="breach-steps" class="breach-steps" aria-label="Hack progress">
+              <li>Recon</li>
+              <li>Exploit</li>
+              <li>Crack</li>
+              <li>Root</li>
+              <li>Payload</li>
+            </ol>
+            <button id="breach-exit" class="breach-exit" type="button">Jack out<span class="kb-only"> [Esc]</span></button>
+          </header>
+          <div class="breach-main">
+            <div id="breach-term" class="breach-term" role="log" aria-live="off"></div>
+            <aside id="breach-ice" class="breach-ice" aria-label="ICE trace">
+              <p id="breach-ice-name" class="ice-name">BLACK ICE</p>
+              <canvas id="breach-ice-canvas" class="ice-canvas" aria-hidden="true"></canvas>
+              <div class="trace">
+                <span>TRACE</span>
+                <div class="trace-bar" role="progressbar" aria-label="ICE trace" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                  <div id="breach-trace-bar"></div>
+                </div>
+                <span id="breach-trace-pct">0%</span>
+              </div>
+              <p id="breach-ice-status" class="ice-status"></p>
+            </aside>
+          </div>
+          <p id="breach-hint" class="breach-hint"></p>
+          <div id="breach-flash" class="breach-flash" hidden></div>
+          <p id="breach-sr" class="breach-sr" aria-live="polite"></p>
         </div>
       </div>
 
@@ -187,12 +276,16 @@
     <script src="js/pickups.js"></script>
     <script src="js/player.js"></script>
     <script src="js/heroes.js"></script>
+    <script src="js/lives.js"></script>
     <script src="js/enemies.js"></script>
+    <script src="js/bosses.js"></script>
     <script src="js/overseer.js"></script>
+    <script src="js/goat.js"></script>
     <script src="js/upgrades.js"></script>
     <script src="js/secrets.js"></script>
     <script src="js/codex.js"></script>
     <script src="js/render.js"></script>
+    <script src="js/leaderboard.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>

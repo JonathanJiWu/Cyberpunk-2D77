@@ -294,12 +294,14 @@ const Synthwave = (() => {
   }
 
   return {
-    available: () => !!AudioCtor,
-    // Returns false if Web Audio isn't available (caller falls back to the mp3)
+    available: () => !!AudioCtor && !SoundSystem.failed,
+    isPlaying: () => playing,
+    // Returns false while there is no AudioContext yet (no user gesture so
+    // far); music.js calls it again once SoundSystem unlocks.
     start(fromTop) {
-      if (!SoundSystem.ctx) return false;
-      if (!ctx) build(SoundSystem.ctx, SoundSystem.master);
       if (fromTop) step = 0;
+      if (!SoundSystem.ctx) return false;
+      if (!ctx) build(SoundSystem.ctx, SoundSystem.musicBus);
       if (playing) return true;
       playing = true;
       nextTime = ctx.currentTime + 0.08;
@@ -344,16 +346,28 @@ const Synthwave = (() => {
 // Which soundtrack plays: the synthwave one (default) or the original mp3
 const music = {
   style: "synthwave",
+  on: false, // the game wants music now (kept even if audio isn't unlocked yet)
   play(fromTop) {
-    if (this.style === "synthwave" && Synthwave.start(fromTop)) {
+    this.on = true;
+    if (this.style === "synthwave" && Synthwave.available()) {
       classicMusic.pause();
+      Synthwave.start(fromTop); // if audio is still locked, resync() starts it
       return;
     }
+    Synthwave.stop();
     classicMusic.play();
   },
   pause() {
+    this.on = false;
     Synthwave.stop();
     classicMusic.pause();
+  },
+  // After every unlock: start whatever should be playing but couldn't yet
+  // (no AudioContext when the run started, or the mp3 was blocked)
+  resync() {
+    if (!this.on) return;
+    const synth = this.style === "synthwave" && Synthwave.available();
+    if (synth ? !Synthwave.isPlaying() : !classicMusic.el || classicMusic.el.paused) this.play();
   },
   setIntensity(n) {
     Synthwave.setIntensity(n);
@@ -375,6 +389,7 @@ try {
   /* storage unavailable */
 }
 music.setStyle(Synthwave.available() ? music.style : "classic");
+SoundSystem.onUnlock.push(() => music.resync());
 document.querySelectorAll("[data-music]").forEach((b) =>
   b.addEventListener("click", () => {
     SoundSystem.unlock();

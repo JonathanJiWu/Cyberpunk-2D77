@@ -74,6 +74,32 @@ document.querySelectorAll("[data-setting]").forEach((b) =>
   })
 );
 
+// Volume sliders: settings.musicVolume / settings.sfxVolume (0-100), saved with
+// the other settings and applied live. Moving one also unmutes, so a forgotten
+// mute (it persists across visits) can't keep the game silent.
+const volumeSliders = document.querySelectorAll("input[data-volume]");
+function applyVolume() {
+  volumeSliders.forEach((s) => {
+    const key = s.dataset.volume;
+    const v = settings[key] === undefined ? 100 : Number(settings[key]);
+    settings[key] = Number.isFinite(v) ? clamp(Math.round(v), 0, 100) : 100;
+    s.value = settings[key];
+    s.style.setProperty("--fill", settings[key] + "%");
+    s.nextElementSibling.textContent = settings[key];
+  });
+  SoundSystem.setVolume(settings.musicVolume / 100, settings.sfxVolume / 100);
+}
+volumeSliders.forEach((s) => {
+  s.addEventListener("input", () => {
+    settings[s.dataset.volume] = Number(s.value);
+    if (SoundSystem.muted) toggleMute();
+    applyVolume();
+    applySettings();
+  });
+  if (s.dataset.volume === "sfxVolume") s.addEventListener("change", () => sfx.pickup.play()); // a sample at the new level
+});
+applyVolume();
+
 // ---------------------------------------------------------------- Queries ---
 function keyHeld(action) {
   for (const code of input.keys) if (KEYMAP[code] === action) return true;

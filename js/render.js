@@ -21,6 +21,8 @@ function render(time) {
   drawCrates();
   drawPickups(time);
   drawEnemies(time);
+  drawGoatDeath(time);
+  drawShockwaves(time);
   drawPlayer(time);
   drawPlayerProjectiles();
   drawHeroFx(time);
@@ -38,13 +40,25 @@ function render(time) {
     ctx.fillRect(0, 0, W, H);
   }
 
-  // Red sky while the boss is alive
+  // Red sky while a boss is alive; the GOAT sets it on fire, with lightning
   if (game.boss && !game.boss.dead && game.state !== "over") {
     ctx.fillStyle = `rgba(255,20,60,${0.08 + 0.04 * Math.sin(time * 2)})`;
     ctx.fillRect(0, 0, W, H);
   }
+  if (game.goatSky && game.state !== "over") {
+    ctx.fillStyle = `rgba(70,0,8,${0.22 * game.goatSky})`;
+    ctx.fillRect(0, 0, W, H);
+    if (Math.sin(time * 1.3) * Math.sin(time * 7.1) > 0.96) {
+      ctx.fillStyle = "rgba(255,220,240,0.22)";
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
   if (game.hackFlash > 0) {
     ctx.fillStyle = `rgba(90,255,122,${game.hackFlash * 0.5})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (game.landFlash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${game.landFlash * 1.6})`; // hero landing impact
     ctx.fillRect(0, 0, W, H);
   }
   if (game.hurtFlash > 0) {
@@ -201,6 +215,20 @@ function drawHUD(time) {
   hudText(`${CH().name}  LV ${progress.level}`, 94, 32, 24, "#ffe14d");
   drawBar(44, 70, 440, 34, p.hp / stats.maxHp, p.ghostHp / stats.maxHp, hpColor);
   hudText(`${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
+  // Lives: one chip per backup
+  for (let i = 0; i < MAX_LIVES; i++) {
+    const on = i < game.lives;
+    const lx = 504 + i * 34;
+    ctx.fillStyle = on ? CH().color : "rgba(255,255,255,0.15)";
+    ctx.beginPath();
+    ctx.moveTo(lx + 13, 72);
+    ctx.lineTo(lx + 26, 87);
+    ctx.lineTo(lx + 13, 102);
+    ctx.lineTo(lx, 87);
+    ctx.closePath();
+    ctx.fill();
+    if (on) glow(lx + 13, 87, 18, "rgba(255,255,255,0.35)");
+  }
   const res = CH().resource;
   const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : res.color;
   drawBar(44, 120, 300, 18, p.heat / TUNING.heat.max, 0, heatColor);
@@ -281,6 +309,7 @@ function drawHUD(time) {
     hudText(game.banner.text, VW / 2, H / k / 2 - 180, size, game.banner.color || "#ff2457", "center", "middle");
     ctx.globalAlpha = 1;
   }
+  drawBossCard(VW, H / k);
   ctx.restore();
 
   if (boss && !boss.dead && !onScreen(boss)) drawBossArrow(boss, time);
