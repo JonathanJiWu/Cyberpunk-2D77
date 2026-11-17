@@ -31,9 +31,19 @@ Easter eggs:
     moon.png          64x64   big pale moon
     katana.png        40x12   katana, blade pointing right
     ripperdoc.png     64x72   street-clinic booth front
+
+Cyber re-skins (recoloured in place from the existing sheets, read-only):
+    reaper-cyber.png 200x192  from death.png    (4x4 frames of 50x48)
+    dragon-cyber.png 384x384  from dragon.png   (4x4 frames of 96x96)
+    goat-cyber.png   320x320  from redgoat.png  (4x4 frames of 80x80)
+City:
+    aerodyne.png     128x24   2 frames of 64x24   flying car
+    city-mid.png     640x420  seamless dense midground cityscape
+    facade.png       128x64   2 wall tiles of 64x64, seamless both ways
 """
 
 import argparse
+import colorsys
 import math
 import os
 import random
@@ -2289,47 +2299,907 @@ def make_ripperdoc():
     return g.image()
 
 
+# ================================================================ RE-SKINS ===
+# The cyber re-skins load an existing sheet (read-only) and recolour its
+# pixels in place, keeping the sheet size, frame grid and silhouettes. The
+# only pixels added are 1px translucent glows, clipped to each frame.
+RESKIN_DELTA = {}
+
+
+def load_source(name):
+    with Image.open(os.path.join(IMG_DIR, name)) as im:
+        return im.convert("RGBA")
+
+
+def hls_of(c):
+    h, l, s = colorsys.rgb_to_hls(c[0] / 255, c[1] / 255, c[2] / 255)
+    return h * 360, l, s
+
+
+def nearest_stop(stops, v):
+    return rgba(min(stops, key=lambda st: abs(st[0] - v))[1])
+
+
+def frame_cells(w, h, fw, fh):
+    for fy in range(h // fh):
+        for fx in range(w // fw):
+            yield fx * fw, fy * fh, fy
+
+
+def add_glow(op, pts, col, alpha, x0, y0, fw, fh):
+    """Translucent halo on transparent pixels 4-adjacent to pts, inside the frame."""
+    c = rgba(col)[:3] + (alpha,)
+    for (x, y) in pts:
+        for dx, dy in N4:
+            nx, ny = x + dx, y + dy
+            if x0 <= nx < x0 + fw and y0 <= ny < y0 + fh and op[nx, ny][3] == 0:
+                op[nx, ny] = c
+
+
+def check_reskin(src, out, fw, fh, name):
+    """Per-frame bbox may move by at most 2px; returns the max delta."""
+    worst = 0
+    for x0, y0, _ in frame_cells(src.width, src.height, fw, fh):
+        a = src.crop((x0, y0, x0 + fw, y0 + fh)).getbbox()
+        b = out.crop((x0, y0, x0 + fw, y0 + fh)).getbbox()
+        if a is None and b is None:
+            continue
+        d = max(abs(p - q) for p, q in zip(a, b))
+        worst = max(worst, d)
+    assert worst <= 2, (name, worst)
+    return worst
+
+
+def frame_classes(sp, x0, y0, fw, fh, classify):
+    cls = {}
+    for y in range(y0, y0 + fh):
+        for x in range(x0, x0 + fw):
+            p = sp[x, y]
+            if p[3]:
+                cls[(x, y)] = classify(p[:3])
+    return cls
+
+
+# ------------------------------------------------------------ cyber reaper ---
+REAPER_ROBE = [(0.00, "#0b0416"), (0.12, "#140b26"), (0.18, "#1c1233"), (0.22, "#231840"),
+               (0.28, "#2c214f"), (0.33, "#352a5c"), (0.36, "#3b3064"), (0.39, "#42376e"),
+               (0.42, "#4a4078"), (0.44, "#504682"), (0.49, "#5d5490")]
+REAPER_STAFF = {(0x75, 0x52, 0x2b): "#3d3560", (0x9a, 0x77, 0x37): "#5a4f86",
+                (0xbe, 0x93, 0x47): "#8a80c0", (0x42, 0x2b, 0x28): "#1a0b2e"}
+LIGHT_GREY = (0xcf, 0xcf, 0xcf)
+
+
+def reaper_class(c):
+    r, g, b = c
+    if r == g == b:
+        return "robe"
+    if g > r and r == b:
+        return "blade"
+    if b > r:
+        return "skull"
+    return "staff"
+
+
+def make_reaper_cyber():
+    src = load_source("death.png")
+    sp = src.load()
+    out = Image.new("RGBA", src.size, (0, 0, 0, 0))
+    op = out.load()
+    FW, FH = 50, 48
+    for x0, y0, row in frame_cells(src.width, src.height, FW, FH):
+        cls = frame_classes(sp, x0, y0, FW, FH, reaper_class)
+        # light grey belongs to the blade where it touches it, else it is a staff band
+        greys = [p for p in cls if sp[p][:3] == LIGHT_GREY]
+        changed = True
+        while changed:
+            changed = False
+            for (x, y) in greys:
+                if cls[(x, y)] != "blade" and any(cls.get((x + dx, y + dy)) == "blade" for dx, dy in N8):
+                    cls[(x, y)] = "blade"
+                    changed = True
+        for p in greys:
+            if cls[p] != "blade":
+                cls[p] = "band"
+        # the blade body is drawn in robe greys: grow it out from the highlight line
+        core = {p for p, k in cls.items() if k == "blade"}
+        for (x, y), k in list(cls.items()):
+            if k == "robe" and any((x + dx, y + dy) in core for dx in (-2, -1, 0, 1, 2) for dy in (-2, -1, 0, 1, 2)):
+                cls[(x, y)] = "bladebody"
+        ys = [y for (_, y) in cls]
+        top, bot = min(ys), max(ys)
+        xs = [x for (x, _) in cls]
+        midx = (min(xs) + max(xs)) / 2
+        blade = set()
+        for (x, y), k in cls.items():
+            c = sp[x, y][:3]
+            h, l, s = hls_of(c)
+            if k == "robe":
+                col = nearest_stop(REAPER_ROBE, l)
+                if c == (0, 0, 0) and y > top + (bot - top) * 0.55:
+                    col = rgba("#0b5578")  # fold lines become circuit traces
+            elif k == "band":
+                col = rgba("#19f5ff")
+            elif k == "staff":
+                col = rgba(REAPER_STAFF.get(c, "#2a2440"))
+            elif k == "blade":
+                blade.add((x, y))
+                col = rgba("#ffffff") if l >= 0.6 else rgba("#ffa6f0")
+            elif k == "bladebody":
+                blade.add((x, y))
+                col = rgba("#ff2fd6") if l >= 0.2 else rgba("#a8189c")
+            else:  # skull -> dark faceplate with red LED eyes and a dim grille
+                if c == (0x16, 0x28, 0x48):
+                    col = rgba("#ff2457")
+                elif c == (0x71, 0xac, 0xef):
+                    col = rgba("#ffffff")
+                elif c == (0x35, 0x44, 0x60):
+                    col = rgba("#5c0a2b")
+                elif c == (0x5c, 0x47, 0x66):
+                    col = rgba("#1a0b2e")
+                else:
+                    col = rgba("#8a80c0" if l >= 0.85 else "#5a4f86" if l >= 0.7 else
+                               "#3d3560" if l >= 0.5 else "#2a2440")
+            op[x, y] = col
+        # trace end points light up as nodes
+        traces = [p for p in cls if op[p] == rgba("#0b5578")]
+        tset = set(traces)
+        for (x, y) in traces:
+            if sum((x + dx, y + dy) in tset for dx, dy in N8) <= 1:
+                op[x, y] = rgba("#19f5ff")
+        # visor band between the two glints of the front view
+        glints = [p for p in cls if sp[p][:3] == (0x71, 0xac, 0xef)]
+        for (ax, ay) in glints:
+            for (bx, by) in glints:
+                if ay == by and bx > ax + 1:
+                    for x in range(ax + 1, bx):
+                        if cls.get((x, ay)) == "skull":
+                            op[x, ay] = rgba("#a6113e")
+        # cyan rim light along the right-hand silhouette edge of the robe
+        for (x, y), k in cls.items():
+            if k != "robe":
+                continue
+            right_open = (x + 1, y) not in cls
+            top_open = (x, y - 1) not in cls and x > midx
+            if right_open or top_open:
+                op[x, y] = rgba("#19f5ff")
+                if (x - 1, y) in cls and cls[(x - 1, y)] == "robe" and right_open:
+                    op[x - 1, y] = rgba("#0e9fc6")
+        add_glow(op, blade, "#ff2fd6", 110, x0, y0, FW, FH)
+    RESKIN_DELTA["reaper-cyber.png"] = check_reskin(src, out, FW, FH, "reaper")
+    return out
+
+
+# ------------------------------------------------------------- mech dragon ---
+DRAGON_STEEL = [(0.10, "#0d0b17"), (0.13, "#141220"), (0.15, "#191726"), (0.22, "#232133"),
+                (0.25, "#2a283b"), (0.27, "#302e42"), (0.33, "#3c3a51"), (0.38, "#49475f"),
+                (0.40, "#504e67"), (0.42, "#57556e"), (0.46, "#66647e"), (0.50, "#7a7893"),
+                (0.56, "#b4b2cc"), (0.60, "#ecebf7")]
+DRAGON_CHROME = [(0.26, "#3e3960"), (0.34, "#524e78"), (0.39, "#67638e"), (0.45, "#7f7ca6"),
+                 (0.49, "#918eb6"), (0.55, "#a7a4c9"), (0.61, "#bdbadb"), (0.64, "#cdcae8"),
+                 (0.70, "#e2e0f5")]
+DRAGON_HOLO = [(0.29, "#0b4f6e"), (0.39, "#0e86a8"), (0.48, "#14c3dc"), (0.58, "#3ef0ff"),
+               (0.64, "#a8fbff")]
+DRAGON_EYES = {(0xd0, 0x7a, 0x1b): "#a6113e", (0xe0, 0x97, 0x22): "#ff2457",
+               (0xff, 0xcb, 0x30): "#ffffff", (0xff, 0xff, 0xff): "#ffffff"}
+
+
+def dragon_class(c):
+    if c in DRAGON_EYES:
+        return "eye"
+    h, l, s = hls_of(c)
+    if 200 <= h <= 230 and s > 0.2:
+        return "wing"
+    if s < 0.12 and (h < 10 or h > 350):
+        return "body"
+    if 18 <= h < 26:
+        return "belly"
+    if 26 <= h <= 35 and l >= 0.45:
+        return "claw"
+    return "dark"
+
+
+def make_dragon_cyber():
+    src = load_source("dragon.png")
+    sp = src.load()
+    out = Image.new("RGBA", src.size, (0, 0, 0, 0))
+    op = out.load()
+    FW = FH = 96
+    for x0, y0, row in frame_cells(src.width, src.height, FW, FH):
+        cls = frame_classes(sp, x0, y0, FW, FH, dragon_class)
+        for (x, y), k in cls.items():
+            c = sp[x, y][:3]
+            h, l, s = hls_of(c)
+            if k == "body":
+                col = nearest_stop(DRAGON_STEEL, l)
+            elif k == "belly":
+                col = nearest_stop(DRAGON_CHROME, l)
+                if (y - y0) % 6 == 0:  # armour plate segments
+                    col = nearest_stop(DRAGON_CHROME, l - 0.12)
+            elif k == "claw":
+                col = rgba("#ffffff" if l > 0.8 else "#cdc8ef" if l > 0.6 else "#8a80c0")
+            elif k == "eye":
+                col = rgba(DRAGON_EYES[c])
+            elif k == "dark":
+                col = nearest_stop(DRAGON_STEEL, l * 0.9)
+            else:  # holographic wing membrane with scanlines
+                col = nearest_stop(DRAGON_HOLO, l)
+                a = 190
+                if (y - y0) % 3 == 2:
+                    col = tuple(int(v * 0.7) for v in col[:3]) + (255,)
+                    a = 150
+                col = col[:3] + (a,)
+            op[x, y] = col
+        # neon seams where the plating meets the chest armour; glowing wing struts
+        for (x, y), k in cls.items():
+            if k != "body":
+                continue
+            nb = [cls.get((x + dx, y + dy)) for dx, dy in N4]
+            if "belly" in nb:
+                op[x, y] = rgba("#19f5ff")
+            elif nb.count("wing") >= 2:
+                op[x, y] = rgba("#ff2fd6")
+            elif "wing" in nb:
+                op[x, y] = rgba("#a8189c")
+        if row == 3:  # back view: neon spine seam and glowing wing edges
+            cx = x0 + 47
+            for (x, y), k in cls.items():
+                if k != "body":
+                    continue
+                if x in (cx, cx + 1) and (y - y0) % 3 != 0 and y > min(p[1] for p in cls) + 16:
+                    op[x, y] = rgba("#19f5ff")
+                elif (x, y - 1) not in cls and abs(x - cx) > 12:
+                    op[x, y] = rgba("#ff2fd6")
+        # orange thruster glow near the tail tip (side and back views)
+        if row in (1, 2, 3):
+            low = [p for p in cls if p[1] > y0 + 40]
+            if row == 1:
+                tip = max(low, key=lambda p: (p[0], -p[1]))
+                core, outward = (tip[0] - 3, tip[1]), (1, 0)
+            elif row == 2:
+                tip = min(low, key=lambda p: (p[0], p[1]))
+                core, outward = (tip[0] + 3, tip[1]), (-1, 0)
+            else:
+                tip = max(low, key=lambda p: (p[1], -abs(p[0] - x0 - 48)))
+                core, outward = (tip[0], tip[1] - 3), (0, 1)
+            hot = []
+            for (x, y) in cls:
+                d = math.hypot(x - core[0], y - core[1])
+                if d <= 1.0:
+                    op[x, y] = rgba("#fff6b8")
+                elif d <= 2.3:
+                    op[x, y] = rgba("#ff9b21")
+                    hot.append((x, y))
+            ex, ey = tip[0] + outward[0], tip[1] + outward[1]
+            if x0 <= ex < x0 + FW and y0 <= ey < y0 + FH and op[ex, ey][3] == 0:
+                op[ex, ey] = rgba("#ff9b21")[:3] + (150,)
+    RESKIN_DELTA["dragon-cyber.png"] = check_reskin(src, out, FW, FH, "dragon")
+    return out
+
+
+# --------------------------------------------------------------- cyber goat ---
+GOAT_EYES = {(0xbc, 0xa3, 0x00): "#b5fcff", (0x89, 0x6b, 0x00): "#19f5ff"}
+GOAT_STEEL = [(0.00, "#0b0416"), (0.12, "#2a2440"), (0.19, "#3d3560"), (0.26, "#5a4f86"),
+              (0.31, "#7a71b0"), (0.34, "#9a92cc"), (0.36, "#b4aedb"), (0.40, "#cdc8ef")]
+
+
+def goat_class(c):
+    if c in GOAT_EYES:
+        return "eye"
+    if c == (0, 0, 0):
+        return "black"
+    r, g, b = c
+    h, l, s = hls_of(c)
+    if r == g == b:
+        return "grey"
+    if 38 <= h <= 60 or (30 <= h < 38 and s > 0.85):
+        return "staff"
+    if 15 <= h <= 30 and l < 0.17:
+        return "stroke"
+    return "keep"
+
+
+def make_goat_cyber():
+    src = load_source("redgoat.png")
+    sp = src.load()
+    out = Image.new("RGBA", src.size, (0, 0, 0, 0))
+    op = out.load()
+    FW = FH = 80
+    for x0, y0, row in frame_cells(src.width, src.height, FW, FH):
+        cls = frame_classes(sp, x0, y0, FW, FH, goat_class)
+        ys = [y for (_, y) in cls]
+        top, bot = min(ys), max(ys)
+        horn_line = top + (bot - top) * 0.3
+        staff = set()
+        red = {p for p, k in cls.items() if k == "keep" and hls_of(sp[p][:3])[2] > 0.5}
+        for (x, y), k in cls.items():
+            c = sp[x, y][:3]
+            h, l, s = hls_of(c)
+            if k == "keep":
+                col = sp[x, y]
+            elif k == "black":
+                col = rgba("#0b0416")
+            elif k == "grey":
+                col = nearest_stop(GOAT_STEEL, l)
+            elif k == "eye":
+                col = rgba(GOAT_EYES[c])
+            elif k == "stroke":
+                # muscle strokes on the fur become circuit traces
+                nb = sum((x + dx, y + dy) in red for dx, dy in N4)
+                col = rgba("#0e9fc6") if nb >= 2 else sp[x, y]
+            else:  # staff -> neon energy staff: magenta edge, cyan body, white core
+                staff.add((x, y))
+                col = rgba("#ffffff" if l >= 0.78 else "#19f5ff" if l >= 0.5 else
+                           "#0e9fc6" if l >= 0.3 else "#ff2fd6")
+            op[x, y] = col
+        # trace nodes
+        traces = {p for p in cls if op[p] == rgba("#0e9fc6") and cls[p] == "stroke"}
+        for (x, y) in traces:
+            if sum((x + dx, y + dy) in traces for dx, dy in N8) <= 1:
+                op[x, y] = rgba("#19f5ff")
+        # chrome horns with neon tips (connected grey blobs above the head)
+        horns = {p for p, k in cls.items() if k in ("grey", "black") and p[1] < horn_line}
+        seen = set()
+        for start in sorted(horns):
+            if start in seen or cls[start] != "grey":
+                continue
+            comp, stack_ = [], [start]
+            seen.add(start)
+            while stack_:
+                p = stack_.pop()
+                comp.append(p)
+                for dx, dy in N8:
+                    q = (p[0] + dx, p[1] + dy)
+                    if q in horns and q not in seen:
+                        seen.add(q)
+                        stack_.append(q)
+            ty = min(y for (_, y) in comp)
+            for (x, y) in comp:
+                if y <= ty + 1:
+                    op[x, y] = rgba("#b5fcff" if y == ty else "#19f5ff")
+                elif y <= ty + 3 and cls[(x, y)] == "grey":
+                    op[x, y] = rgba("#19f5ff")
+        # chrome implant ring around the left-most eye
+        eyes = [p for p, k in cls.items() if k == "eye"]
+        if eyes:
+            ex = min(x for (x, _) in eyes)
+            eys = [y for (x, y) in eyes if x == ex]
+            for y in range(min(eys) - 1, max(eys) + 2):
+                for x in (ex - 1, ex, ex + 1):
+                    if (x, y) in cls and cls[(x, y)] not in ("eye",) and (x, y) not in red:
+                        op[x, y] = rgba("#8a80c0" if y < min(eys) or x < ex else "#3d3560")
+        add_glow(op, staff, "#19f5ff", 100, x0, y0, FW, FH)
+    RESKIN_DELTA["goat-cyber.png"] = check_reskin(src, out, FW, FH, "goat")
+    return out
+
+
+# ================================================================ AERODYNE ===
+def aerodyne_frame(f):
+    W, H = 64, 24
+    spoiler, body, glass = Grid(W, H), Grid(W, H), Grid(W, H)
+    sp_ = poly_pts([(2.5, 5.6), (10.5, 5.6), (11.5, 7.0), (4.0, 7.8)])
+    shade_rim(spoiler, sp_, "2", light="3", dark="1")
+    spoiler.vline(6, 7, 8, "1")
+    bp = poly_pts([(3.0, 8.6), (10, 8.2), (20, 7.6), (24, 4.2), (36, 3.8), (42, 7.4), (52, 9.6),
+                   (61.6, 12.2), (61.6, 13.6), (55, 16.4), (9, 16.4), (3.4, 14.2)])
+    for (x, y) in bp:
+        body.set(x, y, "2" if y <= 9 else "1" if y <= 14 else "P")
+    for (x, y) in edge_pts(bp, ((0, -1),)):
+        body.set(x, y, "4" if 44 <= x <= 54 or 8 <= x <= 14 else "3")
+    body.hline(6, 54, 11, "K")          # body crease
+    body.hline(7, 53, 10, "3")
+    body.hline(10, 50, 12, "m")         # magenta side accent
+    body.set(10, 12, "n")
+    body.set(50, 12, "M")
+    body.hline(10, 53, 15, "C" if f == 0 else "c")  # underglow strip
+    for x in range(12, 52, 4):
+        body.set(x, 15, "B" if f == 1 else "C")
+    for sx in (18, 41):                 # door seams
+        body.vline(sx, 9, 14, "K")
+    # headlight (right) and tail light (left)
+    body.set(60, 12, "W")
+    body.set(59, 12, "W")
+    body.set(58, 12, "B")
+    body.set(61, 13, "B")
+    body.set(3, 10, "R" if f == 0 else "r")
+    body.set(3, 11, "R" if f == 0 else "r")
+    body.set(4, 10, "p" if f == 0 else "r")
+    # marker lights that alternate between the frames
+    body.set(13, 12, "O" if f == 1 else "o")
+    body.set(47, 12, "O" if f == 1 else "o")
+    gp = poly_pts([(21.6, 7.8), (25.2, 4.8), (35.6, 4.6), (40.6, 7.8)])
+    glass.fill(gp, "e")
+    for (x, y) in gp:
+        if (x - y) in (21, 22, 30):
+            glass.set(x, y, "c")
+    glass.set(26, 5, "B")
+    glass.set(27, 5, "C")
+    pods = Grid(W, H)
+    for (a, b) in ((11, 18), (44, 51)):
+        pp = poly_pts([(a, 15.5), (b + 1, 15.5), (b, 18.4), (a + 1, 18.4)])
+        shade_rim(pods, pp, "2", light="3", dark="1")
+        pods.hline(a + 2, b - 1, 18, "M" if f == 0 else "m")
+    beacon = Grid(W, H)
+    if f == 0:
+        beacon.set(7, 5, "W")
+    else:
+        beacon.set(7, 5, "r")
+    g = stack(W, H, pods, spoiler, body, glass, beacon)
+    # soft underglow below the car (outside the outline)
+    for x in range(12, 52):
+        if g.get(x, 20) == ".":
+            g.set(x, 20, "g")
+    for x in range(16, 48, 2):
+        if g.get(x, 21) == ".":
+            g.set(x, 21, "g")
+    return g
+
+
+def make_aerodyne():
+    sheet = Image.new("RGBA", (128, 24), (0, 0, 0, 0))
+    for f in range(2):
+        sheet.paste(aerodyne_frame(f).image(), (f * 64, 0))
+    return sheet
+
+
+# ================================================================ CITY MID ===
+class WrapCanvas:
+    """RGBA canvas whose x coordinate wraps, so anything drawn tiles seamlessly."""
+
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        self.px = self.img.load()
+
+    def put(self, x, y, col):
+        if 0 <= y < self.h:
+            self.px[x % self.w, y] = col
+
+    def get(self, x, y):
+        return self.px[x % self.w, y] if 0 <= y < self.h else (0, 0, 0, 0)
+
+    def rect(self, x0, y0, x1, y1, col):
+        for y in range(max(0, y0), min(self.h - 1, y1) + 1):
+            for x in range(x0, x1 + 1):
+                self.px[x % self.w, y] = col
+
+    def blend(self, x, y, col, a):
+        if not (0 <= y < self.h):
+            return
+        dr, dg, db, da = self.px[x % self.w, y]
+        a = a / 255.0
+        da = da / 255.0
+        oa = a + da * (1 - a)
+        if oa <= 0:
+            return
+        mix = [int(round((c * a + d * da * (1 - a)) / oa)) for c, d in zip(col[:3], (dr, dg, db))]
+        self.px[x % self.w, y] = tuple(mix) + (int(round(oa * 255)),)
+
+
+def make_glyphs(rng, n=28):
+    """Abstract 5x5 neon glyphs built from strokes (deliberately not letters)."""
+    out = []
+    while len(out) < n:
+        g = set()
+        for _ in range(rng.randint(2, 3)):
+            kind = rng.choice(("h", "v", "box", "dot", "diag", "hook"))
+            if kind == "h":
+                r, a = rng.randint(0, 4), rng.randint(0, 2)
+                g |= {(c, r) for c in range(a, min(5, a + rng.randint(3, 5)))}
+            elif kind == "v":
+                c, a = rng.randint(0, 4), rng.randint(0, 2)
+                g |= {(c, r) for r in range(a, min(5, a + rng.randint(3, 5)))}
+            elif kind == "box":
+                ox, oy = rng.randint(0, 2), rng.randint(0, 2)
+                g |= {(ox + i, oy + j) for i in range(3) for j in range(3) if i != 1 or j != 1}
+            elif kind == "dot":
+                g.add((rng.randint(0, 4), rng.randint(0, 4)))
+            elif kind == "diag":
+                ox, oy = rng.randint(0, 2), rng.randint(0, 2)
+                g |= {(ox + i, oy + i) for i in range(3)}
+            else:
+                c = rng.randint(1, 3)
+                g |= {(c, r) for r in range(0, 4)} | {(c - 1, 4), (c + 1, 0)}
+        if 7 <= len(g) <= 14:
+            out.append(sorted(g))
+    return out
+
+
+def make_city_mid():
+    rng = random.Random(SEED + 140)
+    W, H = 640, 420
+    cv = WrapCanvas(W, H)
+    MAG, CYA, YEL, ORA = rgba("#ff2fd6"), rgba("#19f5ff"), rgba("#ffe14d"), rgba("#ff9b21")
+    PALE = {MAG: rgba("#ffc2f4"), CYA: rgba("#c8fdff"), YEL: rgba("#fff6c4"), ORA: rgba("#ffd9a8")}
+    NEONS = [MAG, MAG, CYA, CYA, YEL, ORA]
+    LIT = [(rgba("#ffd36b"), 40), (rgba("#ffe14d"), 10), (rgba("#19f5ff"), 22), (rgba("#ff6fd8"), 20),
+           (rgba("#ff9b21"), 8)]
+    RED = rgba("#ff2457")
+    glyphs = make_glyphs(random.Random(SEED + 141))
+
+    def lit_colour():
+        r = rng.random() * sum(w for _, w in LIT)
+        for c, w in LIT:
+            r -= w
+            if r <= 0:
+                return c
+        return LIT[0][0]
+
+    def lift(c, k):
+        return tuple(min(255, max(0, v + k)) for v in c[:3]) + (255,)
+
+    layers = [
+        dict(body="#1d1442", hmin=250, hmax=410, wmin=34, wmax=66, gap=(4, 16), lit=0.12, signs=0.15),
+        dict(body="#160e33", hmin=170, hmax=340, wmin=38, wmax=74, gap=(2, 12), lit=0.18, signs=0.45),
+        dict(body="#100a26", hmin=90, hmax=240, wmin=44, wmax=92, gap=(0, 0), lit=0.22, signs=0.4),
+    ]
+    all_layers = []
+    for li, L in enumerate(layers):
+        base_body = rgba(L["body"])
+        start = x = rng.randint(0, 20)
+        blds = []
+        while x < start + W:
+            w = rng.randint(L["wmin"], L["wmax"])
+            if li == 2 and start + W - (x + w) < L["wmin"]:
+                w = start + W - x
+            wave = 0.5 + 0.5 * math.sin(2 * math.pi * (x + w / 2) / W * 2 + li * 1.7)
+            h = int(L["hmin"] + (L["hmax"] - L["hmin"]) * (0.4 * wave + 0.6 * rng.random()))
+            blds.append(dict(x=x, w=w, h=h, top=H - h))
+            x += w + rng.randint(*L["gap"])
+        all_layers.append(blds)
+
+        for b in blds:
+            bx, w, top = b["x"], b["w"], b["top"]
+            tint = rng.choice(((0, 0, 0), (-3, -1, 6), (4, 0, 3), (-2, 1, 2)))
+            body = tuple(min(255, max(0, v + t)) for v, t in zip(base_body[:3], tint)) + (255,)
+            rim, dark = lift(body, 22), lift(body, -9)
+            cv.rect(bx, top, bx + w - 1, H - 1, body)
+            # crown: setback / parapet / slanted cap
+            style = rng.choice(("parapet", "setback", "setback", "slant", "flat"))
+            if style == "setback" and w > 40:
+                ins = rng.randint(5, w // 4)
+                th = rng.randint(8, 22)
+                cv.rect(bx + ins, top - th, bx + w - 1 - ins, top - 1, body)
+                cv.rect(bx + ins, top - th, bx + w - 1 - ins, top - th, rim)
+                b["crown"] = (bx + ins, bx + w - 1 - ins, top - th)
+            elif style == "slant":
+                for c in range(w):
+                    rise = c // 4
+                    cv.rect(bx + c, top - rise, bx + c, top - 1, body)
+                    cv.put(bx + c, top - rise, rim)
+                b["crown"] = (bx + w - 3, bx + w - 1, top - (w - 1) // 4)
+            elif style == "parapet":
+                for c in range(0, w, 3):
+                    cv.put(bx + c, top - 1, rim)
+                b["crown"] = (bx, bx + w - 1, top)
+            else:
+                b["crown"] = (bx, bx + w - 1, top)
+            cv.rect(bx, top, bx + w - 1, top, rim)
+            cv.rect(bx, top + 1, bx + w - 1, top + 1, lift(body, 8))
+            for y in range(top, H):
+                cv.put(bx, y, rim)
+                cv.put(bx + w - 1, y, dark)
+            # window grid
+            ww, wh, sx, sy = rng.choice(((2, 2, 4, 5), (1, 2, 3, 4), (3, 1, 5, 4), (2, 1, 4, 3), (2, 3, 4, 6)))
+            dim = lift(body, 8)
+            p_lit = L["lit"] * (0.5 + rng.random())
+            prim, sec = lit_colour(), lit_colour()
+            stripe = rng.random() < 0.25
+            for wy in range(top + 6, H - 3, sy):
+                active = rng.random() < 0.6  # whole floors are either busy or mostly dark
+                for wx in range(bx + 3, bx + w - 3 - ww, sx):
+                    lit = rng.random() < p_lit * (1.9 if active else 0.2)
+                    if stripe and (wx - bx) // sx % 5 == 2:
+                        lit = rng.random() < 0.85
+                    col = (prim if rng.random() < 0.8 else sec) if lit else dim
+                    if lit and li == 0:
+                        col = tuple(int(v * 0.75) for v in col[:3]) + (255,)
+                    cv.rect(wx, wy, wx + ww - 1, wy + wh - 1, col)
+            # vertical neon strip down one corner
+            if li > 0 and rng.random() < 0.22 and b["h"] > 100:
+                col = rng.choice(NEONS)
+                ex = bx + 1 if rng.random() < 0.5 else bx + w - 2
+                y0_ = top + rng.randint(4, 20)
+                for y in range(y0_, min(H, y0_ + rng.randint(40, 130))):
+                    cv.put(ex, y, col)
+                    cv.blend(ex - 1, y, col, 60)
+                    cv.blend(ex + 1, y, col, 60)
+            # horizontal neon tube along a floor line
+            for _ in range(2 if b["h"] > 200 else 1):
+                if li == 0 or rng.random() > 0.45:
+                    continue
+                ny = top + rng.randint(12, max(13, min(110, b["h"] - 30)))
+                col = rng.choice(NEONS)
+                for x in range(bx + 2, bx + w - 2):
+                    cv.put(x, ny, col)
+                    cv.blend(x, ny + 1, col, 70)
+                    cv.blend(x, ny - 1, col, 45)
+            # neon roofline on some buildings
+            if rng.random() < 0.25:
+                col = rng.choice(NEONS)
+                x0_, x1_, ty = b["crown"]
+                for x in range(x0_, x1_ + 1):
+                    cv.put(x, ty, col)
+            # side pipe
+            if rng.random() < 0.3 and b["h"] > 120:
+                px_ = bx + (2 if rng.random() < 0.5 else w - 4)
+                for y in range(top + 8, H):
+                    cv.put(px_, y, lift(body, 22))
+                    cv.put(px_ + 1, y, lift(body, 10))
+                    if (y - top) % 14 == 0:
+                        cv.put(px_ - 1, y, lift(body, 22))
+                        cv.put(px_ + 2, y, lift(body, 22))
+            b["li"] = li
+
+        # rooftop furniture for this layer
+        for b in blds:
+            x0_, x1_, ty = b["crown"]
+            span = x1_ - x0_
+            r = rng.random()
+            mast = lift(rgba(L["body"]), 26)
+            if r < 0.35 and span >= 4:      # antenna with a red light
+                ax = rng.randint(x0_ + 1, x1_ - 1)
+                ah = rng.randint(10, 30)
+                for y in range(ty - ah, ty):
+                    cv.put(ax, y, mast)
+                for cy_ in range(ty - ah + 4, ty - 2, 6):
+                    cv.put(ax - 1, cy_, mast)
+                    cv.put(ax + 1, cy_, mast)
+                cv.put(ax, ty - ah - 1, RED)
+                for dx, dy in N4:
+                    cv.blend(ax + dx, ty - ah - 1 + dy, RED, 70)
+            elif r < 0.6 and span >= 14:    # water tank on legs
+                tw = rng.randint(8, min(12, span - 2))
+                tx = rng.randint(x0_ + 1, x1_ - tw)
+                tank = lift(rgba(L["body"]), 14)
+                for lx in (tx + 1, tx + tw - 2):
+                    cv.rect(lx, ty - 3, lx, ty - 1, mast)
+                cv.rect(tx, ty - 12, tx + tw - 1, ty - 4, tank)
+                for yy in (ty - 10, ty - 7):
+                    cv.rect(tx, yy, tx + tw - 1, yy, lift(tank, -10))
+                cv.rect(tx + 1, ty - 13, tx + tw - 2, ty - 13, tank)
+                cv.rect(tx + 3, ty - 14, tx + tw - 4, ty - 14, tank)
+                cv.rect(tx, ty - 12, tx, ty - 4, lift(tank, 12))
+            elif r < 0.8 and span >= 10:    # rooftop pipes + AC box
+                cv.rect(x0_ + 2, ty - 4, x0_ + 6, ty - 1, lift(rgba(L["body"]), 18))
+                for x in range(x0_ + 6, x1_ - 1):
+                    cv.put(x, ty - 2, mast)
+                cv.rect(x1_ - 2, ty - 6, x1_ - 2, ty - 2, mast)
+
+        # vertical glyph signs hung off building corners
+        for b in blds:
+            if rng.random() > L["signs"] or b["h"] < 120:
+                continue
+            n = rng.randint(4, 8)
+            sw, sh = 9, n * 7 + 3
+            col = rng.choice(NEONS)
+            right = rng.random() < 0.5
+            sx_ = b["x"] + b["w"] - 4 if right else b["x"] - 5
+            sy_ = b["top"] + rng.randint(10, max(11, min(60, b["h"] - sh - 20)))
+            if sy_ + sh > H - 10:
+                continue
+            for yy in range(sy_ - 2, sy_ + sh + 2):  # glow halo
+                for xx in range(sx_ - 2, sx_ + sw + 2):
+                    cv.blend(xx, yy, col, 34)
+            cv.rect(sx_, sy_, sx_ + sw - 1, sy_ + sh - 1, rgba("#0b0518"))
+            for xx in range(sx_, sx_ + sw):
+                cv.put(xx, sy_, col)
+                cv.put(xx, sy_ + sh - 1, col)
+            for yy in range(sy_, sy_ + sh):
+                cv.put(sx_, yy, col)
+                cv.put(sx_ + sw - 1, yy, col)
+            for i in range(n):
+                gl = rng.choice(glyphs)
+                for (gx, gy) in gl:
+                    cv.put(sx_ + 2 + gx, sy_ + 2 + i * 7 + gy, PALE[col] if gy == 2 else col)
+            for yy in (sy_ - 2, sy_ - 1, sy_ + sh, sy_ + sh + 1):  # mounting pole
+                cv.put(sx_ + sw // 2, yy, rgba("#3d3560"))
+
+        # cables over lower buildings (between buildings i and i+2)
+        if li > 0:
+            for i in range(len(blds)):
+                a, mid_, c = blds[i], blds[(i + 1) % len(blds)], blds[(i + 2) % len(blds)]
+                hi_top = max(a["top"], c["top"])
+                if mid_["top"] - hi_top < 18 or rng.random() < 0.15:
+                    continue
+                xa = a["x"] + a["w"] - 1
+                xc = c["x"] + (W if c["x"] < a["x"] else 0)
+                ya = rng.randint(hi_top + 4, min(hi_top + 20, mid_["top"] - 14))
+                yc = ya + rng.randint(-4, 4)
+                sag = rng.randint(5, 12)
+                lights = rng.random() < 0.6
+                lc = rng.choice((YEL, MAG, CYA))
+                for k in range(xc - xa + 1):
+                    t = k / max(1, xc - xa)
+                    y = int(round(ya + (yc - ya) * t + sag * 4 * t * (1 - t)))
+                    cv.put(xa + k, y, rgba("#07040f"))
+                    if lights and k % 6 == 3:
+                        cv.put(xa + k, y + 1, lc)
+        # short cables across the gaps between neighbouring buildings
+        if li < 2:
+            for i in range(len(blds)):
+                a, c = blds[i], blds[(i + 1) % len(blds)]
+                xa = a["x"] + a["w"] - 1
+                xc = c["x"] + (W if c["x"] < a["x"] else 0)
+                if xc - xa < 5 or rng.random() < 0.3:
+                    continue
+                for _ in range(rng.randint(1, 3)):
+                    hi_top = max(a["top"], c["top"])
+                    ya = rng.randint(hi_top + 10, min(H - 60, hi_top + 120))
+                    yc = ya + rng.randint(-6, 6)
+                    sag = rng.randint(2, 5)
+                    for k in range(xc - xa + 1):
+                        t = k / max(1, xc - xa)
+                        y = int(round(ya + (yc - ya) * t + sag * 4 * t * (1 - t)))
+                        cv.put(xa + k, y, rgba("#07040f"))
+
+    # holographic billboards on two tall mid-layer buildings
+    tall = sorted([b for b in all_layers[1] if b["w"] >= 46], key=lambda b: b["top"])[:2]
+    for n, b in enumerate(tall):
+        bw, bh = 40, 26
+        ox = b["x"] + (b["w"] - bw) // 2 + (8 if n == 0 else -8)
+        oy = b["top"] + 14
+        main, acc = (CYA, MAG) if n == 0 else (MAG, CYA)
+        for y in range(oy, oy + bh):
+            for x in range(ox, ox + bw):
+                edge = x in (ox, ox + bw - 1) or y in (oy, oy + bh - 1)
+                scan = (y - oy) % 3 == 2
+                cv.blend(x, y, main, 170 if edge else (30 if scan else 70))
+        if n == 0:   # ringed planet
+            for y in range(oy + 3, oy + bh - 3):
+                for x in range(ox + 3, ox + bw - 3):
+                    d = math.hypot(x + 0.5 - (ox + 20), (y + 0.5 - (oy + 13)))
+                    ring = abs(math.hypot((x + 0.5 - (ox + 20)) / 15.0, (y + 0.5 - (oy + 13)) / 4.0) - 1) < 0.09
+                    if d <= 7.5 and (y - oy) % 3 != 2:
+                        cv.blend(x, y, acc, 200 if d > 6.4 else 150)
+                    elif ring and (y > oy + 13 or d > 7.5):
+                        cv.blend(x, y, rgba("#ffffff"), 190)
+        else:        # chevrons + bars
+            for k in range(3):
+                for i in range(6):
+                    for (x, y) in ((ox + 6 + k * 8 + i, oy + 7 + i), (ox + 6 + k * 8 + i, oy + 18 - i)):
+                        if (y - oy) % 3 != 2:
+                            cv.blend(x, y, acc, 210)
+            for i in range(3):
+                cv.rect(ox + 30, oy + 7 + i * 4, ox + 35, oy + 8 + i * 4, rgba("#ffffff")[:3] + (255,))
+        # mounting struts
+        for x in (ox + 6, ox + bw - 7):
+            cv.put(x, oy + bh, rgba("#2a2440"))
+            cv.put(x, oy + bh + 1, rgba("#2a2440"))
+    return cv.img
+
+
+# ================================================================== FACADE ===
+def make_facade():
+    sheet = Image.new("RGBA", (128, 64), (0, 0, 0, 0))
+    WALL, SEAM, PIL_ = rgba("#140c26"), rgba("#0f081f"), rgba("#191030")
+    SILL, DARKW, REFL = rgba("#21173a"), rgba("#0b0617"), rgba("#2a2050")
+    LITS = [(rgba("#e0a84a"), rgba("#ffd36b")), (rgba("#14a9bd"), rgba("#19f5ff")),
+            (rgba("#c24a98"), rgba("#ff6fd8"))]
+    for v in range(2):
+        rng = random.Random(SEED + 160 + v)
+        tile = Image.new("RGBA", (64, 64), WALL)
+        px = tile.load()
+        for y in range(64):
+            for x in range(64):
+                if x % 32 == 0:
+                    px[x, y] = PIL_
+                if y % 16 == 15:
+                    px[x, y] = SEAM
+        for cy in range(8):
+            for cx in range(8):
+                x0, y0 = cx * 8 + 2, cy * 8 + 1
+                r = rng.random()
+                if r < 0.17:
+                    base, top = LITS[rng.randrange(3)]
+                    for y in range(y0, y0 + 5):
+                        for x in range(x0, x0 + 4):
+                            px[x, y] = top if y == y0 else base
+                    if rng.random() < 0.4:  # half-drawn blind
+                        for x in range(x0, x0 + 4):
+                            px[x, y0 + 1] = tuple(int(c * 0.6) for c in base[:3]) + (255,)
+                    px[x0 + 1, y0 + 4] = tuple(int(c * 0.7) for c in base[:3]) + (255,)
+                else:
+                    for y in range(y0, y0 + 5):
+                        for x in range(x0, x0 + 4):
+                            px[x, y] = DARKW
+                    if r < 0.45:
+                        px[x0, y0] = REFL
+                for x in range(x0 - 1, x0 + 5):
+                    px[x, y0 + 5] = SILL
+        if v == 1:
+            # thin vertical neon strip between window columns (runs the full height)
+            for y in range(64):
+                px[40, y] = rgba("#ff2fd6")
+                for x in (39, 41):
+                    px[x, y] = rgba("#3a1046")
+            # wall-mounted AC unit with a drip stain
+            box = rgba("#3d3560")
+            for y in range(23, 30):
+                for x in range(9, 18):
+                    px[x, y] = box
+            for x in range(9, 18):
+                px[x, 23] = rgba("#5a4f86")
+                px[x, 29] = rgba("#2a2440")
+            for y in (25, 27):
+                for x in range(10, 13):
+                    px[x, y] = rgba("#2a2440")
+            fan = ellipse_pts(15.0, 26.0, 2.0, 2.0)
+            for (x, y) in fan:
+                px[x, y] = rgba("#2a2440")
+            px[15, 26] = rgba("#8a80c0")
+            for y in range(30, 38):
+                px[8, y] = rgba("#0d071b")
+        sheet.paste(tile, (v * 64, 0))
+    return sheet
+
+
 # ================================================================= PREVIEW ===
+RESKIN_SOURCES = {"reaper-cyber.png": ("death.png", 50), "dragon-cyber.png": ("dragon.png", 96),
+                  "goat-cyber.png": ("redgoat.png", 80)}
+
+
 def make_preview(sheets, path):
     S = 4
+    GAP = 8
     bg = rgba("#140a24")
     try:
         font = ImageFont.load_default(size=16)
     except TypeError:
         font = ImageFont.load_default()
 
-    def tile(im, n):
-        out = Image.new("RGBA", (im.width * n, im.height), (0, 0, 0, 0))
-        for i in range(n):
-            out.alpha_composite(im, (i * im.width, 0))
+    def tile(im, nx, ny=1):
+        out = Image.new("RGBA", (im.width * nx, im.height * ny), (0, 0, 0, 0))
+        for j in range(ny):
+            for i in range(nx):
+                out.alpha_composite(im, (i * im.width, j * im.height))
         return out
 
-    items = []
+    def side_by_side(*ims):
+        out = Image.new("RGBA", (sum(i.width for i in ims) + GAP * (len(ims) - 1), max(i.height for i in ims)),
+                        (0, 0, 0, 0))
+        x = 0
+        for i in ims:
+            out.alpha_composite(i, (x, 0))
+            x += i.width + GAP
+        return out
+
+    items = []  # (label, image, [(x offset, width, frame width)])
     for name, im, frame_w in sheets:
-        items.append((f"{name}  {im.width}x{im.height}", im, frame_w))
+        if name in RESKIN_SOURCES:
+            src_name, fw = RESKIN_SOURCES[name]
+            src = load_source(src_name)
+            items.append((f"{src_name} (source, left)  ->  {name}  {im.width}x{im.height}  "
+                          f"max bbox delta {RESKIN_DELTA.get(name, '?')}px",
+                          side_by_side(src, im), [(0, src.width, fw), (src.width + GAP, im.width, fw)]))
+            continue
+        items.append((f"{name}  {im.width}x{im.height}", im, [(0, im.width, frame_w)] if frame_w else []))
         if name == "platform.png":
             row = Image.new("RGBA", (320, 16), (0, 0, 0, 0))
             row.alpha_composite(im.crop((0, 0, 32, 16)), (0, 0))
             for i in range(1, 9):
                 row.alpha_composite(im.crop((32, 0, 64, 16)), (i * 32, 0))
             row.alpha_composite(im.crop((64, 0, 96, 16)), (288, 0))
-            items.append(("platform.png tiled: cap + 8 middles + cap", row, None))
-        if name in ("skyline.png", "ground.png"):
-            items.append((f"{name} x2 side by side (seam check)", tile(im, 2), None))
+            items.append(("platform.png tiled: cap + 8 middles + cap", row, []))
+        if name in ("skyline.png", "ground.png", "city-mid.png"):
+            items.append((f"{name} x2 side by side (seam check)", tile(im, 2), []))
+        if name == "facade.png":
+            items.append(("facade.png tile 0 and tile 1, each tiled 3x3 (seam check)",
+                          side_by_side(tile(im.crop((0, 0, 64, 64)), 3, 3), tile(im.crop((64, 0, 128, 64)), 3, 3)),
+                          []))
     pad = 16
     width = max(im.width * S for _, im, _ in items) + pad * 2
     height = pad + sum(24 + im.height * S + pad for _, im, _ in items)
     out = Image.new("RGBA", (width, height), bg)
     d = ImageDraw.Draw(out)
     y = pad
-    for label, im, frame_w in items:
+    for label, im, frames in items:
         d.text((pad, y), label, fill=(220, 210, 255, 255), font=font)
         y += 24
         big = im.resize((im.width * S, im.height * S), Image.NEAREST)
-        if frame_w:
-            for fx in range(0, im.width, frame_w):
-                d.rectangle([pad + fx * S, y, pad + (fx + frame_w) * S - 1, y + im.height * S - 1],
-                            outline=(46, 30, 72, 255))
+        for (ox, w, fw) in frames:
+            for fx in range(0, w, fw):
+                x0 = pad + (ox + fx) * S
+                d.rectangle([x0, y, x0 + fw * S - 1, y + im.height * S - 1], outline=(46, 30, 72, 255))
         out.alpha_composite(big, (pad, y))
         y += im.height * S + pad
     out.save(path)
@@ -2355,6 +3225,13 @@ def build_all():
         ("moon.png", make_moon(), None),
         ("katana.png", make_katana(), None),
         ("ripperdoc.png", make_ripperdoc(), None),
+        # cyber re-skins of existing enemies + dense city art
+        ("reaper-cyber.png", make_reaper_cyber(), 50),
+        ("dragon-cyber.png", make_dragon_cyber(), 96),
+        ("goat-cyber.png", make_goat_cyber(), 80),
+        ("aerodyne.png", make_aerodyne(), 64),
+        ("city-mid.png", make_city_mid(), None),
+        ("facade.png", make_facade(), 64),
     ]
 
 
@@ -2364,7 +3241,9 @@ EXPECTED = {
     "crate.png": (64, 32), "skyline.png": (480, 200), "ground.png": (64, 48),
     "hologram.png": (96, 96), "dove.png": (64, 16), "secrets.png": (192, 24),
     "terminal.png": (48, 40), "moon.png": (64, 64), "katana.png": (40, 12),
-    "ripperdoc.png": (64, 72),
+    "ripperdoc.png": (64, 72), "reaper-cyber.png": (200, 192), "dragon-cyber.png": (384, 384),
+    "goat-cyber.png": (320, 320), "aerodyne.png": (128, 24), "city-mid.png": (640, 420),
+    "facade.png": (128, 64),
 }
 
 
@@ -2379,7 +3258,8 @@ def main():
     for name, im, _ in sheets:
         assert im.size == EXPECTED[name], (name, im.size)
         im.save(os.path.join(args.out, name), optimize=True)
-        print(f"wrote {name:16s} {im.width}x{im.height}")
+        extra = f"  (max per-frame bbox delta {RESKIN_DELTA[name]}px)" if name in RESKIN_DELTA else ""
+        print(f"wrote {name:16s} {im.width}x{im.height}{extra}")
     if args.preview:
         make_preview(sheets, args.preview)
         print("wrote preview", args.preview)

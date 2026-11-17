@@ -7,17 +7,25 @@ Overview
   It's year 2D77 and you're a cyber badass running the neon streets of Cyber City. This is a side-scrolling action platformer with a Vampire Survivors style run: hordes of enemies keep coming, they drop XP chips, and every level-up lets you pick one of three upgrades. Survive until 2:30 and the Demon Goat shows up for the final fight. It plays on desktop (keyboard and mouse) and on phones and tablets (touch).
 
 Features
-  A scrolling city with parallax backgrounds, one-way platforms, moving platforms and breakable supply crates
-  Four kinds of minions, melee and ranged: Glitch Crawlers, Reapers, Security Drones and Smog Dragons
-  The Demon Goat boss, which chases you, rains fireballs and gets enraged at half health
+  A tall, scrolling neon city: parallax skylines, flying-car traffic, rooftops to climb, rain-slick reflections, one-way and moving platforms, and breakable supply crates
+  Four kinds of cyberpunk minions, melee and ranged: Glitch Crawlers, Chrome Reapers, Security Drones and Mecha Wyrms
+  The Demon Goat boss (now with cyberware), which chases you, rains fireballs and gets enraged at half health
   Level-up upgrades: 6 weapons (Energy Ball, Flame Aura, Orbit Shards, Seeker Missiles, Shock Stomp, Chain Lightning) and 6 passives (Cyber Heart, Servo Legs, Magnet Coil, Nano Armor, Heat Sink, Overclock)
   Power-ups dropped by crates and enemies: health, heat cell, Overdrive (rapid fire), Shield, Magnet and an EMP blast
   Heat: the flame runs on heat, which only builds up when you deal or take damage (it never refills on its own)
-  Two touch control schemes: on-screen buttons, or tap to fire (tap to shoot where you tapped, hold for rapid fire)
-  An original synthwave soundtrack, "Neon Inferno", generated live in the browser. It builds up, then kicks into a higher gear when the boss arrives. The original "Disconnected" track is still available in the menu.
+  Optional auto-fire with assisted aim, and optional auto flame
+  Touch controls: twin-stick (left stick runs and jumps, right stick aims and fires) or tap to fire
+  An original darksynth soundtrack, "Neon Inferno", generated live in the browser. It builds up, then gets nastier when the boss arrives. The original "Disconnected" track is still available in the menu.
   Scales to any screen size, portrait or landscape, with fullscreen support where available
   Pause, mute and restart without reloading the page; hitbox debug view
   8 hidden easter eggs (see below)
+  Automated browser tests that run before every deploy
+
+Settings (start and pause menus, remembered between visits)
+  Auto-fire: the energy ball fires on its own at the nearest enemy, leading moving targets. Aiming yourself still overrides it.
+  Manual aim (touch, when auto-fire is off): Twin-stick or Tap.
+  Auto flame: the flame lights itself when enemies get close and you have enough heat, and goes out when they're gone.
+  Music: Darksynth (generated) or Original.
 
 Controls
   Keyboard and mouse
@@ -30,10 +38,11 @@ Controls
     Pause: P or Esc
     Mute: M
     Show hitboxes: B (or open the page with ?debug)
-  Touch: pick the scheme in the start or pause menu
-    Buttons: drag on the left half to run and aim; hold ZAP, hold FLAME, tap JUMP. The ring around FLAME shows your heat.
-    Tap to fire: drag in the lower-left corner to run; tap anywhere else to fire toward that exact spot; keep your finger down for rapid fire and drag it to aim. JUMP and FLAME are the two small buttons in the bottom-right corner.
-    In both schemes, hold the stick down and jump to drop through a platform.
+  Touch
+    Left stick (left half of the screen): run. Flick it up to jump, flick it up again in the air to double jump. Hold it down on a platform to drop through.
+    Twin-stick: the right half of the screen is a second stick. Push it in a direction to aim and fire that way.
+    Tap: tap anywhere on the right to fire toward that exact spot; keep your finger down to rapid-fire and drag to aim.
+    FLAME: the button in the bottom-right corner (hold). The ring around it shows your heat.
 
 How a run works
   Enemies come from both sides of the screen, and more of them come (and tougher) as time goes on.
@@ -48,13 +57,18 @@ Easter eggs
   you've found across runs. Tap an undiscovered icon for a hint.
   Spoilers:
     Tears in Rain: stand completely still in the acid rain for a few seconds.
-    Interlinked: stand under the giant hologram ad and hold Up to look at her.
+    Interlinked: stand still under the giant hologram ad (or hold Up) to look up at her.
     Mantis Blades: hold Down at the RIPPERDOC booth to install arm blades that auto-slash.
     Katana: ride the highest moving platform in the arena. It parries enemy shots back.
     Sandevistan: get 77 kills in a run. When you're badly hurt, time slows down.
     Ghost in the Shell: dive from a rooftop all the way down to the street for thermoptic camo.
     Jack In: hold Down at a data terminal and solve the breach grid for a daemon.
     To the Moon: run to the far east end of the street.
+
+Tests
+  npm install, then npm test. This plays the game in headless Chromium (desktop and an emulated phone):
+  controls, auto-fire, auto flame, the climbing camera, a fast-forwarded 3-minute run, some easter eggs and the soundtrack.
+  GitHub Actions runs the same tests on every push, and only deploys if they pass.
 
 Installation & Setup
   Clone or download the repository.
@@ -72,7 +86,8 @@ Code Structure
   js/config.js: all the balance numbers, enemy types, upgrades, power-ups and the map layout. Start here to tweak the game.
   js/core.js: canvas, asset loading, drawing helpers and visual effects
   js/sound.js: Web Audio sound effects (falls back to <audio>) and the original mp3 soundtrack
-  js/music.js: the generated synthwave soundtrack and the music picker
+  js/music.js: the generated darksynth soundtrack and the music setting
+  tests/game.test.cjs: the automated browser tests
   js/input.js: keyboard, mouse, joystick, buttons and tap gestures
   js/world.js: platforms, crates, the street and the shared platformer physics
   js/player.js: movement, jumping, the energy ball, the flame and the auto weapons

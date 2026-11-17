@@ -8,7 +8,7 @@ const enemies = [];
 const enemyShots = [];
 const director = { acc: 0, bossSpawned: false, firstSpawn: 1.5 };
 
-const onScreen = (e) => e.x + e.w > camera.x && e.x < camera.x + W && e.y + e.h > 0 && e.y < H;
+const onScreen = (e) => e.x + e.w > camera.x && e.x < camera.x + W && e.y + e.h > camera.y && e.y < camera.y + H;
 
 function resetEnemies() {
   enemies.length = 0;
@@ -58,7 +58,9 @@ function spawnAtEdge(type) {
   if (side < 0 && leftX < 0) side = 1;
   if (side > 0 && rightX > WORLD_W - def.w) side = -1;
   const x = clamp(side < 0 ? leftX : rightX, 0, WORLD_W - def.w);
-  const y = def.walker ? GROUND_Y - def.h : rand(140, 620);
+  // Walkers appear on a surface at about the player's height (the street, or
+  // the rooftops when you're up high); flyers somewhere in the visible sky
+  const y = def.walker ? surfaceBelow(x + def.w / 2, player.y - 180) - def.h : camera.y + rand(140, 620);
   spawnEnemy(type, x, y);
 }
 
@@ -164,7 +166,7 @@ function updateEnemies(dt) {
     e.kbX *= decay;
     e.kbY *= decay;
     e.x = clamp(e.x, 0, WORLD_W - e.w);
-    if (!def.walker) e.y = clamp(e.y, 40, GROUND_Y - e.h - 10);
+    if (!def.walker) e.y = clamp(e.y, WORLD_TOP + 40, GROUND_Y - e.h - 10);
     e.anim += dt * def.sheet.fps;
 
     // Body contact
@@ -176,7 +178,7 @@ function updateEnemies(dt) {
     }
 
     // Enemies left far behind just leave
-    if (Math.abs(pc.x - ec.x) > 2600) e.dead = e.despawned = true;
+    if (Math.abs(pc.x - ec.x) > 2600 || Math.abs(pc.y - ec.y) > 1900) e.dead = e.despawned = true;
   }
 
   // Keep enemies from stacking into one blob
@@ -197,7 +199,7 @@ function wanderTarget(e, ec, dt) {
   e.wanderT = (e.wanderT || 0) - dt;
   if (!e.wander || e.wanderT <= 0) {
     const walker = e.def && e.def.walker;
-    e.wander = { x: clamp(ec.x + rand(-450, 450), 0, WORLD_W), y: walker ? ec.y : clamp(ec.y + rand(-220, 220), 120, 820) };
+    e.wander = { x: clamp(ec.x + rand(-450, 450), 0, WORLD_W), y: walker ? ec.y : clamp(ec.y + rand(-220, 220), WORLD_TOP + 120, 820) };
     e.wanderT = rand(1.5, 3);
   }
   return e.wander;
@@ -216,7 +218,7 @@ function updateEnemyShots(dt) {
     s.x += s.vx * dt;
     s.y += s.vy * dt;
     s.life -= dt;
-    let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.x < camera.x - 300 || s.x > camera.x + W + 300;
+    let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 300 || s.x < camera.x - 300 || s.x > camera.x + W + 300;
     if (!gone && circleHitsBox(s.x, s.y, s.r, player) && player.invuln <= 0) {
       hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy);
       gone = true;
@@ -277,7 +279,7 @@ function spawnBoss() {
     boss: true,
     type: "goat",
     x: clamp(camera.x + W - 420, 0, WORLD_W - 200),
-    y: -260,
+    y: camera.y - 260,
     w: 132,
     h: 210,
     vx: 0,
@@ -315,7 +317,7 @@ function setBossState(e, state, duration) {
   if (state === "chase") e.stateDuration = duration || (e.enraged ? rand(2.2, 3.2) : rand(3, 4.5));
   if (state === "reposition") {
     e.targetX = camera.x + rand(260, W - 260);
-    e.targetY = rand(170, 420);
+    e.targetY = camera.y + rand(170, 420);
   }
   if (state === "volley") {
     e.shotsLeft = e.enraged ? 4 : 3;
@@ -353,7 +355,7 @@ function updateBoss(e, dt) {
     switch (e.state) {
       case "enter":
         tx = camera.x + W * 0.65 - ec.x;
-        ty = 360 - ec.y;
+        ty = camera.y + 360 - ec.y;
         speed = T.hoverSpeed;
         facePlayer = true;
         if (e.stateTime > e.stateDuration) setBossState(e, "windup");
@@ -406,7 +408,7 @@ function updateBoss(e, dt) {
   e.vx += (wantVx - e.vx) * k;
   e.vy += (wantVy - e.vy) * k;
   e.x = clamp(e.x + (e.vx + e.kbX) * dt, 0, WORLD_W - e.w);
-  e.y = clamp(e.y + (e.vy + e.kbY) * dt, e.state === "enter" ? -300 : 30, GROUND_Y - e.h);
+  e.y = clamp(e.y + (e.vy + e.kbY) * dt, e.state === "enter" ? camera.y - 300 : WORLD_TOP + 30, GROUND_Y - e.h);
   e.kbX *= Math.exp(-8 * dt);
   e.kbY *= Math.exp(-8 * dt);
 
@@ -476,14 +478,12 @@ function drawEnemies(time) {
       glow(cx + e.facing * 20, e.y + e.h / 2, 50 + pulse * 20, e.type === "drone" ? "rgba(255,47,109,0.9)" : "rgba(255,155,33,0.9)");
       if (!tint) tint = `rgba(255,255,255,${0.15 + 0.25 * pulse})`;
     }
+    const img = isReady(IMG[s.img]) ? IMG[s.img] : IMG[s.fallback];
+    const sy = s.flip ? 0 : (e.facing < 0 ? s.rowLeft : s.rowRight) * s.fh;
+    const flip = s.flip && e.facing < 0;
+    const glitching = drawGlitch(img, frame * s.fw, sy, s.fw, s.fh, dx, dy, dw, dh, flip, e.bob);
     ctx.globalAlpha = e.def.alpha || 1;
-    let ok;
-    if (s.flip) {
-      ok = drawFrame(IMG[s.img], frame * s.fw, 0, s.fw, s.fh, dx, dy, dw, dh, tint, e.facing < 0);
-    } else {
-      const row = e.facing < 0 ? s.rowLeft : s.rowRight;
-      ok = drawFrame(IMG[s.img], frame * s.fw, row * s.fh, s.fw, s.fh, dx, dy, dw, dh, tint);
-    }
+    const ok = drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + glitching, dy, dw, dh, tint, flip);
     ctx.globalAlpha = 1;
     if (!ok) {
       ctx.fillStyle = e.def.kind === "ranged" ? "#19f5ff" : "#ff2fd6";
@@ -512,10 +512,28 @@ function drawBoss(e) {
   else if (e.stun > 0) tint = "rgba(176,108,255,0.5)";
   else if (e.state === "windup") tint = `rgba(255,170,40,${0.2 + 0.2 * Math.sin(e.stateTime * 30)})`;
   else if (e.enraged) tint = "rgba(255,0,40,0.25)";
-  if (!drawFrame(IMG.goat, e.frameX * 80, e.frameY * 80, 80, 80, e.x - 54, e.y - 24, 240, 240, tint)) {
+  const img = isReady(IMG.goatCyber) ? IMG.goatCyber : IMG.goat;
+  const jitter = drawGlitch(img, e.frameX * 80, e.frameY * 80, 80, 80, e.x - 54, e.y - 24, 240, 240, false, 1.7);
+  if (!drawFrame(img, e.frameX * 80, e.frameY * 80, 80, 80, e.x - 54 + jitter, e.y - 24, 240, 240, tint)) {
     ctx.fillStyle = "#ff2457";
     ctx.fillRect(e.x, e.y, e.w, e.h);
   }
+}
+
+// Cyberpunk "signal glitch": every few seconds an enemy briefly splits into
+// red/cyan copies and jitters sideways. Returns the jitter for the sprite.
+function drawGlitch(img, sx, sy, sw, sh, dx, dy, dw, dh, flip, phase) {
+  if (!isReady(img)) return 0;
+  const g = (game.time * 0.8 + phase * 3.1) % 3.2;
+  if (g > 0.14) return 0;
+  const split = 6 + 6 * Math.sin(g * 90);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.55;
+  drawFrame(img, sx, sy, sw, sh, dx - split, dy, dw, dh, "rgba(255,20,90,1)", flip);
+  drawFrame(img, sx, sy, sw, sh, dx + split, dy, dw, dh, "rgba(20,240,255,1)", flip);
+  ctx.restore();
+  return g < 0.05 ? rand(-8, 8) : 0;
 }
 
 function drawEnemyShots() {

@@ -1,8 +1,9 @@
-# Publishes the game to GitHub Pages: https://jonathanjiwu.github.io/Cyberpunk-2D77/
+# Tests the game, then publishes it to GitHub Pages:
+# https://jonathanjiwu.github.io/Cyberpunk-2D77/
 #
 # One-time setup: repository Settings -> Pages -> "Build and deployment" ->
-# Source: "GitHub Actions". After that, every push to main redeploys the game.
-# Pull requests only run the build step, as a quick check.
+# Source: "GitHub Actions". After that, every push to main redeploys the game
+# (only if the tests pass). Pull requests run the tests and the build.
 name: Deploy to GitHub Pages
 
 on:
@@ -16,7 +17,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Play the game in a headless browser
+        run: npm test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read

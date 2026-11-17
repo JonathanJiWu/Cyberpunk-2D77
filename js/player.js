@@ -159,6 +159,19 @@ function updatePlayer(dt) {
     input.jumpQueued = false;
     p.jumpBuffer = T.jumpBuffer;
   }
+  const standingOnPlatform = p.onGround && p.standingOn && !p.standingOn.ground;
+  if (input.stick.id !== null && move.y > 0.7 && standingOnPlatform) {
+    p.dropHold = (p.dropHold || 0) + dt;
+    if (p.dropHold > 0.22) {
+      p.dropHold = 0;
+      p.dropTimer = 0.25;
+      p.onGround = false;
+      p.standingOn = null;
+      p.vy = 80;
+    }
+  } else {
+    p.dropHold = 0;
+  }
   if (p.jumpBuffer > 0) {
     const onPlatform = p.onGround && p.standingOn && !p.standingOn.ground;
     if (onPlatform && move.y > 0.6) {
@@ -231,7 +244,16 @@ function doJump(velocity, jumpsAfter) {
 function updateFlame(dt) {
   const p = player;
   if (p.heatLocked && p.heat >= TUNING.heat.flameMin) p.heatLocked = false;
-  const wanted = flameHeld();
+  let wanted = flameHeld();
+  if (settings.autoFlame && !wanted && !p.heatLocked) {
+    // Light up when enemies get close and there's enough heat; keep burning
+    // while they stay close
+    const pc = centerOf(p);
+    const r = stats.flame.radius * (p.flameOn ? 1.25 : 1.05);
+    const close = enemies.some((e) => !e.dead && circleHitsBox(pc.x, pc.y, r, e));
+    wanted = close && (p.flameOn || p.heat >= 30);
+    p.autoFlaming = wanted;
+  }
   p.flameOn = wanted && !p.heatLocked && p.heat > 0;
   if (p.flameOn) {
     p.heat -= stats.flame.drain * dt;
@@ -267,11 +289,24 @@ function updateFlame(dt) {
 function holdAim() {
   const pc = centerOf(player);
   if (input.mouse.zap) return { x: input.mouse.x - pc.x, y: input.mouse.y - pc.y, assist: false };
-  const finger = fingerAim(); // tap-to-fire: aim exactly where the finger is
+  const finger = fingerAim(); // tap mode: aim exactly where the finger is
   if (finger) return { x: finger.x - pc.x, y: finger.y - (pc.y - 10), assist: false };
+  if (aimStickActive()) return { x: input.aim.x, y: input.aim.y, assist: true, cone: 0.22 }; // twin-stick
   const m = moveAxis();
-  if (m.analog ? Math.hypot(m.x, m.y) > 0.35 : m.x || m.y) return { x: m.x, y: m.y, assist: true };
+  if (!m.analog && (m.x || m.y)) return { x: m.x, y: m.y, assist: true }; // keys
   return { x: player.facing, y: 0, assist: true };
+}
+
+// Auto-fire: pick the nearest enemy on screen and lead it a little
+function autoAim() {
+  const pc = centerOf(player);
+  const target = nearestEnemy(pc.x, pc.y, 1150, onScreen);
+  if (!target) return null;
+  const c = centerOf(target);
+  const t = Math.min(0.6, Math.hypot(c.x - pc.x, c.y - pc.y) / TUNING.zap.speed);
+  const tx = c.x + (target.vx || 0) * t;
+  const ty = c.y + (target.def && target.def.walker ? 0 : (target.vy || 0) * t);
+  return { x: tx - pc.x, y: ty - (pc.y - 10), assist: false };
 }
 
 function updateZap(dt) {
@@ -285,9 +320,11 @@ function updateZap(dt) {
     aim = { x: t.x - pc.x, y: t.y - (pc.y - 10), assist: false }; // exact tapped direction
   } else if (zapHeld()) {
     aim = holdAim();
+  } else if (settings.autoFire) {
+    aim = autoAim();
   }
   if (!aim) return;
-  fireZap(aim.x, aim.y, aim.assist);
+  fireZap(aim.x, aim.y, aim.assist, aim.cone);
   p.zapCd = stats.zap.cooldown * (p.overdrive > 0 ? 0.5 : 1);
 }
 
@@ -306,7 +343,7 @@ function nearestEnemy(x, y, maxDist, filter) {
   return best;
 }
 
-function fireZap(ax, ay, assist) {
+function fireZap(ax, ay, assist, cone) {
   const p = player;
   const pc = centerOf(p);
   const sy = pc.y - 10;
@@ -315,7 +352,7 @@ function fireZap(ax, ay, assist) {
   ay /= len;
   if (assist) {
     // Snap to the enemy closest to where we're aiming (within a cone)
-    let bestDot = Math.cos(TUNING.zap.aimAssist);
+    let bestDot = Math.cos(cone || TUNING.zap.aimAssist);
     for (const e of enemies) {
       if (e.dead || !onScreen(e)) continue;
       const c = centerOf(e);
@@ -359,7 +396,7 @@ function updatePlayerShots(dt) {
     s.x += s.vx * dt;
     s.y += s.vy * dt;
     s.life -= dt;
-    let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.x < camera.x - 200 || s.x > camera.x + W + 200;
+    let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 200 || s.x < camera.x - 200 || s.x > camera.x + W + 200;
     if (!gone) {
       for (const e of enemies) {
         if (e.dead || s.hit.has(e) || !circleHitsBox(s.x, s.y, s.r, e)) continue;

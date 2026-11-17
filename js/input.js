@@ -1,12 +1,14 @@
 "use strict";
 // =============================================================================
-// Input: keyboard, mouse and two touch schemes.
-//   Keyboard: A/D move, W/S aim, Space jump, J zap, K flame.
-//   Mouse:    left button zaps toward the cursor, right button holds the flame.
-//   Touch "buttons":  joystick + ZAP / FLAME / JUMP buttons.
-//   Touch "tap to fire": joystick to move; tap anywhere to fire toward that
-//                     exact spot, hold to rapid-fire (drag to aim), and two
-//                     small corner buttons for JUMP and FLAME.
+// Input and settings.
+//   Keyboard: A/D run, W/S aim, Space jump, J fire, K flame.
+//   Mouse:    left button fires at the cursor, right button holds the flame.
+//   Touch:    left stick runs; flick it up to jump (again in the air for a
+//             double jump); hold it down on a platform to drop through.
+//             Right side, "twin-stick": a second stick, push it to aim + fire.
+//             Right side, "tap": tap to fire at that spot, hold to rapid-fire.
+//             FLAME: a small button in the corner.
+//   Settings: auto-fire (assisted aim) and auto flame, both optional.
 // =============================================================================
 
 const KEYMAP = {
@@ -25,28 +27,59 @@ const KEYMAP = {
 
 const input = {
   keys: new Set(),
-  stick: { id: null, ox: 0, oy: 0, x: 0, y: 0 },
-  buttons: { zap: false, flame: false, jump: false },
+  stick: { id: null, ox: 0, oy: 0, x: 0, y: 0, upLatch: false }, // left: move / jump
+  aim: { id: null, ox: 0, oy: 0, x: 0, y: 0 }, // right: twin-stick aim + fire
+  buttons: { flame: false },
   mouse: { x: W / 2, y: H / 2, zap: false, flame: false },
-  fingers: new Map(), // tap-to-fire: pointerId -> {x, y} (screen coords)
+  fingers: new Map(), // tap mode: pointerId -> {x, y} (screen coords)
   aimFinger: null,
   jumpQueued: false,
   shots: [], // queued taps: world points to fire at
 };
 
-const settings = { touchScheme: "buttons" };
+// --------------------------------------------------------------- Settings ---
+const settings = {
+  autoFire: false, // the energy ball fires on its own at the nearest enemy
+  autoFlame: false, // the flame lights itself when enemies are close
+  touchAim: "twin", // touch, when auto-fire is off: "twin" (right stick) or "tap"
+};
 try {
-  if (localStorage.getItem("cp2d77-scheme") === "gestures") settings.touchScheme = "gestures";
+  Object.assign(settings, JSON.parse(localStorage.getItem("cp2d77-settings") || "{}"));
+  if (localStorage.getItem("cp2d77-scheme") === "gestures") settings.touchAim = "tap"; // older saves
 } catch (err) {
   /* storage unavailable */
 }
 
+function applySettings() {
+  const tap = settings.touchAim === "tap" && !settings.autoFire;
+  document.body.classList.toggle("aim-tap", tap);
+  document.body.classList.toggle("aim-twin", !tap);
+  document.querySelectorAll("[data-setting]").forEach((b) => {
+    const value = settings[b.dataset.setting];
+    b.setAttribute("aria-pressed", String(String(value) === b.dataset.value));
+  });
+  try {
+    localStorage.setItem("cp2d77-settings", JSON.stringify(settings));
+  } catch (err) {
+    /* storage unavailable */
+  }
+}
+document.querySelectorAll("[data-setting]").forEach((b) =>
+  b.addEventListener("click", () => {
+    const key = b.dataset.setting;
+    settings[key] = typeof settings[key] === "boolean" ? b.dataset.value === "true" : b.dataset.value;
+    applySettings();
+    clearInput();
+  })
+);
+
+// ---------------------------------------------------------------- Queries ---
 function keyHeld(action) {
   for (const code of input.keys) if (KEYMAP[code] === action) return true;
   return false;
 }
 
-// Movement / aim direction from the joystick or keys, each in -1..1
+// Movement from the left stick or the keys, each in -1..1
 function moveAxis() {
   const s = input.stick;
   if (s.id !== null && (s.x || s.y)) return { x: s.x, y: s.y, analog: true };
@@ -56,11 +89,12 @@ function moveAxis() {
     analog: false,
   };
 }
-const zapHeld = () => keyHeld("zap") || input.buttons.zap || input.mouse.zap || input.fingers.size > 0;
+const aimStickActive = () => input.aim.id !== null && Math.hypot(input.aim.x, input.aim.y) > 0.35;
+const zapHeld = () => keyHeld("zap") || input.mouse.zap || input.fingers.size > 0 || aimStickActive();
 const flameHeld = () => keyHeld("flame") || input.buttons.flame || input.mouse.flame;
-const jumpHeld = () => keyHeld("jump") || input.buttons.jump;
+const jumpHeld = () => keyHeld("jump") || (input.stick.id !== null && input.stick.y < -0.4);
 
-// World position the firing finger is pointing at (tap-to-fire scheme)
+// World position the firing finger is pointing at (tap mode)
 function fingerAim() {
   const f = input.fingers.get(input.aimFinger);
   return f ? clientToWorld(f.x, f.y) : null;
@@ -68,13 +102,14 @@ function fingerAim() {
 
 function clearInput() {
   input.keys.clear();
-  input.buttons.zap = input.buttons.flame = input.buttons.jump = false;
+  input.buttons.flame = false;
   input.mouse.zap = input.mouse.flame = false;
   input.fingers.clear();
   input.aimFinger = null;
   input.jumpQueued = false;
   input.shots.length = 0;
-  releaseStick();
+  leftStick.release();
+  rightStick.release();
   document.querySelectorAll(".action-btn.pressed").forEach((b) => b.classList.remove("pressed"));
 }
 
@@ -83,7 +118,7 @@ function clientToWorld(clientX, clientY) {
   const r = canvas.getBoundingClientRect();
   return {
     x: ((clientX - r.left) / r.width) * W + camera.x,
-    y: ((clientY - r.top) / r.height) * H,
+    y: ((clientY - r.top) / r.height) * H + camera.y,
   };
 }
 
@@ -91,7 +126,7 @@ function clientToWorld(clientX, clientY) {
 addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   SoundSystem.unlock();
-  if (handleMenuKey(e)) return; // menus / level-up cards (main.js)
+  if (handleMenuKey(e)) return; // menus / level-up cards / breach (main.js)
   if (e.code === "Escape" || e.code === "KeyP") {
     e.preventDefault();
     pauseGame();
@@ -108,7 +143,7 @@ addEventListener("keydown", (e) => {
 addEventListener("keyup", (e) => input.keys.delete(e.code));
 
 // Releasing keys while the window is in the background never fires keyup
-addEventListener("blur", clearInput);
+addEventListener("blur", () => clearInput());
 
 // ------------------------------------------------------------------ Mouse ---
 canvas.addEventListener("pointerdown", (e) => {
@@ -143,9 +178,6 @@ function refreshMouseWorld() {
 
 // ------------------------------------------------------------------ Touch ---
 const touchUI = document.getElementById("touch-controls");
-const stickZone = document.getElementById("stick-zone");
-const stickBase = document.getElementById("stick");
-const stickKnob = document.getElementById("stick-knob");
 const gestureZone = document.getElementById("gesture-zone");
 const flameBtn = document.querySelector(".btn-flame");
 let touchMode = false;
@@ -159,94 +191,96 @@ function setTouchMode(on) {
 if (window.matchMedia && matchMedia("(hover: none) and (pointer: coarse)").matches) setTouchMode(true);
 addEventListener("touchstart", () => setTouchMode(true), { passive: true });
 
-function setTouchScheme(scheme) {
-  settings.touchScheme = scheme;
-  document.body.classList.toggle("scheme-gestures", scheme === "gestures");
-  document.querySelectorAll("[data-scheme]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.scheme === scheme)));
-  try {
-    localStorage.setItem("cp2d77-scheme", scheme);
-  } catch (err) {
-    /* storage unavailable */
-  }
-  clearInput();
+// A floating thumb-stick: it appears wherever the thumb lands in its zone.
+function makeStick(zone, base, knob, state, onMove) {
+  const radius = () => base.offsetWidth * 0.42 || 50;
+  const place = (x, y) => {
+    const size = base.offsetWidth;
+    base.style.left = x - size / 2 + "px";
+    base.style.top = y - size / 2 + "px";
+    base.style.right = base.style.bottom = "auto";
+  };
+  const update = (e) => {
+    const r = radius();
+    let dx = e.clientX - state.ox;
+    let dy = e.clientY - state.oy;
+    let d = Math.hypot(dx, dy);
+    if (d > r) {
+      // drag the stick along when the thumb slides past its edge
+      state.ox += (dx * (d - r)) / d;
+      state.oy += (dy * (d - r)) / d;
+      place(state.ox, state.oy);
+      dx = e.clientX - state.ox;
+      dy = e.clientY - state.oy;
+      d = r;
+    }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    const mag = d / r;
+    const dead = 0.2;
+    if (mag < dead) {
+      state.x = state.y = 0;
+    } else {
+      const k = Math.min(1, ((mag - dead) / (1 - dead)) * 1.15) / mag;
+      state.x = (dx / r) * k;
+      state.y = (dy / r) * k;
+    }
+    if (onMove) onMove(state);
+  };
+  const release = () => {
+    state.id = null;
+    state.x = state.y = 0;
+    state.upLatch = false;
+    base.classList.remove("active");
+    base.style.left = base.style.top = base.style.right = base.style.bottom = "";
+    knob.style.transform = "";
+  };
+  zone.addEventListener("pointerdown", (e) => {
+    if (state.id !== null) return;
+    e.preventDefault();
+    SoundSystem.unlock();
+    state.id = e.pointerId;
+    try {
+      zone.setPointerCapture(e.pointerId);
+    } catch (err) {
+      /* ignore */
+    }
+    state.ox = e.clientX;
+    state.oy = e.clientY;
+    place(e.clientX, e.clientY);
+    base.classList.add("active");
+    update(e);
+  });
+  zone.addEventListener("pointermove", (e) => {
+    if (e.pointerId === state.id) update(e);
+  });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) =>
+    zone.addEventListener(type, (e) => {
+      if (e.pointerId === state.id) release();
+    })
+  );
+  return { release };
 }
-setTouchScheme(settings.touchScheme);
-document.querySelectorAll("[data-scheme]").forEach((b) =>
-  b.addEventListener("click", () => setTouchScheme(b.dataset.scheme))
+
+// Left stick: run, flick up to jump
+const leftStick = makeStick(
+  document.getElementById("stick-zone"),
+  document.getElementById("stick"),
+  document.getElementById("stick-knob"),
+  input.stick,
+  (s) => {
+    if (s.y < -0.55 && !s.upLatch) {
+      s.upLatch = true;
+      input.jumpQueued = true;
+    } else if (s.y > -0.3) {
+      s.upLatch = false;
+    }
+  }
 );
 
-// --- Joystick (floating: it appears wherever your thumb lands) ---
-const stickRadius = () => stickBase.offsetWidth * 0.42 || 50;
+// Right stick: aim and fire (twin-stick)
+const rightStick = makeStick(document.getElementById("aim-zone"), document.getElementById("aim-stick"), document.getElementById("aim-knob"), input.aim);
 
-function placeStick(x, y) {
-  const size = stickBase.offsetWidth;
-  stickBase.style.left = x - size / 2 + "px";
-  stickBase.style.top = y - size / 2 + "px";
-  stickBase.style.bottom = "auto";
-}
-
-function updateStick(e) {
-  const s = input.stick;
-  const r = stickRadius();
-  let dx = e.clientX - s.ox;
-  let dy = e.clientY - s.oy;
-  let d = Math.hypot(dx, dy);
-  if (d > r) {
-    // drag the stick along when the thumb slides past its edge
-    s.ox += (dx * (d - r)) / d;
-    s.oy += (dy * (d - r)) / d;
-    placeStick(s.ox, s.oy);
-    dx = e.clientX - s.ox;
-    dy = e.clientY - s.oy;
-    d = r;
-  }
-  stickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-  const mag = d / r;
-  const dead = 0.2;
-  if (mag < dead) {
-    s.x = s.y = 0;
-  } else {
-    const k = Math.min(1, ((mag - dead) / (1 - dead)) * 1.15) / mag;
-    s.x = (dx / r) * k;
-    s.y = (dy / r) * k;
-  }
-}
-
-function releaseStick() {
-  const s = input.stick;
-  s.id = null;
-  s.x = s.y = 0;
-  stickBase.classList.remove("active");
-  stickBase.style.left = stickBase.style.top = stickBase.style.bottom = "";
-  stickKnob.style.transform = "";
-}
-
-stickZone.addEventListener("pointerdown", (e) => {
-  if (input.stick.id !== null) return;
-  e.preventDefault();
-  SoundSystem.unlock();
-  input.stick.id = e.pointerId;
-  try {
-    stickZone.setPointerCapture(e.pointerId);
-  } catch (err) {
-    /* ignore */
-  }
-  input.stick.ox = e.clientX;
-  input.stick.oy = e.clientY;
-  placeStick(e.clientX, e.clientY);
-  stickBase.classList.add("active");
-  updateStick(e);
-});
-stickZone.addEventListener("pointermove", (e) => {
-  if (e.pointerId === input.stick.id) updateStick(e);
-});
-["pointerup", "pointercancel", "lostpointercapture"].forEach((type) =>
-  stickZone.addEventListener(type, (e) => {
-    if (e.pointerId === input.stick.id) releaseStick();
-  })
-);
-
-// --- Buttons scheme ---
+// FLAME button
 document.querySelectorAll(".action-btn").forEach((btn) => {
   const action = btn.dataset.action;
   btn.addEventListener("pointerdown", (e) => {
@@ -259,7 +293,6 @@ document.querySelectorAll(".action-btn").forEach((btn) => {
     }
     input.buttons[action] = true;
     btn.classList.add("pressed");
-    if (action === "jump") input.jumpQueued = true;
   });
   const release = () => {
     input.buttons[action] = false;
@@ -270,10 +303,8 @@ document.querySelectorAll(".action-btn").forEach((btn) => {
   btn.addEventListener("lostpointercapture", release);
 });
 
-// --- Tap-to-fire scheme ---
-// Every tap fires once toward that exact spot (no double-tap or long-press
-// tricks, so rapid tapping is just rapid fire). Keep a finger down to keep
-// firing; drag it to aim. JUMP and FLAME are small buttons in the corner.
+// Tap mode: every tap fires once toward that exact spot; keep a finger down to
+// keep firing, and drag it to aim.
 gestureZone.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   SoundSystem.unlock();
@@ -315,9 +346,11 @@ function pulseTap(x, y) {
 }
 
 // No long-press menus / text selection on the controls
-[touchUI, canvas, gestureZone].forEach((el) => el.addEventListener("contextmenu", (e) => e.preventDefault()));
+[touchUI, canvas].forEach((el) => el.addEventListener("contextmenu", (e) => e.preventDefault()));
 document.addEventListener("gesturestart", (e) => e.preventDefault()); // iOS pinch-zoom
 
 function vibrate(ms) {
   if (touchMode && navigator.vibrate) navigator.vibrate(ms);
 }
+
+applySettings();

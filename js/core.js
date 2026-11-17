@@ -56,6 +56,13 @@ loadImage("crate", "img/crate.png"); // 2 frames of 32x32
 loadImage("skyline", "img/skyline.png");
 loadImage("ground", "img/ground.png");
 loadImage("background", "img/background1.jpg");
+// Neon city + cyberpunk enemy re-skins
+loadImage("cityMid", "img/city-mid.png");
+loadImage("facade", "img/facade.png"); // 2 tiles of 64x64
+loadImage("aerodyne", "img/aerodyne.png"); // 2 frames of 64x24
+loadImage("reaperCyber", "img/reaper-cyber.png"); // same layout as death.png
+loadImage("dragonCyber", "img/dragon-cyber.png"); // same layout as dragon.png
+loadImage("goatCyber", "img/goat-cyber.png"); // same layout as redgoat.png
 // Easter egg art
 loadImage("hologram", "img/hologram.png"); // 2 frames of 48x96
 loadImage("dove", "img/dove.png"); // 4 frames of 16x16
@@ -170,7 +177,7 @@ function drawCell(name, cell, size, x, y, w, h, angle) {
 }
 
 // ----------------------------------------------------------------- Camera ---
-const camera = { x: 0, shake: 0 };
+const camera = { x: 0, y: 0, shake: 0 }; // y goes negative when you climb
 
 // ---------------------------------------------------------------- Effects ---
 const particles = [];

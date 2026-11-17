@@ -9,11 +9,11 @@ function render(time) {
   ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
   ctx.save();
   if (camera.shake > 0) ctx.translate(rand(-1, 1) * camera.shake, rand(-1, 1) * camera.shake);
-  drawParallax();
+  drawParallax(time);
 
   // World space. Snap the camera to whole device pixels so tiles don't shimmer.
   ctx.save();
-  ctx.translate(-Math.round(camera.x * renderScale) / renderScale, 0);
+  ctx.translate(-Math.round(camera.x * renderScale) / renderScale, -Math.round(camera.y * renderScale) / renderScale);
   drawDecor(time);
   drawSecretsBack(time);
   drawGround();
@@ -277,7 +277,7 @@ function drawBossArrow(boss, time) {
   const c = centerOf(boss);
   const right = c.x > camera.x + W / 2;
   const x = right ? W - 60 : 60;
-  const y = clamp(c.y, 200, H - 200);
+  const y = clamp(c.y - camera.y, 200, H - 200);
   const bob = Math.sin(time * 8) * 8;
   ctx.fillStyle = "#ff2457";
   ctx.beginPath();

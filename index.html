@@ -50,58 +50,69 @@
           <h1 id="overlay-title">Cyberpunk 2D77</h1>
           <p id="overlay-text">It's year 2D77. You're a Cyber Badass. Don't kiss the Demon Goat.</p>
           <dl id="overlay-stats" class="stats" hidden></dl>
-          <div id="scheme-picker" class="scheme-picker touch-only" role="group" aria-label="Touch controls">
-            <span>Controls:</span>
-            <button type="button" data-scheme="buttons" aria-pressed="true">Buttons</button>
-            <button type="button" data-scheme="gestures" aria-pressed="false">Tap to fire</button>
+          <div class="overlay-actions">
+            <button id="overlay-btn" class="primary-btn" type="button">Start Game</button>
+            <button id="overlay-btn-2" class="secondary-btn" type="button" hidden>Restart</button>
           </div>
-          <div id="music-picker" class="music-picker" role="group" aria-label="Music">
-            <span>Music:</span>
-            <button type="button" data-music="synthwave" aria-pressed="true">Synthwave</button>
-            <button type="button" data-music="classic" aria-pressed="false">Original</button>
+          <div id="settings" class="settings">
+            <span class="setting-label">Auto-fire <small>(assisted aim)</small></span>
+            <span class="seg">
+              <button type="button" data-setting="autoFire" data-value="true">On</button>
+              <button type="button" data-setting="autoFire" data-value="false">Off</button>
+            </span>
+            <span class="setting-label touch-only">Manual aim</span>
+            <span class="seg touch-only">
+              <button type="button" data-setting="touchAim" data-value="twin">Twin-stick</button>
+              <button type="button" data-setting="touchAim" data-value="tap">Tap</button>
+            </span>
+            <span class="setting-label">Auto flame</span>
+            <span class="seg">
+              <button type="button" data-setting="autoFlame" data-value="true">On</button>
+              <button type="button" data-setting="autoFlame" data-value="false">Off</button>
+            </span>
+            <span class="setting-label">Music</span>
+            <span class="seg">
+              <button type="button" data-music="synthwave" aria-pressed="true">Darksynth</button>
+              <button type="button" data-music="classic" aria-pressed="false">Original</button>
+            </span>
           </div>
-          <dl id="controls-help" class="controls">
-            <dt class="kb-only">A / D</dt>
-            <dd class="kb-only">Run</dd>
-            <dt class="kb-only">W / S</dt>
-            <dd class="kb-only">Aim up / down. S + Space drops through a platform</dd>
-            <dt class="kb-only">Space</dt>
-            <dd class="kb-only">Jump. Press again in the air to double jump</dd>
-            <dt class="kb-only">J / Left click</dt>
-            <dd class="kb-only">Energy ball. Clicking aims at the cursor</dd>
-            <dt class="kb-only">K / Right click</dt>
-            <dd class="kb-only">Flame (hold). Burns everything around you</dd>
-            <dt class="kb-only">P / M</dt>
-            <dd class="kb-only">Pause / mute</dd>
+          <details id="how-to" class="how-to">
+            <summary>How to play</summary>
+            <dl id="controls-help" class="controls">
+              <dt class="kb-only">A / D</dt>
+              <dd class="kb-only">Run</dd>
+              <dt class="kb-only">W / S</dt>
+              <dd class="kb-only">Aim up / down. S + Space drops through a platform</dd>
+              <dt class="kb-only">Space</dt>
+              <dd class="kb-only">Jump. Press again in the air to double jump</dd>
+              <dt class="kb-only">J / Left click</dt>
+              <dd class="kb-only">Energy ball. Clicking aims at the cursor</dd>
+              <dt class="kb-only">K / Right click</dt>
+              <dd class="kb-only">Flame (hold). Burns everything around you</dd>
+              <dt class="kb-only">P / M</dt>
+              <dd class="kb-only">Pause / mute</dd>
 
-            <dt class="touch-only">Left thumb</dt>
-            <dd class="touch-only">Run and aim. Hold down + jump to drop through a platform</dd>
-            <dt class="touch-only buttons-only">ZAP</dt>
-            <dd class="touch-only buttons-only">Energy ball (hold to keep firing)</dd>
-            <dt class="touch-only buttons-only">FLAME</dt>
-            <dd class="touch-only buttons-only">Hold to burn everything around you</dd>
-            <dt class="touch-only buttons-only">JUMP</dt>
-            <dd class="touch-only buttons-only">Jump, tap again in the air to double jump</dd>
-            <dt class="touch-only gestures-only">Tap</dt>
-            <dd class="touch-only gestures-only">Fire toward the exact spot you tapped</dd>
-            <dt class="touch-only gestures-only">Hold</dt>
-            <dd class="touch-only gestures-only">Rapid fire. Drag your finger to aim</dd>
-            <dt class="touch-only gestures-only">JUMP / FLAME</dt>
-            <dd class="touch-only gestures-only">The two small buttons in the corner</dd>
+              <dt class="touch-only">Left stick</dt>
+              <dd class="touch-only">Run. Flick up to jump, flick again in the air to double jump. Hold down on a platform to drop</dd>
+              <dt class="touch-only">Right stick</dt>
+              <dd class="touch-only">Twin-stick: push to aim and fire. Tap mode: tap to fire there, hold to rapid-fire</dd>
+              <dt class="touch-only">FLAME</dt>
+              <dd class="touch-only">Hold to burn everything around you</dd>
 
-            <dt>Heat</dt>
-            <dd>The flame costs heat. Heat doesn't refill by itself: earn it by dealing and taking damage</dd>
-            <dt>XP</dt>
-            <dd>Grab the chips enemies drop to level up and pick an upgrade. The Demon Goat shows up at 2:30</dd>
-          </dl>
+              <dt>Auto-fire</dt>
+              <dd>Shoots the nearest enemy for you (aiming yourself still works)</dd>
+              <dt>Auto flame</dt>
+              <dd>Lights the flame when enemies get close and you have heat</dd>
+              <dt>Heat</dt>
+              <dd>The flame costs heat. Heat doesn't refill by itself: earn it by dealing and taking damage</dd>
+              <dt>XP</dt>
+              <dd>Grab the chips enemies drop to level up and pick an upgrade. The Demon Goat shows up at 2:30</dd>
+            </dl>
+          </details>
           <div id="secrets" class="secrets">
             <span class="secrets-title">SECRETS <b id="secrets-count">0/8</b></span>
             <div id="secrets-list" class="secrets-list"></div>
             <p id="secrets-hint" class="secrets-hint"></p>
-          </div>
-          <div class="overlay-actions">
-            <button id="overlay-btn" class="primary-btn" type="button">Start Game</button>
-            <button id="overlay-btn-2" class="secondary-btn" type="button" hidden>Restart</button>
           </div>
         </div>
       </div>
@@ -140,10 +151,11 @@
       <div id="stick-zone" class="stick-zone">
         <div id="stick" class="stick"><div id="stick-knob" class="stick-knob"></div></div>
       </div>
+      <div id="aim-zone" class="aim-zone">
+        <div id="aim-stick" class="stick aim-stick"><div id="aim-knob" class="stick-knob"></div></div>
+      </div>
       <div class="action-pad">
-        <button class="action-btn btn-jump" type="button" data-action="jump">JUMP</button>
         <button class="action-btn btn-flame" type="button" data-action="flame">FLAME</button>
-        <button class="action-btn btn-zap" type="button" data-action="zap">ZAP</button>
       </div>
     </div>
 

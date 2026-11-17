@@ -30,6 +30,7 @@ function resetGame() {
   resetSecretsRun();
   breachEl.hidden = true;
   camera.x = 0;
+  camera.y = 0;
   camera.shake = 0;
   clearInput();
 }
@@ -38,6 +39,9 @@ function updateCamera(dt) {
   const target = player.x + player.w / 2 - W / 2 + player.facing * 140;
   camera.x += (target - camera.x) * (1 - Math.exp(-5 * dt));
   camera.x = clamp(camera.x, 0, WORLD_W - W);
+  // Follow climbs, keeping the player a bit below the middle of the screen
+  const targetY = clamp(player.y + player.h / 2 - H * 0.58, WORLD_TOP, 0);
+  camera.y += (targetY - camera.y) * (1 - Math.exp(-4 * dt));
 }
 
 function update(dt) {
@@ -111,7 +115,6 @@ const overlayTitle = document.getElementById("overlay-title");
 const overlayText = document.getElementById("overlay-text");
 const overlayStats = document.getElementById("overlay-stats");
 const controlsHelp = document.getElementById("controls-help");
-const schemePicker = document.getElementById("scheme-picker");
 const overlayBtn = document.getElementById("overlay-btn");
 const overlayBtn2 = document.getElementById("overlay-btn-2");
 let overlayShownAt = 0;
@@ -140,9 +143,8 @@ function setState(state) {
 function showOverlay({ title, text, button, help, secondary, stats: lines }) {
   overlayTitle.textContent = title;
   overlayText.textContent = text;
-  controlsHelp.hidden = !help;
-  schemePicker.hidden = !help;
-  document.getElementById("music-picker").hidden = !help;
+  document.getElementById("settings").hidden = !help;
+  document.getElementById("how-to").hidden = !help;
   document.getElementById("secrets").hidden = !help && !lines;
   renderSecretsList();
   overlayStats.hidden = !lines;
@@ -214,7 +216,8 @@ function handleMenuKey(e) {
   }
   if (overlay.hidden) return false;
   if (e.code === "Enter" || e.code === "Space") {
-    if (document.activeElement && document.activeElement.dataset.scheme) return true; // let it click
+    const el = document.activeElement;
+    if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret"))) return true; // let it click
     e.preventDefault();
     if (!e.repeat) overlayPrimary();
   } else if ((e.code === "Escape" || e.code === "KeyP") && game.state === "paused") {

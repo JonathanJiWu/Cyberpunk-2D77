@@ -1,0 +1,11 @@
+{
+  "name": "cyberpunk-2d77",
+  "private": true,
+  "description": "Cyberpunk 2D77, a neon side-scrolling action game. No build step: open index.html.",
+  "scripts": {
+    "test": "node tests/game.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

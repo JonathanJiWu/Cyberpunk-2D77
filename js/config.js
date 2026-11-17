@@ -10,6 +10,7 @@ const W = 1920;
 const H = 1080;
 const WORLD_W = 6400;
 const GROUND_Y = 990; // top surface of the street
+const WORLD_TOP = -600; // the city goes this high above the screen; the camera follows
 
 const TUNING = {
   player: {
@@ -73,7 +74,7 @@ const ENEMY_TYPES = {
     weight: 5,
   },
   reaper: {
-    name: "Reaper",
+    name: "Chrome Reaper",
     kind: "melee",
     hp: 16,
     speed: 125,
@@ -81,7 +82,7 @@ const ENEMY_TYPES = {
     xp: 2,
     w: 64,
     h: 92,
-    sheet: { img: "death", fw: 50, fh: 48, frames: 4, scale: 2.2, rowLeft: 1, rowRight: 2, fps: 6 },
+    sheet: { img: "reaperCyber", fallback: "death", fw: 50, fh: 48, frames: 4, scale: 2.2, rowLeft: 1, rowRight: 2, fps: 6 },
     alpha: 0.92,
     from: 8,
     weight: 3,
@@ -103,7 +104,7 @@ const ENEMY_TYPES = {
     weight: 3,
   },
   dragon: {
-    name: "Smog Dragon",
+    name: "Mecha Wyrm",
     kind: "ranged",
     hp: 30,
     speed: 220,
@@ -111,7 +112,7 @@ const ENEMY_TYPES = {
     xp: 4,
     w: 84,
     h: 78,
-    sheet: { img: "dragon", fw: 96, fh: 96, frames: 4, scale: 1.3, rowLeft: 1, rowRight: 2, fps: 7 },
+    sheet: { img: "dragonCyber", fallback: "dragon", fw: 96, fh: 96, frames: 4, scale: 1.3, rowLeft: 1, rowRight: 2, fps: 7 },
     keepDistance: 560,
     shot: { kind: "fireball", damage: 7, speed: 380, radius: 18, cooldown: [3.6, 5.2] },
     maxAlive: 2,
@@ -266,6 +267,26 @@ const LEVEL = {
     { x: 5320, y: 470, w: 256, ax: 260, period: 6 },
     { x: 5450, y: 640, w: 384 },
     { x: 5980, y: 800, w: 320 },
+    // Up into the skyline (new entries go at the end so the indices above stay
+    // put). "roof" platforms are rooftops: a building is drawn underneath.
+    { x: 520, y: 470, w: 256 },
+    { x: 900, y: 320, w: 320, roof: true },
+    { x: 560, y: 150, w: 192 },
+    { x: 850, y: -20, w: 256 },
+    { x: 1250, y: -180, w: 320, roof: true },
+    { x: 2050, y: 330, w: 256 },
+    { x: 2400, y: 170, w: 320, roof: true },
+    { x: 2850, y: 20, w: 256 },
+    { x: 2500, y: -160, w: 256, ax: 200, period: 6 },
+    { x: 3950, y: 380, w: 256 },
+    { x: 4250, y: 220, w: 320, roof: true },
+    { x: 3900, y: 60, w: 256 },
+    { x: 4300, y: -110, w: 256 },
+    { x: 3850, y: -280, w: 320, roof: true },
+    { x: 5750, y: 320, w: 256 },
+    { x: 6050, y: 160, w: 256, roof: true },
+    { x: 5650, y: 0, w: 256 },
+    { x: 5200, y: -170, w: 320, roof: true },
   ],
   // Breakable crates drop power-ups or XP; they come back after a while.
   crates: [
@@ -277,6 +298,10 @@ const LEVEL = {
     { x: 4600, onGround: true },
     { x: 5560, platform: 15 },
     { x: 6150, onGround: true },
+    { x: 1360, platform: 21 },
+    { x: 2500, platform: 23 },
+    { x: 3960, platform: 30 },
+    { x: 5320, platform: 34 },
   ],
   crateRespawn: 45,
   // Neon signs along the street (pure decoration)
@@ -307,7 +332,7 @@ const SECRETS = [
     name: "Interlinked",
     icon: 6,
     desc: "You looked up at the giant hologram. She noticed. +XP.",
-    hint: "A giant hologram towers over the street. Stand under her and look up.",
+    hint: "A giant hologram towers over the street. Stand still under her and look up.",
   },
   {
     id: "mantis",

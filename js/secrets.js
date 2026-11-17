@@ -94,10 +94,8 @@ const holdingDown = () => {
   const m = moveAxis();
   return m.y > 0.6 && Math.abs(m.x) < 0.45;
 };
-const lookingUp = () => {
-  const m = moveAxis();
-  return m.y < -0.6 && Math.abs(m.x) < 0.45;
-};
+// Keyboard only: on touch the stick's "up" is jump
+const lookingUp = () => keyHeld("up") && !keyHeld("left") && !keyHeld("right");
 
 // ----------------------------------------------------------------- Update ---
 function updateSecrets(dt) {
@@ -137,8 +135,12 @@ function updateSecrets(dt) {
     weather.idle = 0;
   }
 
-  // Interlinked: stand under the giant hologram and look up at her
-  player.lookUp = onStreet && Math.abs(pc.x - holo.x) < 200 && lookingUp();
+  // Interlinked: stand under the giant hologram and look up at her (hold Up,
+  // or just stand still there for a moment)
+  const nearHolo = onStreet && Math.abs(pc.x - holo.x) < 200;
+  const idle = Math.abs(moveAxis().x) < 0.1 && !zapHeld() && !flameHeld();
+  holo.idle = nearHolo && idle ? (holo.idle || 0) + dt : 0;
+  player.lookUp = nearHolo && (lookingUp() || holo.idle > 0.8);
   if (player.lookUp && !holo.done) {
     holo.look += dt;
     if (holo.look > 2) {
@@ -530,7 +532,7 @@ renderSecretsList();
 function drawMoon() {
   const img = IMG.moon;
   const x = W * 0.64 - camera.x * 0.03;
-  const y = 170;
+  const y = 170 - camera.y * 0.08;
   const size = 200 + moonState.glow * 6;
   glow(x + size / 2, y + size / 2, size * (0.9 + moonState.glow * 0.08), "rgba(220,210,255,0.35)");
   if (isReady(img)) {

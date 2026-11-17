@@ -177,6 +177,7 @@ body.state-over .hud-buttons #btn-pause {
 }
 
 .overlay-actions {
+  margin-bottom: 1.2em;
   display: flex;
   flex-wrap: wrap;
   gap: 0.8em;
@@ -227,9 +228,7 @@ body.touch .touch-only {
   display: revert;
 }
 
-body.touch .kb-only,
-body.scheme-gestures .buttons-only,
-body:not(.scheme-gestures) .gestures-only {
+body.touch .kb-only {
   display: none;
 }
 
@@ -288,29 +287,28 @@ body.touch.state-playing .touch-controls {
 }
 
 .action-pad {
-  --btn: clamp(62px, 11vmin, 84px);
+  --btn: clamp(58px, 10vmin, 76px);
   position: fixed;
   right: calc(var(--safe-right) + 18px);
   bottom: calc(var(--safe-bottom) + 18px);
-  width: calc(var(--btn) * 2.45);
-  height: calc(var(--btn) * 2.25);
+  width: var(--btn);
+  height: var(--btn);
   z-index: 25;
-  pointer-events: none;
 }
 
 .action-btn {
   position: absolute;
+  right: 0;
+  bottom: 0;
   width: var(--btn);
   height: var(--btn);
   padding: 0;
   border-radius: 50%;
   border: 3px solid currentColor;
-  background: rgba(11, 4, 22, 0.45);
-  font-size: calc(var(--btn) * 0.13);
+  font-size: calc(var(--btn) * 0.14);
   letter-spacing: -0.04em;
-  pointer-events: auto;
   touch-action: none;
-  opacity: 0.85;
+  opacity: 0.9;
   transition: transform 0.06s;
 }
 
@@ -320,24 +318,8 @@ body.touch.state-playing .touch-controls {
   filter: brightness(1.35);
 }
 
-.action-btn:not(.btn-flame).pressed {
-  background: rgba(255, 255, 255, 0.22);
-}
-
-.btn-zap {
-  right: 0;
-  bottom: 0;
-  width: calc(var(--btn) * 1.25);
-  height: calc(var(--btn) * 1.25);
-  font-size: calc(var(--btn) * 0.18);
-  color: var(--neon-cyan);
-  box-shadow: 0 0 14px rgba(25, 245, 255, 0.45);
-}
-
 .btn-flame {
   --heat: 1;
-  right: calc(var(--btn) * 0.12);
-  bottom: calc(var(--btn) * 1.38);
   color: var(--neon-orange);
   /* heat gauge drawn around the button */
   background: radial-gradient(circle closest-side, rgba(11, 4, 22, 0.7) 72%, transparent 74%),
@@ -349,10 +331,30 @@ body.touch.state-playing .touch-controls {
   opacity: 0.55;
 }
 
-.btn-jump {
-  right: calc(var(--btn) * 1.42);
-  bottom: calc(var(--btn) * 0.08);
-  color: var(--neon-pink);
+/* Right stick (twin-stick aim + fire) */
+.aim-zone {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 20;
+}
+
+body.aim-tap .aim-zone {
+  display: none;
+}
+
+.aim-stick {
+  left: auto;
+  right: calc(var(--safe-right) + 120px);
+  border-color: rgba(255, 47, 214, 0.5);
+  background: radial-gradient(circle, rgba(255, 47, 214, 0.08), rgba(255, 47, 214, 0.2));
+}
+
+.aim-stick .stick-knob {
+  background: radial-gradient(circle at 35% 35%, #ffb3f0, #ff2fd6);
+  box-shadow: 0 0 14px rgba(255, 47, 214, 0.8);
 }
 
 /* ------------------------------------------------- Touch: portrait layout */
@@ -401,43 +403,57 @@ body.touch.portrait .overlay {
   text-align: left;
 }
 
-.scheme-picker {
+.settings {
+  display: grid;
+  grid-template-columns: auto auto;
   justify-content: center;
   align-items: center;
-  gap: 0.6em;
-  margin: 0 0 1.2em;
-  font-size: 0.7em;
+  gap: 0.5em 1em;
+  margin: 0 0 1em;
+  font-size: 0.66em;
+  text-align: left;
 }
 
-body.touch .scheme-picker {
-  display: flex;
+.setting-label small {
+  color: #a990d6;
+  font-size: 0.8em;
 }
 
-.music-picker {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.6em;
-  margin: 0 0 1.2em;
-  font-size: 0.7em;
+.seg {
+  display: inline-flex;
+  gap: 0.35em;
 }
 
-.scheme-picker button,
-.music-picker button {
-  min-height: 40px;
-  padding: 0.7em 1em;
-  border: 2px solid rgba(25, 245, 255, 0.5);
+body.touch .seg.touch-only {
+  display: inline-flex;
+}
+
+.seg button {
+  min-height: 36px;
+  padding: 0.55em 0.8em;
+  border: 2px solid rgba(25, 245, 255, 0.4);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.05);
   font-size: 1em;
   touch-action: manipulation;
 }
 
-.scheme-picker button[aria-pressed="true"],
-.music-picker button[aria-pressed="true"] {
+.seg button[aria-pressed="true"] {
   border-color: var(--neon-cyan);
   background: rgba(25, 245, 255, 0.22);
   box-shadow: 0 0 10px rgba(25, 245, 255, 0.5);
+}
+
+.how-to {
+  margin: 0 0 1em;
+  font-size: 0.85em;
+}
+
+.how-to summary {
+  cursor: pointer;
+  color: var(--neon-orange);
+  font-size: 0.8em;
+  margin-bottom: 0.8em;
 }
 
 /* ------------------------------------------------- Level-up cards */
@@ -578,7 +594,7 @@ body.portrait .card-desc {
   grid-area: desc;
 }
 
-/* ------------------------------------------------- Tap gestures scheme */
+/* ------------------------------------------------- Tap mode (right side) */
 .gesture-zone {
   display: none;
   position: fixed;
@@ -587,36 +603,15 @@ body.portrait .card-desc {
   touch-action: none;
 }
 
-body.scheme-gestures .gesture-zone {
+body.aim-tap .gesture-zone {
   display: block;
 }
 
-/* With gestures, the joystick only owns the lower-left corner */
-body.scheme-gestures .stick-zone {
+/* In tap mode the joystick only owns the lower-left corner */
+body.aim-tap .stick-zone {
   top: auto;
   height: 60%;
   width: 40%;
-}
-
-/* ...and only small JUMP / FLAME buttons sit in the corner */
-body.scheme-gestures .action-pad {
-  --btn: clamp(52px, 9vmin, 66px);
-  width: calc(var(--btn) * 2.3);
-  height: var(--btn);
-}
-
-body.scheme-gestures .btn-zap {
-  display: none;
-}
-
-body.scheme-gestures .btn-jump {
-  right: 0;
-  bottom: 0;
-}
-
-body.scheme-gestures .btn-flame {
-  right: calc(var(--btn) * 1.2);
-  bottom: 0;
 }
 
 .tap-ripple {
