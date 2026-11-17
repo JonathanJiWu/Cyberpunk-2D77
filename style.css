@@ -694,6 +694,7 @@ body.state-playing:not(.touch) #canvas1 {
   color: #c8ffd4;
   text-align: center;
   font-size: 0.8em;
+  line-height: 1.6;
 }
 
 .breach-panel h2 {

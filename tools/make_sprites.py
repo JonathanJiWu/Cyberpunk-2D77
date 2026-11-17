@@ -22,6 +22,15 @@ Sheets (frames are laid out left to right):
     crate.png         64x32   intact / damaged (32x32 each)
     skyline.png      480x200  seamless distant skyline
     ground.png        64x48   seamless street tile
+
+Easter eggs:
+    hologram.png      96x96   2 frames of 48x96   giant holographic ad figure
+    dove.png          64x16   4 frames of 16x16   white dove, wing-flap cycle
+    secrets.png      192x24   8 secret icons of 24x24 (same badge as icons.png)
+    terminal.png      48x40   2 frames of 24x40   data terminal: active / breached
+    moon.png          64x64   big pale moon
+    katana.png        40x12   katana, blade pointing right
+    ripperdoc.png     64x72   street-clinic booth front
 """
 
 import argparse
@@ -70,11 +79,22 @@ PAL = {
     "u": "#d0a6ff",  # violet pale
     "U": "#3f7cff",  # blue
     "b": "#2140a6",  # blue shade
+    # easter-egg extras
+    "G": "#39ff8a",  # neon green
+    "i": "#169a5c",  # green shade
+    "z": "#0b3b2c",  # green deep (screen)
+    "x": "#8a86a8",  # soft grey outline (dove)
+    "s": "#dcd8ef",  # pale grey
+    "t": "#b3aed0",  # grey shade
+    "L": "#f3efff",  # moon light
+    "l": "#d6cdf2",  # moon base
+    "d": "#b5abdc",  # moon shade
     # translucent glows: never outlined, never count as solid
     "g": ("#19f5ff", 110),
     "h": ("#ff2fd6", 70),
+    "f": ("#39ff8a", 80),
 }
-GLOW = {"g", "h"}
+GLOW = {"g", "h", "f"}
 OUTLINE = "K"
 
 
@@ -1530,6 +1550,745 @@ def make_ground():
     return img
 
 
+# ============================================================ EASTER EGGS ===
+def capsule_pts(a, b, ra, rb):
+    """Pixels within a tapered capsule from a (radius ra) to b (radius rb)."""
+    pts = set()
+    r = max(ra, rb)
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    l2 = dx * dx + dy * dy
+    for y in range(int(min(a[1], b[1]) - r) - 1, int(max(a[1], b[1]) + r) + 2):
+        for x in range(int(min(a[0], b[0]) - r) - 1, int(max(a[0], b[0]) + r) + 2):
+            cx_, cy_ = x + 0.5, y + 0.5
+            t = 0.0 if l2 == 0 else max(0.0, min(1.0, ((cx_ - a[0]) * dx + (cy_ - a[1]) * dy) / l2))
+            rr = ra + (rb - ra) * t
+            if (cx_ - a[0] - t * dx) ** 2 + (cy_ - a[1] - t * dy) ** 2 <= rr * rr:
+                pts.add((x, y))
+    return pts
+
+
+def bezier(p0, c, p1, n=40):
+    return [((1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * c[0] + t * t * p1[0],
+             (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * c[1] + t * t * p1[1])
+            for t in (i / n for i in range(n + 1))]
+
+
+# ---------------------------------------------------------------- hologram ---
+HOLO_RAMP = [rgba(c) for c in ("#5c1470", "#a3209a", "#e62ccf", "#ff6fdf", "#ffb6f3", "#ffe3fb")]
+HOLO_RIM, HOLO_RIM_LIT = rgba("#19f5ff"), rgba("#a8fbff")
+
+
+def hologram_figure():
+    """A woman in a long-sleeved, ankle-length dress with a bob haircut:
+    3/4 pose, weight on one leg, one hand raised to her hair, the hem
+    sweeping to the side. Returns {(x, y): (tone, kind)} where kind is
+    'body', 'rim' (cyan edge) or 'lit' (pale cyan edge facing the light)."""
+    fig = {}  # (x, y) -> [layer, group, tone]
+    count = [0]
+
+    def add(pts, tone, group):
+        li = count[0]
+        count[0] += 1
+        out = set()
+        for (x, y) in pts:
+            if 0 <= x < 48 and 0 <= y < 96:
+                fig[(x, y)] = [li, group, tone]
+                out.add((x, y))
+        return out
+
+    def tone(pts, t):
+        for p in pts:
+            if p in fig:
+                fig[p][2] = t
+
+    # back to front
+    add(capsule_pts((27.0, 84.0), (27.6, 88.6), 1.1, 0.9), 2, "farleg")
+    add(poly_pts([(26.2, 88.0), (28.6, 88.0), (31.2, 90.2), (30.8, 91.4), (26.0, 91.4)]), 1, "farshoe")
+    add(capsule_pts((19.6, 84.0), (19.8, 88.8), 1.2, 1.0), 3, "nearleg")
+    add(poly_pts([(18.6, 88.0), (21.2, 88.0), (21.4, 91.6), (15.4, 91.6), (16.0, 90.4)]), 1, "nearshoe")
+    raised = add(capsule_pts((30.2, 22.4), (35.2, 13.8), 2.1, 1.7) |
+                 capsule_pts((35.2, 13.8), (30.8, 8.8), 1.7, 1.3), 2, "raisedarm")
+    add(ellipse_pts(29.8, 8.2, 1.5, 1.5), 3, "raisedhand")
+    hair = add(ellipse_pts(24.6, 10.4, 5.4, 6.0) |
+               poly_pts([(19.4, 11), (29.8, 10.5), (30.4, 15.2), (29.2, 17.4), (26.4, 17.2), (21, 17)]),
+               1, "hair")
+    neck = add(poly_pts([(21.6, 15.2), (25.0, 15.2), (25.4, 20.6), (21.4, 20.6)]), 2, "neck")
+    dress = add(poly_pts([(17.2, 22.0), (19.5, 20.0), (22.0, 19.4), (26.0, 19.4), (28.8, 20.0), (31.2, 21.8),
+                          (30.6, 25.0), (29.6, 29.5), (28.2, 34.0), (29.2, 39.0), (30.0, 46.0), (31.0, 56.0),
+                          (32.4, 66.0), (34.6, 76.0), (37.0, 84.0), (35.5, 86.6), (30.0, 87.4), (24.0, 87.6),
+                          (18.0, 87.4), (13.6, 86.6), (14.8, 78.0), (15.8, 66.0), (16.2, 56.0), (16.4, 46.0),
+                          (16.6, 41.0), (18.6, 36.5), (19.6, 34.0), (18.6, 29.5), (17.6, 25.5)]), 2, "dress")
+    lowered = add(capsule_pts((18.4, 22.6), (15.4, 32.4), 2.0, 1.7) |
+                  capsule_pts((15.4, 32.4), (15.6, 41.0), 1.7, 1.4), 2, "lowerarm")
+    add(ellipse_pts(16.0, 43.2, 1.4, 2.0), 3, "lowerhand")
+    face = add(ellipse_pts(22.6, 11.6, 3.3, 4.6), 4, "face")
+    hair |= add({(x, y) for (x, y) in face if y + 0.5 < 8.4 + 0.35 * (x - 19) or x <= 19}, 1, "hair")
+
+    # --- dress: light from the left, shadow on the right, drape folds
+    rows = {}
+    for (x, y) in dress:
+        lo, hi = rows.get(y, (99, -1))
+        rows[y] = (min(lo, x), max(hi, x))
+    for (x, y) in dress:
+        lo, hi = rows[y]
+        if x <= lo + 2:
+            fig[(x, y)][2] = 3
+        elif x >= hi - 2:
+            fig[(x, y)][2] = 1
+    tone({(x, y) for (x, y) in dress if y <= 21 and 21 <= x <= 26}, 3)  # high collar
+    tone({(x, y) for (x, y) in dress if y == 22 and 21 <= x <= 26}, 1)
+    tone({(x, y) for (x, y) in dress if y in (33, 34)}, 4)  # cinched sash
+    tone({(19, 33), (20, 33), (19, 34), (20, 34)}, 5)
+    tone({(20, 35), (19, 36), (20, 37), (19, 38), (20, 39)}, 4)
+    for (a, b, t) in (((21, 40), (19, 85), 3), ((24, 41), (24, 86), 1), ((27, 41), (31, 84), 3),
+                      ((29, 48), (34, 83), 1), ((19, 50), (16, 84), 1)):
+        tone(set(line_pts(*a, *b)), t)
+    tone({(x, y) for (x, y) in lowered if (x - 1, y) not in lowered}, 3)
+    tone({(x, y) for (x, y) in lowered if y >= 40}, 3)
+    tone({(x, y) for (x, y) in raised if (x, y - 1) not in raised}, 3)
+    tone({(16, 91), (17, 91)}, 4)
+    # hair: glossy arc, strands, darker curled ends
+    for (x, y) in hair:
+        d = math.hypot(x + 0.5 - 25.0, y + 0.5 - 12.0)
+        if 5.6 <= d <= 6.6 and y < 10:
+            fig[(x, y)][2] = 3
+        elif 4.6 <= d < 5.6 and y < 9:
+            fig[(x, y)][2] = 2
+    tone({(27, y) for y in range(12, 16)}, 2)
+    tone({(x, y) for (x, y) in hair if (x, y + 1) not in hair and y > 14}, 0)
+    # face: soft shading, lashes, lips, cheek light; shadow under the jaw
+    tone({(x, y) for (x, y) in face if x >= 25 or (x >= 24 and y >= 14)}, 3)
+    tone({(20, 11), (21, 11), (23, 11), (24, 11)}, 0)
+    tone({(21, 14), (22, 14)}, 1)
+    tone({(20, 12), (21, 12)}, 5)
+    tone({(x, y) for (x, y) in neck if y <= 16}, 1)
+
+    # --- rim light on the silhouette, dark contour where a part overlaps another
+    out = {}
+    for (x, y), (li, grp, t) in fig.items():
+        nbs = ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
+        if any(q not in fig for q in nbs):
+            lit = (x - 1, y) not in fig or (x, y - 1) not in fig
+            out[(x, y)] = (t, "lit" if lit else "rim")
+        elif any(fig[q][0] < li and fig[q][1] != grp and {fig[q][1], grp} != {"face", "hair"}
+                 for q in nbs):
+            out[(x, y)] = (0, "body")
+        else:
+            out[(x, y)] = (t, "body")
+    return out
+
+
+def hologram_frame(fig, f):
+    img = Image.new("RGBA", (48, 96), (0, 0, 0, 0))
+    px = img.load()
+    body_a, rim_a = (204, 188)[f], (210, 198)[f]
+    # projector ring at the feet (drawn first so the figure sits on it)
+    ring = edge_pts(ellipse_pts(24.5, 93.3, 12.5, 2.3), N4)
+    for (x, y) in ring:
+        if 0 <= y < 96:
+            px[x, y] = HOLO_RIM[:3] + ((150, 140)[f],)
+    for (x, y), (t, kind) in fig.items():
+        col = HOLO_RIM if kind == "rim" else HOLO_RIM_LIT if kind == "lit" else HOLO_RAMP[t]
+        a = rim_a if kind != "body" else body_a
+        if (y + f) % 3 == 2:  # scanline: every 3rd row dimmer and more transparent
+            col = tuple(int(c * 0.7) for c in col[:3]) + (255,)
+            a = 140
+        px[x, y] = col[:3] + (a,)
+    # glitch: a few rows slip sideways with a chromatic split at the ends
+    for (y0, n, sh) in ([(28, 2, 3), (64, 1, -2)], [(12, 1, -2), (46, 2, 3), (77, 1, 2)])[f]:
+        for y in range(y0, y0 + n):
+            row = [px[x, y] for x in range(48)]
+            new = [(0, 0, 0, 0)] * 48
+            for x in range(48):
+                if row[x][3] and 0 <= x + sh < 48:
+                    new[x + sh] = row[x]
+            xs = [x for x in range(48) if new[x][3]]
+            if xs:
+                lead, trail = (max(xs), min(xs)) if sh > 0 else (min(xs), max(xs))
+                new[lead] = HOLO_RIM[:3] + (210,)
+                new[trail] = (255, 120, 230, 170)
+            for x in range(48):
+                px[x, y] = new[x]
+    # stray projection sparkles
+    rng = random.Random(SEED + 100 + f)
+    for _ in range(5):
+        while True:
+            x, y = rng.randint(6, 41), rng.randint(6, 86)
+            if px[x, y][3] == 0 and all(px[x + dx, y + dy][3] == 0 for dx, dy in N8):
+                break
+        px[x, y] = (HOLO_RIM if rng.random() < 0.6 else HOLO_RAMP[4])[:3] + (150,)
+    return img
+
+
+def make_hologram():
+    fig = hologram_figure()
+    sheet = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    for f in range(2):
+        sheet.paste(hologram_frame(fig, f), (f * 48, 0))
+    return sheet
+
+
+# -------------------------------------------------------------------- dove ---
+# Dove poses, 14x14 interior (grey outline added afterwards). W white,
+# s pale grey, t grey feather tips / far wing, a beak, 1 eye.
+DOVE_POSES = {
+    "up": [
+        ".t.t.....t....",
+        ".WtWt..tst....",
+        "..WWWt.sss....",
+        "..WWWWtss.....",
+        "...WWWWts.....",
+        "....WWWWs.WWW.",
+        ".....WWWsWW1Wa",
+        "tt..WWWWWWWWs.",
+        "ttsWWWWWWWWs..",
+        "...ssssssss...",
+        "..............",
+        "..............",
+        "..............",
+        "..............",
+    ],
+    "mid": [
+        "..............",
+        "..............",
+        "..............",
+        "t.t.t.........",
+        "WtWtWWt..tt...",
+        ".WWWWWWWs.WWW.",
+        "..sWWWWWWWW1Wa",
+        "tt..WWWWWWWWs.",
+        "ttsWWWWWWWWs..",
+        "...ssssssss...",
+        "..............",
+        "..............",
+        "..............",
+        "..............",
+    ],
+    "down": [
+        "..............",
+        "..............",
+        "..............",
+        "..............",
+        "..............",
+        "..........WWW.",
+        ".........WW1Wa",
+        "tt..WWWWWWWWs.",
+        "ttsWWWWWWWWs..",
+        "...sWWWWWWs...",
+        "...WWWWWWs....",
+        "..WWWWWs......",
+        ".tWtWt........",
+        "..t.t.........",
+    ],
+}
+
+
+def dove_grid(f):
+    """Frames: wings up, mid, down, mid."""
+    pose = ("up", "mid", "down", "mid")[f]
+    return Grid.ascii(DOVE_POSES[pose]).padded(1).outline("x")
+
+
+def make_dove():
+    sheet = Image.new("RGBA", (64, 16), (0, 0, 0, 0))
+    for f in range(4):
+        sheet.paste(dove_grid(f).image(), (f * 16, 0))
+    return sheet
+
+
+# ----------------------------------------------------------------- secrets ---
+def secret_mantis():
+    W, H = 17, 17
+
+    def blade(mirror):
+        g = Grid(W, H)
+        outer = bezier((1.6, 16.5), (3.0, 5.0), (15.6, 0.4), 30)
+        inner = bezier((5.4, 16.5), (6.6, 7.6), (15.6, 0.4), 30)
+        pts = poly_pts(outer + inner[::-1])
+        if mirror:
+            pts = {(W - 1 - x, y) for (x, y) in pts}
+        edge_in = edge_pts(pts, ((1, 0), (0, 1))) if not mirror else edge_pts(pts, ((-1, 0), (0, 1)))
+        edge_out = edge_pts(pts, ((-1, 0), (0, -1))) if not mirror else edge_pts(pts, ((1, 0), (0, -1)))
+        g.fill(pts, "4" if mirror else "5")
+        g.fill(edge_out, "W" if not mirror else "5")
+        g.fill(edge_in, "M")
+        for (x, y) in pts:  # forearm mount
+            if y >= 14:
+                g.set(x, y, "2" if (x + y) % 3 else "3")
+        return g
+
+    return stack(W, H, blade(True), blade(False), pad=1)
+
+
+def secret_katana():
+    """Diagonal katana: tip top-right, hilt bottom-left (a along, s across)."""
+    g = Grid(17, 17)
+    for y in range(17):
+        for x in range(17):
+            a, s = x - y, x + y - 16
+            ch = None
+            if a == 14 and s == 0:
+                ch = "B"
+            elif 12 <= a <= 13 and -1 <= s <= 1:
+                ch = "5" if s < 0 else "C"
+            elif -1 <= a <= 11 and -1 <= s <= 1:
+                ch = "5" if s < 0 else "4" if s == 0 else "C"
+                if s == 1 and a % 4 == 1:
+                    ch = "B"
+            elif a == -2 and abs(s) <= 1:
+                ch = "Y"
+            elif a in (-3, -4) and abs(s) <= 3:
+                ch = "O" if s < 0 else "o"
+                if abs(s) <= 1 and a == -3:
+                    ch = "Y"
+            elif -12 <= a <= -5 and abs(s) <= 1:
+                ch = "R" if (a + (s == 0)) % 2 else "1"
+            elif a == -13 and abs(s) <= 1:
+                ch = "3"
+            if ch:
+                g.set(x, y, ch)
+    return g
+
+
+def secret_sandevistan():
+    W, H = 18, 17
+
+    def spine_pts(dx):
+        pts = set()
+        for i in range(4):
+            y0 = 1 + i * 4
+            for y in range(y0, y0 + 3):
+                for x in range(11, 16):
+                    if not ((x in (11, 15)) and y in (y0, y0 + 2)):
+                        pts.add((x + dx, y))
+            pts |= {(10 + dx, y0 + 1), (16 + dx, y0 + 1)}
+        pts |= {(13 + dx, y) for y in range(0, 17)}
+        return pts
+
+    layers = []
+    for dx, ch in ((-9, "G"), (-6, "Y"), (-3, "M")):
+        g = Grid(W, H)
+        g.fill(spine_pts(dx), ch)
+        layers.append(g)
+    main = Grid(W, H)
+    sp = spine_pts(0)
+    shade_rim(main, sp, "3", light="4", dark="2")
+    for i in range(4):
+        y0 = 1 + i * 4
+        main.set(13, y0 + 1, "C")
+        main.set(12, y0 + 1, "c")
+        main.set(14, y0 + 1, "B" if i == 0 else "c")
+    for y in (4, 8, 12):
+        main.set(13, y, "5")
+    layers.append(main)
+    return stack(W, H, *layers, pad=1)
+
+
+def secret_thermoptic():
+    g = Grid(18, 18)
+    body = (ellipse_pts(9.0, 3.6, 2.4, 2.6) |
+            poly_pts([(5.6, 6.6), (12.4, 6.6), (11.6, 11.8), (6.4, 11.8)]) |
+            capsule_pts((6.0, 7.4), (3.6, 13.4), 1.2, 1.0) |
+            capsule_pts((12.0, 7.4), (14.4, 13.4), 1.2, 1.0) |
+            capsule_pts((7.6, 11.5), (6.8, 16.6), 1.3, 1.1) |
+            capsule_pts((10.4, 11.5), (11.2, 16.6), 1.3, 1.1))
+    edge = edge_pts(body, N4)
+    for (x, y) in body - edge:  # see-through interior with a faint shimmer
+        if (x * 3 + y * 5) % 11 == 0:
+            g.set(x, y, "w")
+        if (x * 7 + y * 3) % 23 == 0:
+            g.set(x, y, "e")
+    for i, (x, y) in enumerate(sorted(edge, key=lambda p: math.atan2(p[1] - 9, p[0] - 9))):
+        if (x + y) % 3 != 0:
+            g.set(x, y, "C" if (x + 2 * y) % 5 else "B")
+    for (x, y) in edge:  # ghosted refraction offset
+        if (x + y) % 4 == 0 and g.get(x + 1, y) == ".":
+            g.set(x + 1, y, "e")
+    return g
+
+
+def secret_jack_in():
+    W, H = 17, 17
+    cable = Grid(W, H)
+    cp = brush([(int(round(x)), int(round(y))) for (x, y) in bezier((1, 16), (9, 16.5), (8.5, 11), 30)], SQ2)
+    shade_rim(cable, cp, "1", light="2", dark="P")
+    plug = Grid(W, H)
+    pp = {(x, y) for x in range(6, 12) for y in range(5, 13)} - {(6, 12), (11, 12)}
+    shade_rim(plug, pp, "3", light="4", dark="2")
+    for y in (8, 10):
+        plug.hline(7, 10, y, "2")
+    plug.hline(6, 11, 5, "5")
+    plug.set(10, 11, "G")
+    tip = Grid(W, H)
+    tip.rect(7, 2, 10, 4, "C")
+    tip.hline(7, 10, 4, "c")
+    tip.set(7, 1, "B")
+    tip.set(10, 1, "B")
+    tip.set(8, 2, "W")
+    tip.set(9, 2, "W")
+    sparks = Grid(W, H)
+    for (x, y) in [(5, 1), (4, 0), (12, 1), (13, 0), (12, 3), (8, 0)]:
+        sparks.set(x, y, "B" if (x + y) % 2 else "C")
+    return stack(W, H, cable, plug, tip, sparks, pad=1)
+
+
+def secret_tears(b):
+    """Blue rain streaks on the badge itself, then the dove on top."""
+    for (x, y) in [(4, 3), (9, 2), (15, 4), (19, 3), (3, 12), (7, 17), (18, 15), (13, 18), (20, 10),
+                   (11, 9), (2, 7), (16, 8)]:
+        for i, ch in enumerate("UUb"):
+            if b.get(x - (i // 2), y + i) == "P":
+                b.set(x - (i // 2), y + i, ch)
+    d = dove_grid(1)
+    b.blit(d, (24 - d.w) // 2, (24 - d.h) // 2 + 1)
+    return b
+
+
+def secret_holo_head():
+    W, H = 17, 17
+    fig = {}
+    hair = ellipse_pts(9.2, 6.4, 5.3, 5.8) | poly_pts([(4, 6.5), (14.4, 6), (14.8, 11), (13.2, 12.2), (5, 12)])
+    neck = {(x, y) for x in range(7, 10) for y in range(10, 14)}
+    shoulders = {(x, y) for (x, y) in ellipse_pts(8.6, 18.0, 7.8, 4.6) if y <= 16}
+    face = ellipse_pts(7.9, 7.4, 3.1, 4.0)
+    bangs = {(x, y) for (x, y) in face if y + 0.5 < 5.0 + 0.3 * (x - 5) or x <= 5}
+    for pts, ch in ((shoulders, "M"), (hair, "m"), (neck, "M"), (face, "N"), (bangs, "m")):
+        for p in pts:
+            fig[p] = ch
+    for (x, y) in hair | bangs:
+        if 4.4 <= math.hypot(x + 0.5 - 9.5, y + 0.5 - 8) <= 5.4 and y < 5:
+            fig[(x, y)] = "M"
+    for p in ((6, 7), (9, 7)):
+        fig[p] = "m"
+    fig[(7, 10)] = "M"
+    g = Grid(W, H)
+    allp = set(fig)
+    for (x, y), ch in fig.items():
+        if any(q not in allp for q in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))):
+            ch = "B" if ((x - 1, y) not in allp or (x, y - 1) not in allp) else "C"
+        if y % 3 == 2:
+            ch = {"N": "M", "M": "m", "m": "n", "C": "c", "B": "c"}[ch]
+        g.set(x, y, ch)
+    for (x, y) in face:  # contour under the jaw
+        if (x, y + 1) in neck and (x, y + 1) not in face:
+            g.set(x, y, "m")
+    return g
+
+
+def secret_moon():
+    W, H = 17, 17
+    moon = Grid(W, H)
+    disc = ellipse_pts(7.5, 9.5, 6.8, 6.8)
+    bite = ellipse_pts(11.0, 7.4, 5.8, 5.8)
+    cres = disc - bite
+    shade_rim(moon, cres, "l", light="L", dark="d")
+    for p in [(3, 8), (2, 11), (5, 13)]:
+        if p in cres and p not in edge_pts(cres, N4):
+            moon.set(p[0], p[1], "d")
+    rocket = Grid(W, H)
+    for (x, y), ch in {(13, 4): "5", (14, 3): "5", (15, 2): "R", (14, 4): "4", (13, 3): "5",
+                       (12, 4): "M", (13, 5): "M", (12, 5): "O"}.items():
+        rocket.set(x, y, ch)
+    trail = Grid(W, H)
+    for (x, y) in [(11, 6), (10, 7)]:
+        trail.set(x, y, "Y" if x == 11 else "O")
+    out = stack(W, H, moon, trail, rocket, pad=1)
+    for (x, y) in [(9, 9), (8, 11), (14, 12), (16, 9)]:  # dotted flight path (no outline)
+        if out.get(x, y) == ".":
+            out.set(x, y, "c")
+    return out
+
+
+def make_secrets():
+    sheet = Image.new("RGBA", (192, 24), (0, 0, 0, 0))
+    makers = [secret_mantis, secret_katana, secret_sandevistan, secret_thermoptic,
+              secret_jack_in, None, secret_holo_head, secret_moon]
+    for i, fn in enumerate(makers):
+        b = badge()
+        if fn is None:
+            secret_tears(b)
+        elif fn in (secret_thermoptic, secret_holo_head):  # see-through / light: no dark outline
+            ic = fn()
+            b.blit(ic, (24 - ic.w) // 2, (24 - ic.h) // 2)
+        else:
+            ic = sprite(fn())
+            b.blit(ic, (24 - ic.w) // 2, (24 - ic.h) // 2)
+        sheet.paste(b.image(), (i * 24, 0))
+    return sheet
+
+
+# ---------------------------------------------------------------- terminal ---
+def terminal_frame(f):
+    rng = random.Random(SEED + 110 + f)
+    W, H = 24, 40
+    g = Grid(W, H)
+    # base plate and pedestal (base sits on the bottom; its outline is y=39)
+    g.rect(4, 36, 19, 38, "1")
+    g.hline(4, 19, 36, "3")
+    g.hline(5, 18, 37, "2")
+    g.set(6, 37, "4")
+    g.set(17, 37, "4")
+    g.rect(8, 27, 15, 35, "2")
+    g.vline(8, 27, 35, "3")
+    g.vline(15, 27, 35, "1")
+    for y in range(29, 34):
+        g.set(11, y, "C" if f == 0 else "e")
+        g.set(12, y, "c" if f == 0 else "e")
+    g.hline(9, 14, 34, "1")
+    # housing
+    hp = ellipse_pts(11.5, 14.5, 10.6, 12.6, p=4.0)
+    hp = {(x, y) for (x, y) in hp if 2 <= y <= 26}
+    shade_rim(g, hp, "2", light="3", dark="1")
+    for (x, y) in edge_pts(hp, ((0, -1),)):
+        g.set(x, y, "C" if f == 0 else ("e" if x % 3 else "c"))
+    g.hline(3, 20, 26, "1")
+    # screen
+    g.rect(4, 6, 19, 18, "1")
+    g.hline(4, 19, 6, "K")
+    g.vline(4, 6, 18, "K")
+    g.rect(5, 7, 18, 17, "z" if f == 0 else "q")
+    if f == 0:
+        y = 8
+        indent = 0
+        while y <= 16:
+            n = rng.randint(4, 11 - indent)
+            col = rng.choice(("G", "G", "C", "i"))
+            for x in range(6 + indent, 6 + indent + n):
+                if rng.random() < 0.85:
+                    g.set(x, y, col)
+            indent = rng.choice((0, 0, 2))
+            y += 2
+        g.rect(6, 16, 7, 16, "W")
+        g.set(17, 8, "G")
+    else:
+        for y in range(7, 18):
+            for x in range(5, 19):
+                r = rng.random()
+                if r < 0.18:
+                    g.set(x, y, "r")
+                elif r < 0.24:
+                    g.set(x, y, "p")
+        for i in range(9):
+            g.set(7 + i, 8 + i, "R")
+            g.set(16 - i, 8 + i, "R")
+            g.set(8 + i, 8 + i, "R")
+            g.set(15 - i, 8 + i, "R")
+        g.set(11, 12, "W")
+        g.set(12, 12, "W")
+    # keypad, card slot, status light
+    for ky in (20, 22):
+        for kx in (5, 7, 9):
+            g.set(kx, ky, "4")
+            g.set(kx, ky + 1, "1")
+    g.hline(13, 18, 21, "K")
+    g.set(18, 21, "M" if f == 0 else "1")
+    g.rect(17, 23, 18, 24, "G" if f == 0 else "R")
+    g.set(17, 23, "W" if f == 0 else "p")
+    if f == 1:
+        g.set(14, 22, "Y")
+        g.set(15, 23, "W")
+        for (x, y) in line_pts(19, 10, 16, 14):
+            g.set(x, y, "K")
+    return g.outline()
+
+
+def make_terminal():
+    sheet = Image.new("RGBA", (48, 40), (0, 0, 0, 0))
+    for f in range(2):
+        sheet.paste(terminal_frame(f).image(), (f * 24, 0))
+    return sheet
+
+
+# -------------------------------------------------------------------- moon ---
+def make_moon():
+    rng = random.Random(SEED + 120)
+    W = H = 64
+    cx = cy = 32.0
+    R = 30.6
+    rim_c, base, mid, maria = rgba("#f4f0ff"), rgba("#ddd5f5"), rgba("#cbc2ec"), rgba("#b7addf")
+    dark, light = rgba("#a297cf"), rgba("#efeaff")
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    px = img.load()
+    blobs = [(22, 24, 9, 6), (38, 20, 7, 5), (36, 38, 10, 7), (20, 42, 6, 5), (46, 32, 5, 7)]
+    inside = {}
+    for y in range(H):
+        for x in range(W):
+            d = math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+            if d > R:
+                continue
+            inside[(x, y)] = d
+            m = max(1 - math.hypot((x + 0.5 - bx) / rx, (y + 0.5 - by) / ry) for (bx, by, rx, ry) in blobs)
+            if m > 0.18:
+                col = maria
+            elif m > 0.0:
+                col = maria if (x + y) % 2 else mid
+            else:
+                col = base
+            if rng.random() < 0.05:
+                col = mid if col == base else base
+            px[x, y] = col
+    craters = [(16, 20, 3.2), (44, 14, 2.4), (30, 30, 4.4), (48, 44, 3.4), (24, 50, 2.6),
+               (12, 36, 2.0), (40, 54, 2.0), (34, 10, 1.6), (54, 26, 1.8), (26, 38, 1.5)]
+    for (ccx, ccy, r) in craters:
+        for y in range(int(ccy - r) - 2, int(ccy + r) + 3):
+            for x in range(int(ccx - r) - 2, int(ccx + r) + 3):
+                if (x, y) not in inside:
+                    continue
+                dx, dy = x + 0.5 - ccx, y + 0.5 - ccy
+                d = math.hypot(dx, dy)
+                if d <= r:
+                    # floor, with the inner wall facing away from the light in shadow
+                    px[x, y] = dark if (d > r - 1.4 and (dx + dy) < 0) else mid
+                elif d <= r + 1.0 and (dx + dy) > 0.3 * r:
+                    px[x, y] = light
+    for (x, y), d in inside.items():  # slightly lighter rim
+        if d > R - 1.2 or (d > R - 2.4 and (x + y) < 62):
+            px[x, y] = rim_c
+    return img
+
+
+# ------------------------------------------------------------------ katana ---
+def make_katana():
+    g = Grid(38, 10)
+    # pommel and red/black wrapped hilt
+    g.rect(0, 3, 1, 6, "3")
+    g.set(0, 3, "4")
+    g.set(1, 6, "2")
+    for x in range(2, 12):
+        m = x % 4
+        g.set(x, 3, "R" if m == 2 else "1")
+        g.set(x, 6, "R" if m == 0 else "1")
+        g.set(x, 4, "1" if m == 3 else "R")
+        g.set(x, 5, "1" if m == 1 else "R")
+    # round guard (tsuba) seen at a slight angle
+    gp = ellipse_pts(13.5, 5.0, 1.8, 5.0)
+    shade_rim(g, gp, "O", light="Y", dark="o")
+    g.set(13, 5, "o")
+    # collar + curved blade, cyan cutting edge on the lower side
+    g.rect(15, 3, 16, 5, "Y")
+    g.vline(16, 3, 5, "O")
+    for x in range(17, 38):
+        top = 3 - (x >= 27)
+        bot = 5 - (x >= 32) - (x >= 36)
+        if x == 37:
+            g.set(x, 3, "B")
+            continue
+        for y in range(top, bot + 1):
+            g.set(x, y, "4")
+        g.set(x, top, "W" if x % 6 == 0 else "5")
+        g.set(x, bot, "B" if x % 5 == 2 else "C")
+    return sprite(g).image()
+
+
+# --------------------------------------------------------------- ripperdoc ---
+def make_ripperdoc():
+    rng = random.Random(SEED + 130)
+    W, H = 64, 72
+    g = Grid(W, H)
+    # sidewalk curb (the bottom row of the sprite is the ground line)
+    g.rect(1, 66, 62, 70, "2")
+    g.hline(1, 62, 66, "3")
+    g.hline(1, 62, 70, "1")
+    for x in range(1, 63, 8):
+        g.vline(x, 67, 69, "1")
+    # walls and pillars
+    g.rect(4, 20, 59, 65, "2")
+    for x in (4, 52):
+        g.rect(x, 20, x + 7, 65, "2")
+        g.vline(x, 20, 65, "3")
+        g.vline(x + 7, 20, 65, "1")
+        for y in range(24, 64, 8):
+            g.set(x + 2, y, "4")
+            g.set(x + 5, y, "4")
+    # shutter housing + rails
+    g.rect(12, 21, 51, 25, "3")
+    g.hline(12, 51, 21, "4")
+    g.hline(12, 51, 25, "1")
+    for x in range(14, 50, 6):
+        g.set(x, 23, "5")
+    g.rect(12, 26, 13, 65, "1")
+    g.rect(50, 26, 51, 65, "1")
+    # half-raised shutter
+    for y in range(26, 57):
+        k = (y - 26) % 3
+        g.hline(14, 49, y, "3" if k == 0 else "2" if k == 1 else "1")
+    g.rect(14, 56, 49, 57, "4")
+    g.hline(14, 49, 57, "2")
+    g.rect(29, 57, 34, 57, "5")
+    # clinic interior glow under the shutter
+    g.rect(14, 58, 49, 65, "P")
+    g.rect(14, 63, 49, 65, "z")
+    g.hline(14, 49, 65, "i")
+    for (x, y) in [(18, 60), (22, 61), (41, 59), (45, 61), (46, 61)]:
+        g.set(x, y, "G")
+    g.rect(30, 60, 33, 62, "1")  # a silhouette of the chair
+    g.hline(28, 35, 62, "1")
+    # pipes: left down-pipe with brackets, right pipe with an elbow into the wall
+    g.rect(1, 20, 2, 65, "3")
+    g.vline(1, 20, 65, "4")
+    for y in (30, 48):
+        g.rect(1, y, 3, y + 1, "1")
+    g.rect(60, 28, 61, 65, "2")
+    g.vline(60, 28, 65, "3")
+    g.rect(58, 26, 61, 27, "2")
+    g.hline(58, 61, 26, "3")
+    g.rect(60, 44, 62, 45, "1")
+    # AC unit on the right pillar
+    g.rect(53, 31, 58, 38, "3")
+    g.hline(53, 58, 31, "4")
+    for y in (33, 35, 37):
+        g.hline(54, 57, y, "1")
+    # small neon accents on the pillars
+    g.rect(6, 34, 7, 35, "M")
+    g.set(6, 34, "N")
+    g.vline(56, 44, 52, "C")
+    g.vline(55, 44, 52, "e")
+    # awning with a green neon strip and the light it casts
+    g.rect(1, 15, 62, 19, "1")
+    g.hline(1, 62, 15, "4")
+    g.hline(1, 62, 16, "3")
+    g.hline(2, 61, 19, "G")
+    g.hline(5, 58, 20, "i")
+    for x in range(14, 50):
+        if x % 2 == 0:
+            g.set(x, 26, "i")
+    # sign: dark box, cyan neon frame, glowing green medical cross
+    g.rect(24, 13, 25, 14, "1")
+    g.rect(38, 13, 39, 14, "1")
+    g.rect(20, 1, 43, 12, "P")
+    for x in range(20, 44):
+        g.set(x, 1, "C")
+        g.set(x, 12, "c")
+    for y in range(1, 13):
+        g.set(20, y, "C")
+        g.set(43, y, "c")
+    cross = {(x, y) for x in range(30, 34) for y in range(2, 12)} | {(x, y) for x in range(26, 38) for y in range(5, 9)}
+    shade_rim(g, cross, "G", dark="i")
+    g.set(30, 2, "W")
+    g.set(26, 5, "W")
+    for (x, y) in edge_pts(cross, N4):
+        for dx, dy in N4:
+            if g.get(x + dx, y + dy) == "P":
+                g.set(x + dx, y + dy, "e")
+    # grime: drips under the awning, dirty specks on the metal
+    for x in range(5, 59):
+        if rng.random() < 0.18 and g.get(x, 21) in ("2", "3"):
+            for y in range(21, 21 + rng.randint(2, 7)):
+                if g.get(x, y) in ("2", "3"):
+                    g.set(x, y, "1")
+    for y in range(20, 66):
+        for x in range(4, 60):
+            if g.get(x, y) in ("2", "3") and rng.random() < 0.05:
+                g.set(x, y, "1")
+    g.outline()
+    # soft neon halo around the sign (outside its outline)
+    for y in range(0, 14):
+        for x in range(15, 49):
+            if g.get(x, y) == "." and any(g.get(x + dx, y + dy) == "K" for dx, dy in N4):
+                g.set(x, y, "f")
+    return g.image()
+
+
 # ================================================================= PREVIEW ===
 def make_preview(sheets, path):
     S = 4
@@ -1588,6 +2347,14 @@ def build_all():
         ("crate.png", make_crate(), 32),
         ("skyline.png", make_skyline(), None),
         ("ground.png", make_ground(), None),
+        # easter eggs
+        ("hologram.png", make_hologram(), 48),
+        ("dove.png", make_dove(), 16),
+        ("secrets.png", make_secrets(), 24),
+        ("terminal.png", make_terminal(), 24),
+        ("moon.png", make_moon(), None),
+        ("katana.png", make_katana(), None),
+        ("ripperdoc.png", make_ripperdoc(), None),
     ]
 
 
@@ -1595,6 +2362,9 @@ EXPECTED = {
     "drone.png": (128, 32), "crawler.png": (160, 28), "pickups.png": (128, 16),
     "icons.png": (288, 24), "projectiles.png": (64, 16), "platform.png": (96, 16),
     "crate.png": (64, 32), "skyline.png": (480, 200), "ground.png": (64, 48),
+    "hologram.png": (96, 96), "dove.png": (64, 16), "secrets.png": (192, 24),
+    "terminal.png": (48, 40), "moon.png": (64, 64), "katana.png": (40, 12),
+    "ripperdoc.png": (64, 72),
 }
 
 

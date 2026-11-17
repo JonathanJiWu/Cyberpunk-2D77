@@ -285,8 +285,8 @@ const LEVEL = {
     { x: 1000, text: "RIPPERDOC", color: "#5aff7a" },
     { x: 1640, text: "NOODLES", color: "#19f5ff" },
     { x: 2700, text: "TYRELL", color: "#ffe14d" },
-    { x: 3960, text: "SECTION 9", color: "#ff9b21" },
-    { x: 4800, text: "WAKE UP, SAMURAI", color: "#ff2457" },
+    { x: 4250, text: "SECTION 9", color: "#ff9b21" },
+    { x: 5150, text: "WAKE UP, SAMURAI", color: "#ff2457" },
     { x: 6250, text: "TO THE MOON", color: "#19f5ff" },
   ],
 };
