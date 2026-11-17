@@ -57,7 +57,7 @@ function openLevelUp() {
       <span class="card-key">${i + 1}</span>
       <span class="card-icon" style="--i:${u.icon}"></span>
       <span class="card-name"></span>
-      <span class="card-level">${owned ? `LV ${owned} → ${owned + 1}` : u.id === "_heal" ? "" : "NEW!"}</span>
+      <span class="card-level">${owned ? `LV ${owned} > ${owned + 1}` : u.id === "_heal" ? "" : "NEW!"}</span>
       <span class="card-desc"></span>`;
     card.querySelector(".card-name").textContent = u.name;
     card.querySelector(".card-desc").textContent = describe(u);

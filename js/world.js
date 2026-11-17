@@ -145,11 +145,11 @@ function drawParallax() {
   const sky = IMG.skyline;
   if (isReady(sky)) {
     ctx.imageSmoothingEnabled = false;
-    const s = 3;
+    const s = 2.5;
     const tileW = sky.naturalWidth * s;
     const h = sky.naturalHeight * s;
     let x = -((camera.x * 0.45) % tileW);
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.72;
     for (; x < W; x += tileW) ctx.drawImage(sky, x, GROUND_Y + 12 - h, tileW + 1, h);
     ctx.globalAlpha = 1;
   }

@@ -71,7 +71,7 @@ PAL = {
     "U": "#3f7cff",  # blue
     "b": "#2140a6",  # blue shade
     # translucent glows: never outlined, never count as solid
-    "g": ("#19f5ff", 70),
+    "g": ("#19f5ff", 110),
     "h": ("#ff2fd6", 70),
 }
 GLOW = {"g", "h"}
@@ -507,7 +507,7 @@ def crawler_frame(f):
     step = ((3, 0), (0, 0), (-3, 0), (0, -3))  # foot (dx, lift) per phase
     legs = [  # hip, foot base x, knee side, phase, near?
         ((16, 15), 11, -1, 2, False),
-        ((26, 16), 34, +1, 0, False),
+        ((26, 16), 33, +1, 0, False),
         ((13, 16), 7, -1, 0, True),
         ((24, 17), 31, +1, 2, True),
     ]
@@ -600,6 +600,7 @@ def crawler_frame(f):
         g.set(lo + 1, gy, "B")
         g.set(hi, gy, "M")
         g.set(hi - 1, gy, "N")
+        g.outline()  # re-close the silhouette around the displaced slice
     return g
 
 
@@ -667,8 +668,8 @@ HEAT_CELL = [
 
 
 def pickup_bolt():
-    g = Grid(11, 15)
-    pts = poly_pts([(6, 0), (11, 0), (7.5, 5.5), (11, 5.5), (3, 15), (5, 8.5), (1, 8.5)])
+    g = Grid(11, 14)
+    pts = poly_pts([(6, 0), (11, 0), (7.5, 5), (11, 5), (3, 14), (5, 8), (1, 8)])
     shade_rim(g, pts, "Y", light="y", dark="O")
     return g
 
@@ -783,10 +784,12 @@ def icon_energy_ball():
     for (x, y) in [(5, 5), (6, 4), (5, 4), (4, 5)]:
         g.set(x, y, "W")
     # crackling arcs leaping off the orb
-    for (x, y) in [(13, 3), (14, 2), (15, 2), (16, 1), (3, 13), (2, 14), (1, 14), (0, 15), (15, 9), (16, 10)]:
+    for (x, y) in [(13, 3), (14, 3), (14, 2), (15, 1), (16, 1),
+                   (1, 6), (0, 7), (1, 8), (0, 9),
+                   (13, 14), (14, 15), (15, 15), (16, 16)]:
         g.set(x, y, "C")
-    g.set(16, 1, "B")
-    g.set(0, 15, "B")
+    for (x, y) in [(16, 1), (0, 9), (16, 16)]:
+        g.set(x, y, "B")
     return g
 
 def icon_flame():
@@ -1318,8 +1321,12 @@ def make_crate():
 
 # ================================================================= SKYLINE ===
 def make_skyline():
+    """Three silhouette layers; every x coordinate is wrapped modulo the width,
+    so the strip tiles seamlessly. The front layer is a closed ring of
+    buildings, which guarantees the bottom row is fully covered."""
     rng = random.Random(SEED + 80)
     W, H = 480, 200
+    TOP_LIMIT = H - 185  # tallest structure (antennas may poke a little higher)
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     px = img.load()
 
@@ -1332,84 +1339,96 @@ def make_skyline():
             for x in range(x0, x1 + 1):
                 px[x % W, y] = col
 
-    PINK, CYAN, YELLOW = rgba("#ff5ad8"), rgba("#19f5ff"), rgba("#ffe14d")
-    RED = rgba("#ff2457")
+    PINK, CYAN, YELLOW, RED = rgba("#ff5ad8"), rgba("#19f5ff"), rgba("#ffe14d"), rgba("#ff2457")
+    DIM = [rgba("#b8459f"), rgba("#2aa6bb"), rgba("#bfa647")]
     layers = [
-        dict(body="#3a1d63", rim="#462574", hmin=100, hmax=178, wmin=14, wmax=30, gap=(1, 7),
-             win=0.03, cols=[rgba("#c04aa8"), rgba("#2fb2c6"), rgba("#c9b04a")], phase=0.0),
-        dict(body="#2e1650", rim="#391c62", hmin=62, hmax=138, wmin=15, wmax=32, gap=(0, 4),
-             win=0.05, cols=[PINK, CYAN, YELLOW], phase=2.1),
-        dict(body="#241040", rim="#2d1550", hmin=26, hmax=84, wmin=18, wmax=40, gap=(0, 0),
-             win=0.06, cols=[PINK, CYAN, YELLOW], phase=4.0),
+        dict(body="#3a1d63", rim="#45246f", hmin=100, hmax=178, wmin=10, wmax=30, gap=(1, 8),
+             win=0.03, cols=DIM, phase=0.0, tower=0.25),
+        dict(body="#2e1650", rim="#381c60", hmin=60, hmax=134, wmin=14, wmax=34, gap=(0, 5),
+             win=0.05, cols=[PINK, CYAN, YELLOW], phase=2.1, tower=0.12),
+        dict(body="#241040", rim="#2c144d", hmin=24, hmax=80, wmin=16, wmax=42, gap=(0, 0),
+             win=0.06, cols=[PINK, CYAN, YELLOW], phase=4.0, tower=0.0),
     ]
     antennas_left = 3
-    billboards = []
+    billboard_spots = []
+
     for li, L in enumerate(layers):
         body, rim = rgba(L["body"]), rgba(L["rim"])
-        x = rng.randint(0, 12)
-        start = x
+        # lay out the buildings of this layer around the ring
+        start = x = rng.randint(0, 12)
         blds = []
         while x < start + W:
-            w = rng.randint(L["wmin"], L["wmax"])
+            slender = rng.random() < L["tower"]
+            w = rng.randint(7, 11) if slender else rng.randint(L["wmin"], L["wmax"])
             if li == 2 and start + W - (x + w) < L["wmin"]:
-                w = start + W - x  # close the ring so the bottom row is solid
+                w = start + W - x  # close the ring
             wave = 0.5 + 0.5 * math.sin(2 * math.pi * (x + w / 2) / W * 2 + L["phase"])
             h = int(L["hmin"] + (L["hmax"] - L["hmin"]) * (0.35 * wave + 0.65 * rng.random()))
-            blds.append((x, w, h))
+            if slender:
+                h += 18
+            blds.append((x, w, min(h, H - TOP_LIMIT)))
             x += w + rng.randint(*L["gap"])
+
         for (bx, w, h) in blds:
             top = H - h
             rect(bx, top, bx + w - 1, H - 1, body)
-            tops = {c: top for c in range(w)}
-            style = rng.choice(["flat", "flat", "setback", "spire", "slant", "boxes"])
+            tops = [top] * w
+
+            def raise_col(c, rise):
+                t = max(TOP_LIMIT, top - rise)
+                rect(bx + c, t, bx + c, top - 1, body)
+                tops[c] = min(tops[c], t)
+
+            style = rng.choice(["flat", "flat", "setback", "spire", "slant", "boxes", "twin", "dome"])
             if style == "setback" and w >= 12:
                 inset = rng.randint(2, max(2, w // 4))
                 th = rng.randint(6, 16)
-                rect(bx + inset, top - th, bx + w - 1 - inset, top - 1, body)
                 for c in range(inset, w - inset):
-                    tops[c] = top - th
+                    raise_col(c, th)
                 if w - 2 * inset >= 8 and rng.random() < 0.6:
-                    i2 = inset + 2
-                    rect(bx + i2, top - th - 5, bx + w - 1 - i2, top - th - 1, body)
-                    for c in range(i2, w - i2):
-                        tops[c] = top - th - 5
+                    for c in range(inset + 2, w - inset - 2):
+                        raise_col(c, th + 5)
             elif style == "spire":
-                k = w // 2
-                for i in range(k):
-                    rect(bx + i, top - (i // 1) // 2 - 1, bx + w - 1 - i, top - 1 - (i // 2), body) if False else None
                 for c in range(w):
-                    rise = (min(c, w - 1 - c) + 1) // 2
-                    rect(bx + c, top - rise, bx + c, top - 1, body)
-                    tops[c] = top - rise
+                    raise_col(c, (min(c, w - 1 - c) + 1) // 2)
             elif style == "slant":
+                flip = rng.random() < 0.5
                 for c in range(w):
-                    rise = (c if rng.random() < 2 else 0) // 3
-                    rect(bx + c, top - rise, bx + c, top - 1, body)
-                    tops[c] = top - rise
+                    raise_col(c, ((w - 1 - c) if flip else c) // 2)
             elif style == "boxes":
                 for _ in range(rng.randint(1, 2)):
                     bw = rng.randint(3, 6)
                     bxo = rng.randint(1, max(1, w - bw - 1))
                     bh = rng.randint(2, 4)
-                    rect(bx + bxo, top - bh, bx + bxo + bw - 1, top - 1, body)
-                    for c in range(bxo, bxo + bw):
-                        tops[c] = top - bh
-            # roof rim + left edge rim light
+                    for c in range(bxo, min(w, bxo + bw)):
+                        raise_col(c, bh)
+            elif style == "twin" and w >= 12:
+                th = rng.randint(5, 12)
+                for c in list(range(1, 4)) + list(range(w - 4, w - 1)):
+                    raise_col(c, th)
+            elif style == "dome":
+                r = (w - 1) / 2.0
+                for c in range(w):
+                    raise_col(c, int(round(math.sqrt(max(0.0, r * r - (c - r) ** 2)) * 0.55)))
+
+            # roof rim + a lighter left edge for depth
             for c in range(w):
                 put(bx + c, tops[c], rim)
             for y in range(tops[0], H):
                 put(bx, y, rim)
-            # antenna with a red tip light on the tallest buildings
-            if li < 2 and antennas_left > 0 and h > (150 if li == 0 else 118):
+
+            # antenna with a red tip light on a few of the tallest buildings
+            if li < 2 and antennas_left > 0 and h > (146 if li == 0 else 116) and w >= 9:
                 c = w // 2
-                ah = rng.randint(9, 16)
-                ty = tops[c] - ah
+                ah = rng.randint(9, 14)
+                ty = max(5, tops[c] - ah)
                 for y in range(ty, tops[c]):
                     put(bx + c, y, body)
                 put(bx + c - 1, tops[c] - 1, body)
                 put(bx + c + 1, tops[c] - 1, body)
                 put(bx + c, ty - 1, RED)
                 antennas_left -= 1
+
             # sparse lit windows
             sx = rng.choice((3, 4))
             sy = rng.choice((3, 4, 5))
@@ -1420,36 +1439,37 @@ def make_skyline():
                         put(bx + wx, wy, col)
                         if rng.random() < 0.35 and wx + 1 < w - 2:
                             put(bx + wx + 1, wy, col)
-            if li == 1 and w >= 20 and h >= 95:
-                billboards.append((bx, w, top))
+            if li == 1 and w >= 22 and h >= 96:
+                billboard_spots.append((bx, w, top))
+
         if li == 1:
-            # neon billboards on two of the tall mid-layer buildings
-            rng.shuffle(billboards)
-            for n, (bx, w, top) in enumerate(billboards[:2]):
-                neon = rgba("#ff2fd6") if n == 0 else rgba("#19f5ff")
-                pale = rgba("#ffa6f0") if n == 0 else rgba("#b5fcff")
-                if n == 0:
-                    bw, bh = min(w - 4, 18), 9
-                else:
-                    bw, bh = 7, 16
-                ox = bx + (w - bw) // 2
-                oy = top + 6
-                rect(ox, oy, ox + bw - 1, oy + bh - 1, rgba("#140822"))
+            # one horizontal (magenta) and one vertical (cyan) neon billboard
+            rng.shuffle(billboard_spots)
+            for n, (bx, w, top) in enumerate(billboard_spots[:2]):
+                neon, pale = (PINK, rgba("#ffa6f0")) if n == 0 else (CYAN, rgba("#b5fcff"))
+                bw, bh = (min(w - 4, 22), 10) if n == 0 else (8, 20)
+                ox, oy = bx + (w - bw) // 2, top + 6
+                rect(ox, oy, ox + bw - 1, oy + bh - 1, rgba("#120720"))
                 for c in range(bw):
                     put(ox + c, oy, neon)
                     put(ox + c, oy + bh - 1, neon)
                 for r in range(bh):
                     put(ox, oy + r, neon)
                     put(ox + bw - 1, oy + r, neon)
-                # abstract glyph strokes
-                for c in range(2, bw - 2):
-                    for r in range(2, bh - 2):
-                        if n == 0:
-                            on = (c % 4 != 1) and rng.random() < 0.55
-                        else:
-                            on = (r % 4 != 1) and rng.random() < 0.55
-                        if on:
-                            put(ox + c, oy + r, pale if rng.random() < 0.3 else neon)
+                # abstract glyphs: 3x5 cells (side by side, or stacked)
+                cells = [(ox + 2 + 4 * i, oy + 2) for i in range((bw - 3) // 4)] if n == 0 else \
+                        [(ox + 2, oy + 2 + 6 * i) for i in range((bh - 3) // 6)]
+                for (gx, gy) in cells:
+                    stem = rng.randint(0, 2)
+                    for r in range(5 if n == 0 else 5):
+                        put(gx + stem, gy + r, neon)
+                    for r in rng.sample(range(5), 3):
+                        for c in range(3):
+                            if rng.random() < 0.7:
+                                put(gx + c, gy + r, pale if r == 0 else neon)
+                if n == 0:  # a little support strut under the sign
+                    put(ox + 3, oy + bh, rgba(L["rim"]))
+                    put(ox + bw - 4, oy + bh, rgba(L["rim"]))
     return img
 
 
@@ -1489,12 +1509,12 @@ def make_ground():
     # panel seams (staggered like paving slabs)
     for sy in (18, 34):
         for x in range(W):
-            px[x, sy] = darker(px[x, sy], 3)
+            px[x, sy] = darker(px[x, sy], 2)
             px[x, sy + 1] = lighter(px[x, sy + 1], 1)
     for (ya, yb, cols) in ((4, 17, (31, 63)), (19, 33, (15, 47)), (35, 47, (31, 63))):
         for y in range(ya, yb + 1):
             for x in cols:
-                px[x, y] = darker(px[x, y], 3)
+                px[x, y] = darker(px[x, y], 2)
     # neon reflections just under the edge
     for x in range(W):
         if (x * 7) % 11 < 3:
