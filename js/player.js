@@ -394,7 +394,7 @@ function updateFlame(dt) {
   const melt = stats.flame.radius * 0.9;
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
-    if (s.kind === "meteor" || s.kind === "snipe") continue; // too big / too fast to melt
+    if (s.kind === "meteor" || s.kind === "snipe" || s.kind === "fire") continue; // too big, too fast, or hellfire
     if (Math.hypot(s.x - pc.x, s.y - pc.y) > melt + s.r) continue;
     enemyShots.splice(i, 1);
     burst(s.x, s.y, 5, "#ffb35a", 200);

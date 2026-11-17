@@ -141,9 +141,9 @@ function bossState(e, state) {
   e.timer = 0;
 }
 
-// Touching a boss hurts (unless you're wrapped in flame)
+// Touching a boss hurts (bosses don't care about Paine's flame)
 function bossContact(e, damage) {
-  if (bossLocked() || e.contactCd > 0 || player.camo > 0 || player.flameOn) return;
+  if (bossLocked() || e.contactCd > 0 || player.camo > 0) return;
   if (!overlaps(e, player)) return;
   const c = centerOf(e);
   if (hurtPlayer(damage, c.x, c.y)) e.contactCd = 0.6;

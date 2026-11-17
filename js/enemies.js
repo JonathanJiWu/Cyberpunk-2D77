@@ -19,6 +19,7 @@ function resetEnemies() {
   director.acc = 0;
   director.stage = 0;
   director.nextBossAt = TUNING.boss.at;
+  director.firstSpawn = 1.5; // (respawns push this back; a new run starts fresh)
 }
 
 // ------------------------------------------------------------- Spawning -----
@@ -421,6 +422,8 @@ function damageEnemy(e, amount, opts = {}) {
     }
   }
   if (opts.breaksGuard && e.def && e.def.shielded) e.stun = Math.max(e.stun, 0.8); // finisher/dash staggers
+  // Bosses are huge melee targets: Tetsu's blade and dash do less to them
+  if (e.boss && (opts.source === "blade" || opts.source === "blade-heavy" || opts.source === "dash")) amount *= 0.55;
   if (e.vulnT > 0) amount *= 1.5; // hacked: takes extra damage
   e.hp -= amount;
   e.hurt = 0.08;

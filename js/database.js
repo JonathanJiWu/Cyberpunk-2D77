@@ -55,7 +55,7 @@ const CHARACTERS = {
         "Bigger flame, +25% burn damage, uses less heat.",
       ],
     },
-    passive: "Hot-blooded: earns heat 20% faster. While the flame is lit, nothing can touch you.",
+    passive: "Hot-blooded: earns heat 20% faster. While the flame is lit, minions can't touch you.",
     quotes: {
       start: ["Time to light it up.", "Cyber City, I'm home.", "Let's burn.", "Deploying to prod. On a Friday."],
       levelUp: ["Upgraded.", "Feeling the heat.", "Chrome and fire.", "Hot reload!"],
@@ -358,7 +358,7 @@ const BOSSES = {
     title: "Final boss",
     sheet: { img: "goatFinal", fw: 96, fh: 96 },
     fallback: { img: "goatCyber", fw: 80, fh: 80 },
-    hp: 5000,
+    hp: 4400,
     intro: "GREATEST OF ALL THREATS",
     desc: "The final boss: a towering cyber-demon goat. It charges across the street, leaps after you and shakes the ground when it lands, breathes fire and, once enraged, makes it rain fire from the sky. In its last phase it does everything at once.",
     lore: "Nobody knows where it came from. The rumours say a corp tried to upload a demon into a combat chassis. The rumours say it worked. The rumours were written by the goat.",

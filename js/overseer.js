@@ -17,13 +17,13 @@ const OVERSEER = {
   h: 214,
   scale: 2.5, // the 64x96 sprite is drawn at 160x240
   speed: [380, 470], // normal, raging
-  contact: 20,
-  burstDamage: 12,
+  contact: 26,
+  burstDamage: 16,
   burstSpeed: 820,
-  dashDamage: 28,
+  dashDamage: 36,
   dashSpeed: 1500,
-  slamDamage: 18,
-  beamDamage: 24,
+  slamDamage: 24,
+  beamDamage: 32,
   beamWidth: 30,
   vent: [2.8, 2.2],
 };

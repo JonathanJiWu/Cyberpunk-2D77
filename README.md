@@ -36,6 +36,9 @@ Features
   Scales to any screen size, portrait or landscape, with fullscreen support where available
   Pause, mute and restart without reloading the page; hitbox debug view
   8 hidden easter eggs (see below)
+  Jacking in is a real-feeling hack: a full-screen terminal where you nmap the network, pick the vulnerable service, crack the password, sudo, and upload a daemon of your choice, while the ICE traces you
+  A leaderboard: enter a display name at the end of a run; scores (with time, kills, level, IC and result) are saved in your browser and survive refreshes and restarts. Score = kills x10 + seconds x2 + levels x50 + bosses x1000 + 5000 for a win - 250 per life lost.
+  Audio that starts on your first click, tap or key press (Chrome's autoplay rules), recovers when the tab is hidden or the device interrupts it, with Music and SFX volume sliders
   Automated browser tests that run before every deploy
 
 Settings (start and pause menus, remembered between visits)
@@ -45,6 +48,7 @@ Settings (start and pause menus, remembered between visits)
   Manual aim (touch, when auto-fire is off): Twin-stick or Tap.
   Auto special: Paine's flame lights when enemies or bullets get close; Tetsu dashes into nearby enemies; Sudo hacks crowds of 3+ (or a boss). Only when you have enough of the resource.
   Music: Darksynth (generated) or Original.
+  Music volume and SFX volume sliders (M or the speaker button still mutes everything).
 
 Controls
   Keyboard and mouse
@@ -76,7 +80,9 @@ How a run works
 Difficulty
   The curve is tuned with bot runs that play full games for each IC (auto-fire and auto special on, basic dodging):
   the pressure ramps up (faster spawns, tougher enemies, new types, golden elites) until the Overseer, and again in the
-  interlude before the GOAT. BOT_RESULTS_PLACEHOLDER
+  interlude before the GOAT. Bots (perfect aim, clumsy dodging) always beat the
+  Overseer and win about 5 runs in 6 with every IC, but they lose 1 to 2 of their 3 lives along the way, mostly to the bosses.
+  On a single life, most of those runs would end at a boss.
   Learn the tells: the Overseer's cannon glow, dash flash and red laser line; the GOAT pawing the ground, crouching
   before a leap, its glowing mouth, and the red markers where meteors will land. Jump the shockwaves.
   With auto-fire on, your attacks prefer a boss unless a minion is right on top of you.
@@ -121,7 +127,8 @@ Code Structure
   js/config.js: the balance numbers, upgrades, power-ups and the map layout
   js/database.js: the DATABASE: Individual Contributors (stats, kits, voice lines, lore), enemy types, bosses (HP, taunts), the hardware look of each upgrade and all the jokes. Start here to tweak characters and enemies.
   js/core.js: canvas, asset loading, drawing helpers and visual effects
-  js/sound.js: Web Audio sound effects (falls back to <audio>) and the original mp3 soundtrack
+  js/sound.js: Web Audio unlock (autoplay rules), music/SFX volume buses, sound effects (falls back to <audio>) and the original mp3 soundtrack
+  js/leaderboard.js: scoring runs, the name entry and the leaderboard panel (saved in localStorage)
   js/music.js: the generated darksynth soundtrack and the music setting
   tests/game.test.cjs: the automated browser tests
   js/input.js: keyboard, mouse, joystick, buttons and tap gestures

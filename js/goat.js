@@ -16,12 +16,12 @@ const GOAT = {
   h: 250,
   scale: 3.4, // 96x96 sprite drawn at 326x326
   walk: [230, 290, 340], // per phase
-  contact: 26,
+  contact: 34,
   chargeSpeed: [1050, 1200, 1350],
-  chargeDamage: 32,
-  stompDamage: 22,
-  breathDamage: 8,
-  meteorDamage: 18,
+  chargeDamage: 42,
+  stompDamage: 30,
+  breathDamage: 11,
+  meteorDamage: 24,
 };
 const meteors = []; // { x, t, delay } ground markers before a meteor drops
 
