@@ -16,6 +16,7 @@ Features
   Two touch control schemes: on-screen buttons, or tap gestures (tap to fire where you tapped, long-press for flame, double-tap to jump)
   Scales to any screen size, portrait or landscape, with fullscreen support where available
   Pause, mute and restart without reloading the page; hitbox debug view
+  8 hidden easter eggs (see below)
 
 Controls
   Keyboard and mouse
@@ -40,6 +41,20 @@ How a run works
   Break crates for power-ups. Crates come back after a while.
   At 2:30 the Demon Goat arrives. Beat it to win. If your HP hits zero, the run is over.
 
+Easter eggs
+  Cyber City hides 8 secrets, little homages to the cyberpunk classics: Blade Runner, Blade Runner 2049,
+  Ghost in the Shell, Cyberpunk 2077 and Cyberpunk: Edgerunners. The start and pause menus track the ones
+  you've found across runs. Tap an undiscovered icon for a hint.
+  Spoilers:
+    Tears in Rain: stand completely still in the acid rain for a few seconds.
+    Interlinked: stand under the giant hologram ad and hold Up to look at her.
+    Mantis Blades: hold Down at the RIPPERDOC booth to install arm blades that auto-slash.
+    Katana: ride the highest moving platform in the arena. It parries enemy shots back.
+    Sandevistan: get 77 kills in a run. When you're badly hurt, time slows down.
+    Ghost in the Shell: dive from a rooftop all the way down to the street for thermoptic camo.
+    Jack In: hold Down at a data terminal and solve the breach grid for a daemon.
+    To the Moon: run to the far east end of the street.
+
 Installation & Setup
   Clone or download the repository.
   Open index.html in a browser, or serve the folder with any static server
@@ -62,9 +77,10 @@ Code Structure
   js/enemies.js: the spawn director, enemy AI, enemy shots and the Demon Goat
   js/pickups.js: XP chips and power-ups
   js/upgrades.js: XP, levels and the upgrade cards
+  js/secrets.js: the easter eggs (rain, hologram, ripperdoc, katana, Sandevistan, camo, breach, moon)
   js/render.js: drawing the scene and the HUD
   js/main.js: game state, menus, layout and the main loop
-  tools/make_sprites.py: generates the new pixel-art sprite sheets in img/ (drone, crawler, pickups, icons, projectiles, platform, crate, skyline, ground)
+  tools/make_sprites.py: generates the new pixel-art sprite sheets in img/ (drone, crawler, pickups, icons, projectiles, platform, crate, skyline, ground, and the easter-egg art)
 
 Credits
   Player, Demon Goat, Reaper and Dragon sprites, backgrounds and sounds are the original assets from this repository.

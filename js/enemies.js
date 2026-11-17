@@ -101,8 +101,11 @@ function updateEnemies(dt) {
     e.stun -= dt;
     const stunned = e.stun > 0;
     const ec = centerOf(e);
-    const dx = pc.x - ec.x;
-    const dy = pc.y - ec.y;
+    // Thermoptic camo (easter egg): enemies lose you and wander around
+    const blind = player.camo > 0;
+    const tgt = blind ? wanderTarget(e, ec, dt) : pc;
+    const dx = tgt.x - ec.x;
+    const dy = tgt.y - ec.y;
     const d = Math.hypot(dx, dy) || 1;
     const steer = Math.min(1, 3 * dt);
 
@@ -111,7 +114,7 @@ function updateEnemies(dt) {
       e.jumpCd -= dt;
       const want = stunned || Math.abs(dx) < 12 ? 0 : Math.sign(dx) * def.speed;
       e.vx += (want - e.vx) * Math.min(1, 8 * dt);
-      const playerAbove = player.y + player.h < e.y + e.h - 90;
+      const playerAbove = !blind && player.y + player.h < e.y + e.h - 90;
       if (!stunned && e.onGround && e.jumpCd <= 0 && playerAbove && Math.abs(dx) < 340) {
         e.vy = -rand(980, 1180);
         e.jumpCd = rand(1, 2);
@@ -134,8 +137,8 @@ function updateEnemies(dt) {
     } else {
       // Ranged flyers keep their distance above you and shoot
       const side = ec.x < pc.x ? -1 : 1;
-      const tx = pc.x + side * def.keepDistance;
-      const ty = pc.y - (e.type === "dragon" ? 330 : 250) + Math.sin(game.time * 1.4 + e.bob) * 70;
+      const tx = blind ? tgt.x : pc.x + side * def.keepDistance;
+      const ty = blind ? tgt.y : pc.y - (e.type === "dragon" ? 330 : 250) + Math.sin(game.time * 1.4 + e.bob) * 70;
       const ddx = tx - ec.x;
       const ddy = ty - ec.y;
       const dd = Math.hypot(ddx, ddy) || 1;
@@ -146,14 +149,14 @@ function updateEnemies(dt) {
       e.y += (e.vy + e.kbY) * dt;
       e.facing = dx > 0 ? 1 : -1;
       // Charge up (glowing) for a moment before every shot so it can be dodged
-      if (!stunned && onScreen(e)) e.shotCd -= dt;
+      if (!stunned && !blind && onScreen(e)) e.shotCd -= dt;
       if (e.charge > 0) {
         e.charge -= dt;
         if (e.charge <= 0 && !stunned) {
           fireEnemyShot(ec.x + e.facing * 20, ec.y, def.shot);
           e.shotCd = rand(def.shot.cooldown[0], def.shot.cooldown[1]);
         }
-      } else if (e.shotCd <= 0 && !stunned) {
+      } else if (e.shotCd <= 0 && !stunned && !blind) {
         e.charge = 0.45;
       }
     }
@@ -165,7 +168,7 @@ function updateEnemies(dt) {
     e.anim += dt * def.sheet.fps;
 
     // Body contact
-    if (!stunned && e.hitCd <= 0 && !player.flameOn && overlaps(e, player)) {
+    if (!stunned && !blind && e.hitCd <= 0 && !player.flameOn && overlaps(e, player)) {
       if (hurtPlayer(def.damage, ec.x, ec.y)) {
         e.hitCd = 0.9;
         e.kbX = -Math.sign(dx) * 300;
@@ -173,7 +176,7 @@ function updateEnemies(dt) {
     }
 
     // Enemies left far behind just leave
-    if (Math.abs(dx) > 2600) e.dead = e.despawned = true;
+    if (Math.abs(pc.x - ec.x) > 2600) e.dead = e.despawned = true;
   }
 
   // Keep enemies from stacking into one blob
@@ -188,6 +191,16 @@ function updateEnemies(dt) {
       b.x -= push;
     }
   }
+}
+
+function wanderTarget(e, ec, dt) {
+  e.wanderT = (e.wanderT || 0) - dt;
+  if (!e.wander || e.wanderT <= 0) {
+    const walker = e.def && e.def.walker;
+    e.wander = { x: clamp(ec.x + rand(-450, 450), 0, WORLD_W), y: walker ? ec.y : clamp(ec.y + rand(-220, 220), 120, 820) };
+    e.wanderT = rand(1.5, 3);
+  }
+  return e.wander;
 }
 
 function fireEnemyShot(x, y, shot, angle) {
@@ -323,7 +336,8 @@ function updateBoss(e, dt) {
   e.stun -= dt;
   e.ghostHp = Math.max(e.hp, e.ghostHp - 80 * dt);
   const ec = centerOf(e);
-  const pc = centerOf(player);
+  const blind = player.camo > 0; // thermoptic camo
+  const pc = blind ? wanderTarget(e, ec, dt) : centerOf(player);
   const toX = pc.x - ec.x;
   const toY = pc.y - ec.y;
   const mul = e.enraged ? T.enrageSpeedMul : 1;
@@ -367,7 +381,7 @@ function updateBoss(e, dt) {
             const shot = { kind: "fireball", damage: T.fireballDamage, speed: T.fireballSpeed * (e.enraged ? 1.2 : 1), radius: 20 };
             const base = Math.atan2(pc.y - (ec.y - 40), pc.x - ec.x);
             const angles = e.enraged ? [base - 0.2, base, base + 0.2] : [base];
-            angles.forEach((a) => fireEnemyShot(ec.x, ec.y - 40, shot, a));
+            if (!blind) angles.forEach((a) => fireEnemyShot(ec.x, ec.y - 40, shot, a));
             e.shotsLeft--;
             e.shotTimer = T.shotInterval / mul;
           } else {
@@ -409,18 +423,19 @@ function updateBoss(e, dt) {
   }
 
   // Touching the flame burns it and drives it away
-  const burning = player.flameOn && circleHitsBox(pc.x, pc.y, stats.flame.radius, e);
+  const me = centerOf(player); // the real player position (pc may be a wander point)
+  const burning = player.flameOn && circleHitsBox(me.x, me.y, stats.flame.radius, e);
   if (burning) {
     e.burnTime += dt;
     if (e.burnTime > 0.35 && e.state !== "recoil") {
-      recoilBoss(e, pc.x, pc.y, 0.45, "reposition");
+      recoilBoss(e, me.x, me.y, 0.45, "reposition");
       e.burnTime = 0;
     }
   } else {
     e.burnTime = 0;
   }
-  if (!burning && e.stun <= 0 && e.state !== "recoil" && e.state !== "enter" && overlaps(e, player)) {
-    if (hurtPlayer(T.contactDamage, ec.x, ec.y)) recoilBoss(e, pc.x, pc.y, 0.5, Math.random() < 0.5 ? "chase" : "reposition");
+  if (!burning && !blind && e.stun <= 0 && e.state !== "recoil" && e.state !== "enter" && overlaps(e, player)) {
+    if (hurtPlayer(T.contactDamage, ec.x, ec.y)) recoilBoss(e, me.x, me.y, 0.5, Math.random() < 0.5 ? "chase" : "reposition");
   }
 }
 

@@ -56,6 +56,14 @@ loadImage("crate", "img/crate.png"); // 2 frames of 32x32
 loadImage("skyline", "img/skyline.png");
 loadImage("ground", "img/ground.png");
 loadImage("background", "img/background1.jpg");
+// Easter egg art
+loadImage("hologram", "img/hologram.png"); // 2 frames of 48x96
+loadImage("dove", "img/dove.png"); // 4 frames of 16x16
+loadImage("secrets", "img/secrets.png"); // 8 icons of 24x24
+loadImage("terminal", "img/terminal.png"); // 2 frames of 24x40
+loadImage("moon", "img/moon.png");
+loadImage("katana", "img/katana.png");
+loadImage("ripperdoc", "img/ripperdoc.png");
 loadImage("endGame", "img/endgame.jpg");
 loadImage("wasd", "img/wasd.png");
 loadImage("fire", "img/fire.png");

@@ -617,3 +617,192 @@ body.scheme-gestures .action-pad {
 body.state-playing:not(.touch) #canvas1 {
   cursor: crosshair;
 }
+
+/* ------------------------------------------------- Secrets (easter eggs) */
+.secrets {
+  margin: 0 0 1.2em;
+  font-size: 0.65em;
+}
+
+.secrets-title {
+  display: block;
+  margin-bottom: 0.6em;
+  color: #c9b6ff;
+}
+
+.secrets-title b {
+  color: #ffe14d;
+  font-weight: 400;
+}
+
+.secrets-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5em;
+}
+
+.secret {
+  width: 3.4em;
+  height: 3.4em;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  background-image: url("img/secrets.png");
+  background-size: 800% 100%;
+  background-position: calc(var(--i) * 100% / 7) 0;
+  image-rendering: pixelated;
+  filter: brightness(0.15) grayscale(1);
+  touch-action: manipulation;
+}
+
+.secret.found {
+  filter: none;
+  box-shadow: 0 0 10px rgba(255, 225, 77, 0.5);
+}
+
+.secret:focus-visible {
+  outline: 2px solid #ffe14d;
+}
+
+.secrets-hint {
+  min-height: 1.6em;
+  margin: 0.7em 0 0 !important;
+  font-size: 1em !important;
+  color: #e7dbff;
+}
+
+/* ------------------------------------------------- Jack in: breach */
+.breach {
+  z-index: 46;
+  background: rgba(0, 12, 6, 0.82);
+}
+
+.breach-panel {
+  width: min(100%, 34em);
+  max-height: 100%;
+  overflow-y: auto;
+  touch-action: pan-y;
+  padding: 1.2em 1.4em;
+  border: 2px solid #5aff7a;
+  border-radius: 6px;
+  background: rgba(4, 18, 10, 0.95);
+  box-shadow: 0 0 24px rgba(90, 255, 122, 0.35);
+  color: #c8ffd4;
+  text-align: center;
+  font-size: 0.8em;
+}
+
+.breach-panel h2 {
+  margin: 0 0 0.8em;
+  font-size: 1.3em;
+  font-weight: 400;
+  color: #5aff7a;
+  text-shadow: 0 0 8px #5aff7a;
+}
+
+.breach-info {
+  display: flex;
+  justify-content: space-between;
+  gap: 1em;
+  margin-bottom: 0.8em;
+  text-align: left;
+}
+
+.breach-label {
+  display: block;
+  margin-bottom: 0.4em;
+  font-size: 0.75em;
+  color: #7fbf8f;
+}
+
+.breach-codes {
+  display: flex;
+  gap: 0.4em;
+}
+
+.breach-codes span {
+  padding: 0.3em 0.4em;
+  border: 1px solid #5aff7a;
+  color: #e9ffef;
+}
+
+.breach-codes span.empty {
+  border-style: dashed;
+  color: #2f6b3d;
+}
+
+.breach-timer {
+  height: 6px;
+  margin-bottom: 0.9em;
+  background: #0e2a17;
+}
+
+#breach-timer-bar {
+  height: 100%;
+  background: #5aff7a;
+  transform-origin: left center;
+}
+
+.breach-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.35em;
+  margin: 0 auto 0.8em;
+  max-width: 22em;
+}
+
+.breach-grid button {
+  min-height: 40px;
+  padding: 0.5em 0;
+  border: 1px solid #1f4d2b;
+  border-radius: 3px;
+  background: #06170c;
+  color: #4f9a62;
+  font-size: 1em;
+  touch-action: manipulation;
+}
+
+.breach-grid button.line {
+  border-color: #5aff7a;
+  background: #0d3319;
+  color: #e9ffef;
+}
+
+.breach-grid button.cursor,
+.breach-grid button.line:hover {
+  background: #5aff7a;
+  color: #04120a;
+}
+
+.breach-grid button.used {
+  color: #1f4d2b;
+}
+
+.breach-status {
+  min-height: 1.4em;
+  margin: 0 0 0.6em;
+}
+
+.breach-status.ok {
+  color: #5aff7a;
+}
+
+.breach-status.fail {
+  color: #ff4b6e;
+}
+
+.breach-help {
+  margin: 0 0 0.8em;
+  font-size: 0.7em;
+  color: #7fbf8f;
+}
+
+body.touch.portrait .breach {
+  position: fixed;
+  padding: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px);
+  font-size: 12px;
+}

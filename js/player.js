@@ -527,6 +527,7 @@ function hurtPlayer(damage, fromX, fromY) {
   damageNumber(damage, pc.x, p.y - 10, "#ff4b6e");
   sfx.damage.play();
   vibrate(60);
+  onPlayerHurt(); // Sandevistan (easter egg)
   return true;
 }
 
@@ -546,11 +547,31 @@ function drawPlayer(time) {
   if (p.flameOn) drawFlameAura(cx, p.y + p.h / 2, bottom, time, true);
   if (p.overdrive > 0) glow(cx, p.y + p.h / 2, 90, "rgba(255,225,77,0.45)");
 
+  drawPlayerTrail(); // Sandevistan afterimages
+  // Katana on your back
+  if (p.katana && isReady(IMG.katana)) {
+    ctx.save();
+    ctx.translate(cx - p.facing * 8, p.y + 40);
+    ctx.rotate(p.facing > 0 ? -2.3 : -0.85);
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = p.camo > 0 ? 0.25 : 1;
+    ctx.drawImage(IMG.katana, -40, -10, 80, 24);
+    ctx.restore();
+  }
   const blink = p.invuln > 0 && Math.floor(p.invuln * 18) % 2 === 0;
-  ctx.globalAlpha = blink ? 0.3 : 1;
-  if (!drawFrame(IMG.player, p.frameX * 32, p.frameY * 48, 32, 48, cx - 40, bottom - 115, 80, 120)) {
+  let alpha = blink ? 0.3 : 1;
+  if (p.camo > 0) alpha = 0.18 + 0.08 * Math.sin(time * 20); // thermoptic camo
+  ctx.globalAlpha = alpha;
+  const row = p.lookUp ? 3 : p.frameY; // looking up at the hologram, back to us
+  const frameX = p.lookUp ? 0 : p.frameX;
+  if (!drawFrame(IMG.player, frameX * 32, row * 48, 32, 48, cx - 40, bottom - 115, 80, 120)) {
     ctx.fillStyle = "#19f5ff";
     ctx.fillRect(p.x, p.y, p.w, p.h);
+  }
+  if (p.camo > 0) {
+    // the shimmer of the camo's edge
+    ctx.globalAlpha = 0.25;
+    drawFrame(IMG.player, frameX * 32, row * 48, 32, 48, cx - 40 + Math.sin(time * 30) * 3, bottom - 115, 80, 120, "rgba(25,245,255,0.9)");
   }
   ctx.globalAlpha = 1;
 
@@ -618,7 +639,25 @@ function drawFlameAura(cx, cy, bottom, time, behind) {
 function drawPlayerProjectiles() {
   const blue = smallOr("blueFlame");
   ctx.imageSmoothingEnabled = true;
+  const flame = smallOr("fire");
   playerShots.forEach((s) => {
+    // Shots parried with the katana keep their look
+    if (s.kind === "laser") {
+      glow(s.x, s.y, 40, "rgba(255,47,109,0.6)");
+      drawCell("projectiles", 2, 16, s.x, s.y, 44, 44, s.angle);
+      return;
+    }
+    if (s.kind === "fireball") {
+      glow(s.x, s.y, 60, "rgba(255,90,20,0.6)");
+      if (flame) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.angle - Math.PI / 2);
+        ctx.drawImage(flame, -29, -54, 58, 80);
+        ctx.restore();
+      }
+      return;
+    }
     glow(s.x, s.y, 55 * (s.r / 22), "rgba(40,160,255,0.5)");
     if (!blue) return;
     const k = s.r / 22;

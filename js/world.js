@@ -141,6 +141,7 @@ function drawParallax() {
     ctx.fillStyle = "#1a0b2e";
     ctx.fillRect(0, 0, W, H);
   }
+  drawMoon(); // easter egg: Edgerunners
   // Closer skyline silhouettes
   const sky = IMG.skyline;
   if (isReady(sky)) {

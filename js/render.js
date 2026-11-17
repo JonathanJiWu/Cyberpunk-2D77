@@ -15,6 +15,7 @@ function render(time) {
   ctx.save();
   ctx.translate(-Math.round(camera.x * renderScale) / renderScale, 0);
   drawDecor(time);
+  drawSecretsBack(time);
   drawGround();
   drawPlatforms();
   drawCrates();
@@ -24,9 +25,17 @@ function render(time) {
   drawPlayerProjectiles();
   drawEnemyShots();
   drawEffects();
+  drawSecretsFront(time);
   if (game.debug) drawDebug();
   ctx.restore();
   ctx.restore();
+  drawRain();
+
+  // Sandevistan: the world turns green and slow
+  if (player.sandyTime > 0 && game.state !== "over") {
+    ctx.fillStyle = `rgba(60,255,120,${0.1 + 0.04 * Math.sin(time * 20)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   // Red sky while the boss is alive
   if (game.boss && !game.boss.dead && game.state !== "over") {
@@ -51,6 +60,7 @@ function render(time) {
     }
     ctx.globalAlpha = 1;
   } else {
+    drawLetterbox();
     drawHUD(time);
   }
 }
@@ -202,10 +212,25 @@ function drawHUD(time) {
     ctx.fillRect(ix, 204, 44 * (left / def.duration), 5);
     ix += 56;
   });
+  // Chrome from easter eggs
+  [
+    [player.mantis, 0, 0],
+    [player.katana, 1, 0],
+    [player.sandy, 2, player.sandyCd / 35],
+    [player.camo > 0, 3, 0],
+  ].forEach(([owned, icon, cooling]) => {
+    if (!owned) return;
+    drawIcon("secrets", 24, icon, ix, 156, 44);
+    if (cooling > 0) {
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(ix, 156, 44, 44 * cooling);
+    }
+    ix += 56;
+  });
 
   // Owned upgrades with their level
   let ux = 44;
-  const uy = p.overdrive > 0 || p.shield > 0 ? 222 : 160;
+  const uy = ix > 44 ? 222 : 160;
   UPGRADES.forEach((u) => {
     const level = lv(u.id);
     if (!level) return;
@@ -231,6 +256,12 @@ function drawHUD(time) {
 
   drawHints(VW, H / k);
 
+  if (game.toast) {
+    ctx.globalAlpha = clamp(game.toast.time / 0.5, 0, 1);
+    hudText(game.toast.text, VW / 2, 190, 24, "#ffe14d", "center");
+    ctx.globalAlpha = 1;
+  }
+
   if (game.banner) {
     ctx.globalAlpha = clamp(game.banner.time / 0.4, 0, 1);
     hudText(game.banner.text, VW / 2, H / k / 2 - 180, 52, game.banner.color || "#ff2457", "center", "middle");
@@ -239,6 +270,7 @@ function drawHUD(time) {
   ctx.restore();
 
   if (boss && !boss.dead && !onScreen(boss)) drawBossArrow(boss, time);
+  drawCinematic();
 }
 
 function drawBossArrow(boss, time) {

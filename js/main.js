@@ -4,7 +4,7 @@
 // =============================================================================
 
 const game = {
-  state: "menu", // menu | playing | paused | levelup | over
+  state: "menu", // menu | playing | paused | levelup | breach | over
   time: 0,
   overTime: 0,
   won: false,
@@ -12,6 +12,9 @@ const game = {
   hurtFlash: 0,
   banner: null,
   boss: null,
+  cinematic: null, // letterboxed subtitle for easter-egg moments
+  toast: null,
+  slowmo: null,
   debug: /[?&]debug\b/.test(location.search),
 };
 
@@ -23,7 +26,9 @@ function resetGame() {
   gems.length = 0;
   powerups.length = 0;
   clearEffects();
-  Object.assign(game, { time: 0, overTime: 0, won: false, kills: 0, hurtFlash: 0, banner: null, boss: null });
+  Object.assign(game, { time: 0, overTime: 0, won: false, kills: 0, hurtFlash: 0, banner: null, boss: null, cinematic: null, toast: null, slowmo: null });
+  resetSecretsRun();
+  breachEl.hidden = true;
   camera.x = 0;
   camera.shake = 0;
   clearInput();
@@ -40,11 +45,14 @@ function update(dt) {
   updateWorld(dt, game.time);
   refreshMouseWorld();
   updatePlayer(dt);
+  updateSecrets(dt);
+  if (game.state !== "playing") return; // jacked into a terminal
+  const edt = dt * enemyTimeScale(); // Sandevistan / slow-mo
   updateDirector(dt);
-  updateEnemies(dt);
+  updateEnemies(edt);
   updatePlayerShots(dt);
   updateMissiles(dt);
-  updateEnemyShots(dt);
+  updateEnemyShots(edt);
   updatePickups(dt);
   sweepDead();
   updateEffects(dt);
@@ -110,7 +118,7 @@ function setState(state) {
   game.state = state;
   document.body.className = document.body.className.replace(/\bstate-\w+/g, "").trim();
   document.body.classList.add("state-" + state);
-  if (state === "playing" || state === "levelup") {
+  if (state === "playing" || state === "levelup" || state === "breach") {
     overlay.hidden = true;
     return;
   }
@@ -132,6 +140,8 @@ function showOverlay({ title, text, button, help, secondary, stats: lines }) {
   overlayText.textContent = text;
   controlsHelp.hidden = !help;
   schemePicker.hidden = !help;
+  document.getElementById("secrets").hidden = !help && !lines;
+  renderSecretsList();
   overlayStats.hidden = !lines;
   if (lines) {
     overlayStats.textContent = "";
@@ -157,6 +167,7 @@ function showGameOver() {
     ["Level", String(progress.level)],
     ["Kills", String(game.kills)],
   ];
+  if (runSecrets.size) lines.push(["Secrets", SECRETS.filter((s) => runSecrets.has(s.id)).map((s) => s.name).join(", ")]);
   if (game.won) {
     showOverlay({
       title: "Lamb Chops for Dinna!",
@@ -167,7 +178,13 @@ function showGameOver() {
   } else {
     const boss = game.boss;
     if (boss && !boss.dead) lines.push(["Goat HP left", Math.ceil((boss.hp / boss.maxHp) * 100) + "%"]);
-    showOverlay({ title: "The Goat Got Your Soul!", text: "The streets of Cyber City claimed another runner.", button: "Try Again", stats: lines });
+    const rain = weather.amount > 0.5;
+    showOverlay({
+      title: rain ? "Like tears in rain..." : "The Goat Got Your Soul!",
+      text: rain ? "Time to die. The rain washes the street clean." : "The streets of Cyber City claimed another runner.",
+      button: "Try Again",
+      stats: lines,
+    });
   }
 }
 
@@ -184,6 +201,10 @@ overlayBtn2.addEventListener("click", () => {
 
 // Called by the keyboard handler first; returns true if a menu used the key
 function handleMenuKey(e) {
+  if (game.state === "breach") {
+    handleBreachKey(e);
+    return true;
+  }
   if (game.state === "levelup") {
     handleLevelUpKey(e);
     return true;
@@ -304,6 +325,8 @@ function frame(now) {
       flameBtn.style.setProperty("--heat", (player.heat / TUNING.heat.max).toFixed(3));
       flameBtn.classList.toggle("overheated", player.heatLocked);
     }
+  } else if (game.state === "breach") {
+    updateBreach(dt);
   } else if (game.state === "over") {
     const before = game.overTime;
     game.overTime += dt;

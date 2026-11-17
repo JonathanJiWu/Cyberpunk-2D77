@@ -282,10 +282,83 @@ const LEVEL = {
   // Neon signs along the street (pure decoration)
   signs: [
     { x: 520, text: "2D77", color: "#ff2fd6" },
-    { x: 1520, text: "NOODLES", color: "#19f5ff" },
-    { x: 2860, text: "CYBER", color: "#ffe14d" },
-    { x: 3960, text: "HOTEL", color: "#ff9b21" },
-    { x: 5200, text: "GOAT?!", color: "#ff2457" },
-    { x: 6250, text: "EXIT", color: "#19f5ff" },
+    { x: 1000, text: "RIPPERDOC", color: "#5aff7a" },
+    { x: 1640, text: "NOODLES", color: "#19f5ff" },
+    { x: 2700, text: "TYRELL", color: "#ffe14d" },
+    { x: 3960, text: "SECTION 9", color: "#ff9b21" },
+    { x: 4800, text: "WAKE UP, SAMURAI", color: "#ff2457" },
+    { x: 6250, text: "TO THE MOON", color: "#19f5ff" },
   ],
+};
+
+// --------------------------------------------------------- Easter eggs -----
+// Little homages to cyberpunk classics. Found secrets are remembered between
+// runs and listed in the menu (with a hint for the ones you haven't found).
+const SECRETS = [
+  {
+    id: "tears",
+    name: "Tears in Rain",
+    icon: 5,
+    desc: "You stood still in the acid rain and let the moment pass. +25 HP.",
+    hint: "When the acid rain falls, stop and take it all in.",
+  },
+  {
+    id: "interlinked",
+    name: "Interlinked",
+    icon: 6,
+    desc: "You looked up at the giant hologram. She noticed. +XP.",
+    hint: "A giant hologram towers over the street. Stand under her and look up.",
+  },
+  {
+    id: "mantis",
+    name: "Mantis Blades",
+    icon: 0,
+    desc: "Installed at the ripperdoc: arm blades slash anything that gets close.",
+    hint: "Every runner needs a good ripperdoc.",
+  },
+  {
+    id: "katana",
+    name: "Katana",
+    icon: 1,
+    desc: "Deflects enemy shots straight back at them.",
+    hint: "Something sharp rides the highest platform.",
+  },
+  {
+    id: "sandevistan",
+    name: "Sandevistan",
+    icon: 2,
+    desc: "When you're badly hurt, time slows down around you.",
+    hint: "Rack up a very familiar number of kills in one run.",
+  },
+  {
+    id: "ghost",
+    name: "Ghost in the Shell",
+    icon: 3,
+    desc: "You dove off a rooftop and vanished with thermoptic camo.",
+    hint: "Dive from the highest rooftops all the way down to the street.",
+  },
+  {
+    id: "jackin",
+    name: "Jack In",
+    icon: 4,
+    desc: "You breached a data terminal.",
+    hint: "Data terminals stand along the street. Jack in.",
+  },
+  {
+    id: "moon",
+    name: "To the Moon",
+    icon: 7,
+    desc: "You made it to the end of the street.",
+    hint: "Follow the street as far east as it goes.",
+  },
+];
+
+const EASTER = {
+  ripperdoc: { x: 1000 },
+  hologram: { x: 3460 },
+  terminals: [2150, 4380, 5820],
+  katana: { platform: 14, offset: 96 }, // the high moving platform in the arena
+  rain: { firstAt: 25, duration: 26, gap: [45, 75] },
+  sandevistanKills: 77,
+  diveHeight: 440, // fall this far onto the street for thermoptic camo
 };
