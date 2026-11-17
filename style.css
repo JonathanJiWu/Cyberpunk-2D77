@@ -2073,6 +2073,272 @@ body.touch.portrait .codex {
   font-size: 12px;
 }
 
+/* ------------------------------------------------- Leaderboard */
+/* Name entry: part of the game-over screen only */
+.lb-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em 1.2em;
+  max-width: 40em;
+  margin: 0 auto 1.2em;
+  padding: 0.6em 1em;
+  border: 2px solid rgba(25, 245, 255, 0.45);
+  border-radius: 8px;
+  background: rgba(25, 245, 255, 0.06);
+  box-shadow: inset 0 0 16px rgba(25, 245, 255, 0.12);
+}
+
+body:not(.state-over) .lb-entry {
+  display: none;
+}
+
+.lb-score {
+  font-size: 0.75em;
+  white-space: nowrap;
+  color: #c9b6ff;
+}
+
+.lb-score b {
+  margin-left: 0.4em;
+  font-size: 1.6em;
+  font-weight: 400;
+  color: #ffe14d;
+  text-shadow: 0 0 10px rgba(255, 225, 77, 0.6);
+}
+
+.lb-form {
+  display: flex;
+  flex: 1 1 22em;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6em;
+}
+
+.lb-name {
+  flex: 1 1 14em;
+  min-width: 0;
+  max-width: 20em;
+  min-height: 44px;
+  padding: 0.6em 0.8em;
+  border: 2px solid var(--neon-pink);
+  border-radius: 6px;
+  background: rgba(11, 4, 22, 0.85);
+  color: #fff;
+  font: inherit;
+  font-size: 0.8em;
+  caret-color: var(--neon-cyan);
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: manipulation;
+}
+
+.lb-name::placeholder {
+  color: rgba(201, 182, 255, 0.45);
+}
+
+.lb-name:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 12px rgba(25, 245, 255, 0.55);
+}
+
+.lb-save {
+  min-height: 44px;
+  padding: 0.7em 1.2em;
+  border: 2px solid var(--neon-cyan);
+  border-radius: 6px;
+  background: rgba(25, 245, 255, 0.14);
+  color: var(--neon-cyan);
+  font-size: 0.8em;
+  text-shadow: 0 0 6px rgba(25, 245, 255, 0.6);
+  touch-action: manipulation;
+}
+
+.lb-save:hover,
+.lb-save:focus-visible {
+  background: rgba(25, 245, 255, 0.28);
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.lb-saved {
+  font-size: 0.7em;
+  line-height: 1.8;
+  color: var(--neon-cyan);
+  overflow-wrap: anywhere;
+}
+
+/* The board: a DATABASE-style panel, only as tall as it needs */
+.leaderboard .lb-panel {
+  width: min(100%, 52em);
+  height: auto;
+  max-height: 100%;
+}
+
+.lb-sub {
+  margin-top: -0.2em;
+}
+
+.lb-body {
+  min-height: 0;
+}
+
+.lb-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 0.3em;
+  font-size: 0.7em;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.lb-table th {
+  padding: 0 0.7em 0.1em;
+  font-weight: 400;
+  color: #a990d6;
+  white-space: nowrap;
+}
+
+.lb-table td {
+  padding: 0.6em 0.7em;
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
+.lb-table td:first-child {
+  border-left: 4px solid var(--c, #3d3560);
+}
+
+.lb-table .lb-num {
+  text-align: right;
+}
+
+.lb-rank {
+  color: #a990d6;
+}
+
+.lb-top1 .lb-rank {
+  color: #ffe14d;
+  text-shadow: 0 0 8px rgba(255, 225, 77, 0.7);
+}
+
+.lb-top2 .lb-rank {
+  color: var(--neon-cyan);
+}
+
+.lb-top3 .lb-rank {
+  color: var(--neon-orange);
+}
+
+.lb-handle {
+  display: inline-block;
+  max-width: 16em; /* a full 16-character name */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  color: #fff;
+}
+
+.lb-ic {
+  color: var(--c, #c9b6ff);
+}
+
+.lb-points {
+  color: #ffe14d;
+}
+
+.lb-win {
+  color: #5aff7a;
+  text-shadow: 0 0 6px rgba(90, 255, 122, 0.5);
+}
+
+.lb-kia {
+  color: #ff4b6e;
+}
+
+.lb-row.lb-new td {
+  background: rgba(255, 47, 214, 0.2);
+  box-shadow: inset 0 2px 0 rgba(255, 47, 214, 0.65), inset 0 -2px 0 rgba(255, 47, 214, 0.65);
+}
+
+.lb-row.lb-new td:first-child {
+  border-left-color: var(--neon-pink);
+}
+
+.lb-tag {
+  margin-left: 0.6em;
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  background: var(--neon-pink);
+  color: #fff;
+  font-size: 0.8em;
+  vertical-align: bottom;
+  animation: lb-blink 1s steps(2, jump-none) infinite;
+}
+
+@keyframes lb-blink {
+  to {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-tag {
+    animation: none;
+  }
+}
+
+.lb-table .lb-gap td {
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: center;
+  color: #5b4a86;
+}
+
+.lb-rules {
+  margin: 0.5em 0 0.2em;
+  font-size: 0.5em;
+  line-height: 1.8;
+  color: #7d6aa8;
+}
+
+.lb-empty {
+  padding: 1.6em 0.5em 1.2em;
+  text-align: center;
+}
+
+.lb-empty p {
+  margin: 0 0 0.9em;
+}
+
+.lb-empty-big {
+  font-size: 1.1em;
+  color: var(--neon-pink);
+  text-shadow: 0 0 10px var(--neon-pink);
+}
+
+.lb-empty-line {
+  font-size: 0.75em;
+  color: #f1dcff;
+}
+
+.lb-empty-term {
+  font-size: 0.55em;
+  color: #5aff7a;
+}
+
+.lb-empty-err {
+  color: #ff4b6e;
+}
+
+/* Narrow screens: keep rank, name, IC, score and result */
+body.portrait .lb-opt {
+  display: none;
+}
+
 /* Touch-only controls never show on desktop (overrides display rules above) */
 body:not(.touch) .touch-only {
   display: none !important;

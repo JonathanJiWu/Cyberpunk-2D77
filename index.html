@@ -50,6 +50,14 @@
           <h1 id="overlay-title">Cyberpunk 2D77</h1>
           <p id="overlay-text">It's year 2D77. You're a Cyber Badass. Don't kiss the Demon Goat.</p>
           <dl id="overlay-stats" class="stats" hidden></dl>
+          <div id="lb-entry" class="lb-entry" hidden>
+            <div class="lb-score">SCORE <b id="lb-score">0</b></div>
+            <div id="lb-form" class="lb-form">
+              <input id="lb-name" class="lb-name" type="text" maxlength="16" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="Your name for the leaderboard" />
+              <button id="lb-save" class="lb-save" type="button">Save score</button>
+            </div>
+            <div id="lb-saved" class="lb-saved" role="status" hidden></div>
+          </div>
           <p id="ic-label" class="ic-label">CHOOSE YOUR INDIVIDUAL CONTRIBUTOR</p>
           <div id="char-select" class="char-select" role="radiogroup" aria-label="Choose your Individual Contributor"></div>
           <div class="overlay-actions">
@@ -57,6 +65,7 @@
             <button id="overlay-btn-2" class="secondary-btn" type="button" hidden>Restart</button>
             <button id="respec-btn" class="secondary-btn" type="button" hidden>Respec</button>
             <button id="codex-btn" class="secondary-btn" type="button">Database</button>
+            <button id="lb-btn" class="secondary-btn" type="button">Leaderboard</button>
           </div>
           <p id="overlay-tip" class="overlay-tip"></p>
           <div id="settings" class="settings">
@@ -196,6 +205,17 @@
         </div>
       </div>
 
+      <div id="leaderboard" class="overlay codex leaderboard" hidden>
+        <div class="codex-panel lb-panel" role="dialog" aria-labelledby="lb-title">
+          <div class="codex-head">
+            <h2 id="lb-title">LEADERBOARD</h2>
+            <button id="lb-close" class="secondary-btn" type="button">Close</button>
+          </div>
+          <p id="lb-sub" class="codex-count lb-sub"></p>
+          <div id="lb-body" class="codex-body lb-body"></div>
+        </div>
+      </div>
+
       <div id="breach" class="overlay breach" hidden>
         <div id="breach-screen" class="breach-screen" role="dialog" aria-modal="true" aria-labelledby="breach-title" tabindex="-1">
           <header class="breach-top">
@@ -265,6 +285,7 @@
     <script src="js/secrets.js"></script>
     <script src="js/codex.js"></script>
     <script src="js/render.js"></script>
+    <script src="js/leaderboard.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>
