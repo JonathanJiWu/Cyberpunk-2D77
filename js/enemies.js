@@ -303,6 +303,7 @@ function spawnBoss() {
   enemies.push(e);
   game.boss = e;
   game.banner = { text: "THE DEMON GOAT APPROACHES!", time: 2.5, color: "#ff2457" };
+  music.setIntensity(2); // the soundtrack kicks up a gear
   camera.shake = Math.max(camera.shake, 14);
   sfx.enemyShot.play({ rate: 0.35 });
 }

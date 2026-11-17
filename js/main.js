@@ -70,7 +70,8 @@ function startGame() {
   resetGame();
   levelUpEl.hidden = true;
   setState("playing");
-  music.play();
+  music.setIntensity(1);
+  music.play(true); // from the top
 }
 
 function pauseGame() {
@@ -94,7 +95,8 @@ function endRun(won) {
   clearInput();
   levelUpEl.hidden = true;
   setState("over");
-  if (!won) {
+  if (won) music.setIntensity(1);
+  else {
     music.pause();
     sfx.gameOver.play();
   }
@@ -140,6 +142,7 @@ function showOverlay({ title, text, button, help, secondary, stats: lines }) {
   overlayText.textContent = text;
   controlsHelp.hidden = !help;
   schemePicker.hidden = !help;
+  document.getElementById("music-picker").hidden = !help;
   document.getElementById("secrets").hidden = !help && !lines;
   renderSecretsList();
   overlayStats.hidden = !lines;

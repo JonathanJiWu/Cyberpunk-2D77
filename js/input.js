@@ -4,8 +4,9 @@
 //   Keyboard: A/D move, W/S aim, Space jump, J zap, K flame.
 //   Mouse:    left button zaps toward the cursor, right button holds the flame.
 //   Touch "buttons":  joystick + ZAP / FLAME / JUMP buttons.
-//   Touch "gestures": joystick to move; tap anywhere to zap toward that exact
-//                     spot, long-press for the flame, double-tap to jump.
+//   Touch "tap to fire": joystick to move; tap anywhere to fire toward that
+//                     exact spot, hold to rapid-fire (drag to aim), and two
+//                     small corner buttons for JUMP and FLAME.
 // =============================================================================
 
 const KEYMAP = {
@@ -27,7 +28,8 @@ const input = {
   stick: { id: null, ox: 0, oy: 0, x: 0, y: 0 },
   buttons: { zap: false, flame: false, jump: false },
   mouse: { x: W / 2, y: H / 2, zap: false, flame: false },
-  gesture: { flame: false, jumpHoldUntil: 0 },
+  fingers: new Map(), // tap-to-fire: pointerId -> {x, y} (screen coords)
+  aimFinger: null,
   jumpQueued: false,
   shots: [], // queued taps: world points to fire at
 };
@@ -54,15 +56,22 @@ function moveAxis() {
     analog: false,
   };
 }
-const zapHeld = () => keyHeld("zap") || input.buttons.zap || input.mouse.zap;
-const flameHeld = () => keyHeld("flame") || input.buttons.flame || input.mouse.flame || input.gesture.flame;
-const jumpHeld = () => keyHeld("jump") || input.buttons.jump || performance.now() < input.gesture.jumpHoldUntil;
+const zapHeld = () => keyHeld("zap") || input.buttons.zap || input.mouse.zap || input.fingers.size > 0;
+const flameHeld = () => keyHeld("flame") || input.buttons.flame || input.mouse.flame;
+const jumpHeld = () => keyHeld("jump") || input.buttons.jump;
+
+// World position the firing finger is pointing at (tap-to-fire scheme)
+function fingerAim() {
+  const f = input.fingers.get(input.aimFinger);
+  return f ? clientToWorld(f.x, f.y) : null;
+}
 
 function clearInput() {
   input.keys.clear();
   input.buttons.zap = input.buttons.flame = input.buttons.jump = false;
   input.mouse.zap = input.mouse.flame = false;
-  input.gesture.flame = false;
+  input.fingers.clear();
+  input.aimFinger = null;
   input.jumpQueued = false;
   input.shots.length = 0;
   releaseStick();
@@ -261,14 +270,10 @@ document.querySelectorAll(".action-btn").forEach((btn) => {
   btn.addEventListener("lostpointercapture", release);
 });
 
-// --- Gestures scheme ---
-const LONG_PRESS_MS = 260;
-const TAP_SLOP = 30; // px a finger may wander and still count as a tap
-const DOUBLE_TAP_MS = 320;
-const DOUBLE_TAP_DIST = 110;
-const touches = new Map();
-let lastTap = { t: -1e9, x: 0, y: 0 };
-
+// --- Tap-to-fire scheme ---
+// Every tap fires once toward that exact spot (no double-tap or long-press
+// tricks, so rapid tapping is just rapid fire). Keep a finger down to keep
+// firing; drag it to aim. JUMP and FLAME are small buttons in the corner.
 gestureZone.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   SoundSystem.unlock();
@@ -277,50 +282,27 @@ gestureZone.addEventListener("pointerdown", (e) => {
   } catch (err) {
     /* ignore */
   }
-  const t = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, start: performance.now(), long: false };
-  t.timer = setTimeout(() => {
-    // Still holding and hasn't moved: long press = flame
-    if (touches.get(e.pointerId) === t && Math.hypot(t.x - t.x0, t.y - t.y0) < TAP_SLOP) {
-      t.long = true;
-      input.gesture.flame = true;
-      vibrate(15);
-    }
-  }, LONG_PRESS_MS);
-  touches.set(e.pointerId, t);
+  input.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  input.aimFinger = e.pointerId;
+  // Guarantee a shot even for a tap shorter than one frame
+  if (game.state === "playing" && input.shots.length < 2) input.shots.push(clientToWorld(e.clientX, e.clientY));
+  pulseTap(e.clientX, e.clientY);
 });
 gestureZone.addEventListener("pointermove", (e) => {
-  const t = touches.get(e.pointerId);
-  if (t) {
-    t.x = e.clientX;
-    t.y = e.clientY;
+  const f = input.fingers.get(e.pointerId);
+  if (f) {
+    f.x = e.clientX;
+    f.y = e.clientY;
   }
 });
-function endGesture(e, cancelled) {
-  const t = touches.get(e.pointerId);
-  if (!t) return;
-  touches.delete(e.pointerId);
-  clearTimeout(t.timer);
-  if (t.long) {
-    if (![...touches.values()].some((o) => o.long)) input.gesture.flame = false;
-    return;
+function liftFinger(e) {
+  input.fingers.delete(e.pointerId);
+  if (input.aimFinger === e.pointerId) {
+    const rest = [...input.fingers.keys()];
+    input.aimFinger = rest.length ? rest[rest.length - 1] : null;
   }
-  if (cancelled || game.state !== "playing") return;
-  if (Math.hypot(t.x - t.x0, t.y - t.y0) > TAP_SLOP * 2) return; // a swipe, ignore
-  const now = performance.now();
-  if (now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(t.x - lastTap.x, t.y - lastTap.y) < DOUBLE_TAP_DIST) {
-    // Double tap = jump (full height: there's no "release" to cut it short)
-    input.jumpQueued = true;
-    input.gesture.jumpHoldUntil = now + 260;
-    lastTap.t = -1e9;
-    return;
-  }
-  lastTap = { t: now, x: t.x, y: t.y };
-  // Single tap = zap toward that exact spot
-  if (input.shots.length < 3) input.shots.push(clientToWorld(t.x, t.y));
-  pulseTap(t.x, t.y);
 }
-gestureZone.addEventListener("pointerup", (e) => endGesture(e, false));
-gestureZone.addEventListener("pointercancel", (e) => endGesture(e, true));
+["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => gestureZone.addEventListener(type, liftFinger));
 
 // Little ripple where you tapped, so you can see the aim point
 function pulseTap(x, y) {

@@ -53,7 +53,12 @@
           <div id="scheme-picker" class="scheme-picker touch-only" role="group" aria-label="Touch controls">
             <span>Controls:</span>
             <button type="button" data-scheme="buttons" aria-pressed="true">Buttons</button>
-            <button type="button" data-scheme="gestures" aria-pressed="false">Tap gestures</button>
+            <button type="button" data-scheme="gestures" aria-pressed="false">Tap to fire</button>
+          </div>
+          <div id="music-picker" class="music-picker" role="group" aria-label="Music">
+            <span>Music:</span>
+            <button type="button" data-music="synthwave" aria-pressed="true">Synthwave</button>
+            <button type="button" data-music="classic" aria-pressed="false">Original</button>
           </div>
           <dl id="controls-help" class="controls">
             <dt class="kb-only">A / D</dt>
@@ -78,11 +83,11 @@
             <dt class="touch-only buttons-only">JUMP</dt>
             <dd class="touch-only buttons-only">Jump, tap again in the air to double jump</dd>
             <dt class="touch-only gestures-only">Tap</dt>
-            <dd class="touch-only gestures-only">Zap toward the exact spot you tapped</dd>
-            <dt class="touch-only gestures-only">Long-press</dt>
-            <dd class="touch-only gestures-only">Flame, burns everything around you</dd>
-            <dt class="touch-only gestures-only">Double-tap</dt>
-            <dd class="touch-only gestures-only">Jump / double jump</dd>
+            <dd class="touch-only gestures-only">Fire toward the exact spot you tapped</dd>
+            <dt class="touch-only gestures-only">Hold</dt>
+            <dd class="touch-only gestures-only">Rapid fire. Drag your finger to aim</dd>
+            <dt class="touch-only gestures-only">JUMP / FLAME</dt>
+            <dd class="touch-only gestures-only">The two small buttons in the corner</dd>
 
             <dt>Heat</dt>
             <dd>The flame costs heat. Heat doesn't refill by itself: earn it by dealing and taking damage</dd>
@@ -143,6 +148,7 @@
     </div>
 
     <script src="js/sound.js"></script>
+    <script src="js/music.js"></script>
     <script src="js/config.js"></script>
     <script src="js/core.js"></script>
     <script src="js/input.js"></script>

@@ -13,7 +13,8 @@ Features
   Level-up upgrades: 6 weapons (Energy Ball, Flame Aura, Orbit Shards, Seeker Missiles, Shock Stomp, Chain Lightning) and 6 passives (Cyber Heart, Servo Legs, Magnet Coil, Nano Armor, Heat Sink, Overclock)
   Power-ups dropped by crates and enemies: health, heat cell, Overdrive (rapid fire), Shield, Magnet and an EMP blast
   Heat: the flame runs on heat, which only builds up when you deal or take damage (it never refills on its own)
-  Two touch control schemes: on-screen buttons, or tap gestures (tap to fire where you tapped, long-press for flame, double-tap to jump)
+  Two touch control schemes: on-screen buttons, or tap to fire (tap to shoot where you tapped, hold for rapid fire)
+  An original synthwave soundtrack, "Neon Inferno", generated live in the browser. It builds up, then kicks into a higher gear when the boss arrives. The original "Disconnected" track is still available in the menu.
   Scales to any screen size, portrait or landscape, with fullscreen support where available
   Pause, mute and restart without reloading the page; hitbox debug view
   8 hidden easter eggs (see below)
@@ -31,7 +32,7 @@ Controls
     Show hitboxes: B (or open the page with ?debug)
   Touch: pick the scheme in the start or pause menu
     Buttons: drag on the left half to run and aim; hold ZAP, hold FLAME, tap JUMP. The ring around FLAME shows your heat.
-    Tap gestures: drag in the lower-left corner to run; tap anywhere else to zap toward that exact spot; long-press for the flame; double-tap to jump.
+    Tap to fire: drag in the lower-left corner to run; tap anywhere else to fire toward that exact spot; keep your finger down for rapid fire and drag it to aim. JUMP and FLAME are the two small buttons in the bottom-right corner.
     In both schemes, hold the stick down and jump to drop through a platform.
 
 How a run works
@@ -70,7 +71,8 @@ Code Structure
   style.css: responsive layout, menus, cards and touch controls
   js/config.js: all the balance numbers, enemy types, upgrades, power-ups and the map layout. Start here to tweak the game.
   js/core.js: canvas, asset loading, drawing helpers and visual effects
-  js/sound.js: Web Audio sound effects (falls back to <audio>) and the music
+  js/sound.js: Web Audio sound effects (falls back to <audio>) and the original mp3 soundtrack
+  js/music.js: the generated synthwave soundtrack and the music picker
   js/input.js: keyboard, mouse, joystick, buttons and tap gestures
   js/world.js: platforms, crates, the street and the shared platformer physics
   js/player.js: movement, jumping, the energy ball, the flame and the auto weapons

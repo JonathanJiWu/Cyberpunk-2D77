@@ -184,9 +184,10 @@ Sound.prototype.stopLoop = function () {
   }
 };
 
-// Background music streams through a single <audio> element (the file is big,
-// so it is only downloaded once the game actually starts).
-const music = {
+// The original soundtrack streams through a single <audio> element (the file
+// is big, so it is only downloaded once it actually plays). The default
+// synthwave soundtrack is generated live in js/music.js.
+const classicMusic = {
   el: null,
   play() {
     if (!this.el) {

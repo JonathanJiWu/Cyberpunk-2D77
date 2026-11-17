@@ -267,6 +267,8 @@ function updateFlame(dt) {
 function holdAim() {
   const pc = centerOf(player);
   if (input.mouse.zap) return { x: input.mouse.x - pc.x, y: input.mouse.y - pc.y, assist: false };
+  const finger = fingerAim(); // tap-to-fire: aim exactly where the finger is
+  if (finger) return { x: finger.x - pc.x, y: finger.y - (pc.y - 10), assist: false };
   const m = moveAxis();
   if (m.analog ? Math.hypot(m.x, m.y) > 0.35 : m.x || m.y) return { x: m.x, y: m.y, assist: true };
   return { x: player.facing, y: 0, assist: true };

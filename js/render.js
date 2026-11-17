@@ -294,7 +294,7 @@ function drawHints(VW, VH) {
   const alpha = clamp((10 - game.time) / 1.5, 0, 1);
   ctx.globalAlpha = alpha;
   if (touchMode && settings.touchScheme === "gestures") {
-    hudText("TAP: ZAP   HOLD: FLAME   DOUBLE-TAP: JUMP", VW / 2, VH - 150, 24, "#ffffff", "center");
+    hudText("TAP: FIRE   HOLD: RAPID FIRE   CORNER: JUMP / FLAME", VW / 2, VH - 150, 24, "#ffffff", "center");
   } else if (!touchMode) {
     const box = { x: VW / 2 - 430, y: 250, w: 860, h: 200 };
     ctx.fillStyle = "rgba(10,3,24,0.75)";

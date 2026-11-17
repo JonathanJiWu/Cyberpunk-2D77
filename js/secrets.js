@@ -529,8 +529,8 @@ renderSecretsList();
 // ---------------------------------------------------------------- Drawing ---
 function drawMoon() {
   const img = IMG.moon;
-  const x = W * 0.8 - camera.x * 0.03;
-  const y = 70;
+  const x = W * 0.64 - camera.x * 0.03;
+  const y = 170;
   const size = 200 + moonState.glow * 6;
   glow(x + size / 2, y + size / 2, size * (0.9 + moonState.glow * 0.08), "rgba(220,210,255,0.35)");
   if (isReady(img)) {

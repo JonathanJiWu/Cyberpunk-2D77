@@ -413,7 +413,17 @@ body.touch .scheme-picker {
   display: flex;
 }
 
-.scheme-picker button {
+.music-picker {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6em;
+  margin: 0 0 1.2em;
+  font-size: 0.7em;
+}
+
+.scheme-picker button,
+.music-picker button {
   min-height: 40px;
   padding: 0.7em 1em;
   border: 2px solid rgba(25, 245, 255, 0.5);
@@ -423,7 +433,8 @@ body.touch .scheme-picker {
   touch-action: manipulation;
 }
 
-.scheme-picker button[aria-pressed="true"] {
+.scheme-picker button[aria-pressed="true"],
+.music-picker button[aria-pressed="true"] {
   border-color: var(--neon-cyan);
   background: rgba(25, 245, 255, 0.22);
   box-shadow: 0 0 10px rgba(25, 245, 255, 0.5);
@@ -587,8 +598,25 @@ body.scheme-gestures .stick-zone {
   width: 40%;
 }
 
+/* ...and only small JUMP / FLAME buttons sit in the corner */
 body.scheme-gestures .action-pad {
+  --btn: clamp(52px, 9vmin, 66px);
+  width: calc(var(--btn) * 2.3);
+  height: var(--btn);
+}
+
+body.scheme-gestures .btn-zap {
   display: none;
+}
+
+body.scheme-gestures .btn-jump {
+  right: 0;
+  bottom: 0;
+}
+
+body.scheme-gestures .btn-flame {
+  right: calc(var(--btn) * 1.2);
+  bottom: 0;
 }
 
 .tap-ripple {
