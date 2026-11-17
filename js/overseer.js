@@ -17,13 +17,13 @@ const OVERSEER = {
   h: 214,
   scale: 2.5, // the 64x96 sprite is drawn at 160x240
   speed: [380, 470], // normal, raging
-  contact: 16,
-  burstDamage: 9,
+  contact: 20,
+  burstDamage: 12,
   burstSpeed: 820,
-  dashDamage: 22,
+  dashDamage: 28,
   dashSpeed: 1500,
-  slamDamage: 14,
-  beamDamage: 18,
+  slamDamage: 18,
+  beamDamage: 24,
   beamWidth: 30,
   vent: [2.8, 2.2],
 };
@@ -98,7 +98,10 @@ function updateOverseer(e, dt) {
 
   if (e.stun > 0 && e.state !== "vent" && e.state !== "intro") {
     e.vx *= Math.exp(-8 * dt);
-    e.beam = null;
+    if (e.beam) {
+      e.beam = null; // a stun cancels the laser
+      bossState(e, "move");
+    }
     bossPhysics(e, dt);
     return;
   }
@@ -124,7 +127,7 @@ function updateOverseer(e, dt) {
       const side = ec.x < pc.x ? -1 : 1;
       const targetX = blind ? ec.x + e.facing * 200 : pc.x + side * pref;
       bossNavigate(e, dt, targetX, OVERSEER.speed[R]);
-      if (!blind && e.stateTime > (rage ? 0.6 : 1.0) && e.onGround) chooseOverseerAttack(e);
+      if (!blind && e.stateTime > (rage ? 0.4 : 0.7) && e.onGround) chooseOverseerAttack(e);
       break;
     }
     case "burst": {
@@ -242,6 +245,7 @@ function updateOverseer(e, dt) {
           e.beam = { from: aim - 0.5 * dir, to: aim + 0.5 * dir, angle: aim, on: false };
         }
       } else {
+        if (!e.beam) e.beam = { from: 0, to: 0, angle: 0, on: false };
         if (!e.beam.on) {
           e.beam.on = true;
           sfx.chain.play({ rate: 0.6 });
