@@ -1,0 +1,52 @@
+# Publishes the game to GitHub Pages: https://jonathanjiwu.github.io/Cyberpunk-2D77/
+#
+# One-time setup: repository Settings -> Pages -> "Build and deployment" ->
+# Source: "GitHub Actions". After that, every push to main redeploys the game.
+# Pull requests only run the build step, as a quick check.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check that the scripts parse
+        run: node --check app.js && node --check sound.js
+
+      - name: Assemble the site
+        run: |
+          mkdir _site
+          cp index.html app.js sound.js style.css _site/
+          cp -r img sound _site/
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
