@@ -719,6 +719,7 @@ function hurtPlayer(damage, fromX, fromY) {
 // ------------------------------------------------------------- Drawing ------
 function drawPlayer(time) {
   const p = player;
+  if (p.hidden) return; // between lives
   const cx = p.x + p.w / 2;
   const bottom = p.y + p.h;
   // Shadow on whatever is below
@@ -791,6 +792,8 @@ function drawPlayer(time) {
 
 // Which sheet / row / frame to draw: walking, or the attack pose while firing
 function heroFrame() {
+  const landing = introFrame(); // the superhero landing poses
+  if (landing) return landing;
   const p = player;
   const ch = CH();
   let img = IMG[ch.sprite.img];
@@ -826,7 +829,7 @@ function drawHeroSprite(cx, bottom, time, tintOverride) {
   ctx.translate(cx + recoil, bottom);
   ctx.rotate(tilt);
   ctx.scale(p.sx, p.sy * breathe);
-  const ok = drawFrame(f.sheet, f.fx * 32, f.row * 48, 32, 48, -40, -115, 80, 120, tintOverride || f.tint);
+  const ok = drawFrame(f.sheet, f.fx * 32, f.row * 48, 32, 48, -40, -115, 80, 120, tintOverride || f.tint, f.flip);
   ctx.restore();
   return ok;
 }

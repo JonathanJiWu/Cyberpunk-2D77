@@ -39,18 +39,8 @@ const TUNING = {
     hpGrowth: 1 / 100, // enemy HP multiplier grows by this much per second
   },
   boss: {
-    at: 150, // seconds into the run when the Demon Goat shows up (its HP is in database.js)
-    overseerDelay: 40, // the second boss arrives this long after the goat falls
-    chaseSpeed: 330,
-    hoverSpeed: 560,
-    recoilSpeed: 900,
-    windup: 0.6,
-    shotInterval: 0.42,
-    fireballSpeed: 520,
-    fireballDamage: 12,
-    contactDamage: 18,
-    enrageAt: 0.5,
-    enrageSpeedMul: 1.3,
+    at: 150, // seconds into the run when the Overseer shows up (boss HP is in database.js)
+    overseerDelay: 40, // the final boss (the GOAT) arrives this long after the Overseer falls
   },
 };
 
@@ -276,7 +266,7 @@ const SECRETS = [
     name: "Mantis Blades",
     icon: 0,
     desc: "Installed at the ripperdoc: arm blades slash anything that gets close.",
-    hint: "Every runner needs a good ripperdoc.",
+    hint: "Every Individual Contributor needs a good ripperdoc.",
   },
   {
     id: "katana",

@@ -461,14 +461,14 @@ body.touch .seg.touch-only {
   margin-bottom: 0.8em;
 }
 
-/* ------------------------------------------------- Level-up cards */
+/* ------------------------------------------------- Level-up: hardware cards */
 .levelup {
   z-index: 45;
-  background: radial-gradient(ellipse at center, rgba(40, 20, 0, 0.5), rgba(5, 1, 12, 0.85));
+  background: radial-gradient(ellipse at center, rgba(40, 20, 0, 0.5), rgba(5, 1, 12, 0.88));
 }
 
 .levelup-panel {
-  width: min(100%, 62em);
+  width: min(100%, 84em);
   max-height: 100%;
   overflow-y: auto;
   touch-action: pan-y;
@@ -476,58 +476,131 @@ body.touch .seg.touch-only {
 }
 
 .levelup-panel h2 {
-  margin: 0 0 0.3em;
-  font-size: 1.8em;
+  margin: 0 0 0.25em;
+  font-size: 2.1em;
   font-weight: 400;
   color: #ffe14d;
   text-shadow: 0 0 12px #ffb000, 3px 3px 0 var(--neon-pink);
 }
 
-.levelup-panel p {
+.levelup-panel > p {
   margin: 0 0 1em;
-  font-size: 0.75em;
+  font-size: 0.8em;
   color: #f1dcff;
 }
 
+/* Always one row of three, even on phones */
 .cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1em;
+  gap: 1.3em;
+  perspective: 900px;
 }
 
+/* A card is a circuit board: PCB colour + traces, a part number silkscreen,
+   the component art, a status LED and gold contacts along the bottom. */
 .card {
+  --pcb: #0f3b2a;
+  --pcb2: #072218;
+  --trace: rgba(120, 255, 180, 0.13);
+  --accent: #5aff7a;
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.6em;
-  padding: 1.2em 0.8em 1em;
-  border: 2px solid rgba(255, 225, 77, 0.6);
-  border-radius: 10px;
-  background: var(--panel);
-  box-shadow: 0 0 16px rgba(255, 225, 77, 0.25);
-  font-size: 0.75em;
+  gap: 0.55em;
+  min-height: 25em;
+  padding: 1.1em 0.9em 2.3em;
+  border: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 6px 6px 3px 3px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 22px, var(--trace) 22px 24px, transparent 24px 46px),
+    repeating-linear-gradient(0deg, transparent 0 30px, var(--trace) 30px 32px, transparent 32px 64px),
+    linear-gradient(160deg, var(--pcb), var(--pcb2));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent), inset 0 0 22px rgba(0, 0, 0, 0.55);
+  color: #f1fff6;
+  font-size: 0.85em;
   line-height: 1.5;
   touch-action: manipulation;
-  transition: transform 0.08s;
+  transition: transform 0.12s, box-shadow 0.12s;
+  animation: card-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+.hw-gpu { --pcb: #16161e; --pcb2: #050508; --trace: rgba(255, 47, 214, 0.12); --accent: #ff2fd6; }
+.hw-cpu { --pcb: #2b2f3a; --pcb2: #12141b; --trace: rgba(25, 245, 255, 0.1); --accent: #19f5ff; }
+.hw-ram { --pcb: #0f3b2a; --pcb2: #062016; --accent: #5aff7a; }
+.hw-ssd { --pcb: #10213f; --pcb2: #070f22; --trace: rgba(80, 160, 255, 0.14); --accent: #4ea8ff; }
+.hw-nic { --pcb: #3a2a08; --pcb2: #1c1302; --trace: rgba(255, 210, 80, 0.12); --accent: #ffe14d; }
+.hw-psu { --pcb: #2e2e2e; --pcb2: #111; --trace: rgba(255, 155, 33, 0.12); --accent: #ff9b21; }
+.hw-cooler { --pcb: #0b2c3d; --pcb2: #04121b; --trace: rgba(25, 245, 255, 0.12); --accent: #19f5ff; }
+.hw-chip { --pcb: #2a0b3d; --pcb2: #12041c; --trace: rgba(176, 108, 255, 0.16); --accent: #b06cff; }
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(40px) rotateX(35deg) scale(0.9); }
 }
 
 .card:hover,
 .card:focus-visible {
   outline: none;
-  transform: translateY(-3px);
-  border-color: #ffe14d;
-  box-shadow: 0 0 24px rgba(255, 225, 77, 0.6);
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 0 22px rgba(0, 0, 0, 0.5);
 }
 
-.card.is-new {
-  border-color: rgba(255, 47, 214, 0.8);
+/* gold edge-connector */
+.hw-pins {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -2px;
+  height: 1.1em;
+  border-radius: 2px 2px 0 0;
+  background: repeating-linear-gradient(90deg, #ffd166 0 6px, #a87a12 6px 8px, transparent 8px 11px);
+  box-shadow: 0 0 8px rgba(255, 209, 102, 0.5);
+}
+.hw-cpu .hw-pins { left: 0; right: 0; height: 0.5em; background: repeating-linear-gradient(90deg, #ffd166 0 3px, transparent 3px 7px); }
+
+.hw-led {
+  position: absolute;
+  top: 0.7em;
+  right: 0.8em;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  animation: led 1.1s steps(2) infinite;
+}
+@keyframes led { 50% { opacity: 0.25; } }
+
+.hw-part {
+  max-width: 85%;
+  font-size: 0.62em;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--accent) 70%, white);
+  opacity: 0.85;
+}
+
+.hw-art {
+  width: 9.6em;
+  height: 6em;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 60%, transparent));
+}
+
+.card-icon {
+  width: 3.4em;
+  height: 3.4em;
+  margin-top: -1.6em;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background-color: rgba(5, 1, 12, 0.85);
+  image-rendering: pixelated;
 }
 
 .card-key {
   position: absolute;
-  top: 0.5em;
-  left: 0.6em;
+  top: 0.6em;
+  left: 0.7em;
   font-size: 0.8em;
   color: rgba(255, 255, 255, 0.45);
 }
@@ -536,18 +609,10 @@ body.touch .card-key {
   display: none;
 }
 
-.card-icon {
-  width: 4.2em;
-  height: 4.2em;
-  background-image: url("img/icons.png");
-  background-size: 1200% 100%;
-  background-position: calc(var(--i) * 100% / 11) 0;
-  image-rendering: pixelated;
-}
-
 .card-name {
-  color: var(--neon-cyan);
-  font-size: 1.05em;
+  color: #fff;
+  font-size: 1.1em;
+  text-shadow: 0 0 8px var(--accent);
 }
 
 .card-level {
@@ -560,43 +625,304 @@ body.touch .card-key {
 }
 
 .card-desc {
-  color: #e7dbff;
+  color: #e7f7ee;
 }
 
+.hw-tag {
+  margin-top: auto;
+  padding: 0.25em 0.6em;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  font-size: 0.65em;
+  color: var(--accent);
+}
+
+/* RARE: an overclocked part, with a rainbow edge */
+.card.rare {
+  border-color: transparent;
+  background:
+    linear-gradient(160deg, var(--pcb), var(--pcb2)) padding-box,
+    linear-gradient(120deg, #ff2fd6, #ffe14d, #19f5ff, #ff2fd6) border-box;
+  background-size: 100% 100%, 300% 300%;
+  animation: card-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1) both, rare-edge 2s linear infinite;
+  animation-delay: var(--d, 0ms), 0s;
+}
+.card.rare .hw-tag {
+  border-color: #ffe14d;
+  color: #ffe14d;
+  text-shadow: 0 0 8px #ff2fd6;
+}
+@keyframes rare-edge { to { background-position: 0 0, 300% 0; } }
+
+/* Rerolled: the new cards flip in */
+.cards.rerolled .card { animation-name: card-flip; }
+.cards.rerolled .card.rare { animation-name: card-flip, rare-edge; }
+@keyframes card-flip {
+  from { opacity: 0; transform: rotateY(90deg) scale(0.9); }
+}
+
+/* Picking a card: it slams in and lights up, the others drop away */
+.levelup.installing { animation: install-flash 0.5s ease-out; }
+@keyframes install-flash {
+  0% { background-color: rgba(255, 255, 255, 0.35); }
+  100% { background-color: transparent; }
+}
+.card.picked {
+  z-index: 2;
+  animation: card-picked 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) forwards !important;
+}
+@keyframes card-picked {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.18) translateY(-10px); box-shadow: 0 0 60px var(--accent), 0 0 120px #fff; filter: brightness(1.8); }
+  100% { transform: scale(1.1) translateY(-8px); box-shadow: 0 0 40px var(--accent); filter: brightness(1.2); }
+}
+.card.dismissed {
+  pointer-events: none;
+  animation: card-out 0.4s ease-in forwards !important;
+}
+@keyframes card-out {
+  to { opacity: 0; transform: translateY(80px) rotate(8deg) scale(0.8); filter: grayscale(1); }
+}
+.spark {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: 6px;
+  height: 18px;
+  border-radius: 3px;
+  background: linear-gradient(#fff, var(--accent));
+  box-shadow: 0 0 10px var(--accent);
+  transform: rotate(var(--a)) translateY(0);
+  animation: spark 0.5s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes spark {
+  to { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--r) * -1)) scaleY(0.3); }
+}
+.hw-installed {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  padding: 0.3em 0.6em;
+  border: 3px solid #fff;
+  border-radius: 4px;
+  background: rgba(5, 1, 12, 0.85);
+  color: #fff;
+  font-size: 1.15em;
+  text-shadow: 0 0 10px var(--accent);
+  box-shadow: 0 0 24px var(--accent);
+  transform: translate(-50%, -50%) rotate(-10deg) scale(2.5);
+  opacity: 0;
+  animation: stamp 0.25s 0.05s cubic-bezier(0.3, 1.8, 0.5, 1) forwards;
+  pointer-events: none;
+}
+@keyframes stamp {
+  to { opacity: 1; transform: translate(-50%, -50%) rotate(-10deg) scale(1); }
+}
+
+.levelup-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  margin-top: 1.1em;
+  text-align: left;
+}
+
+.reroll-btn {
+  flex: none;
+}
+.reroll-btn:disabled {
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------- THE LEGEND hologram */
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  min-width: 0;
+}
+.legend-sprite {
+  flex: none;
+  width: 5.5em;
+  height: 5.5em;
+  background: url("img/legend.png") 0 0 / 500% 100% no-repeat;
+  image-rendering: pixelated;
+  opacity: 0.88;
+  filter: sepia(1) hue-rotate(140deg) saturate(2.5) brightness(1.15) drop-shadow(0 0 8px #19f5ff);
+  -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 3px, rgba(0, 0, 0, 0.55) 3px 4px);
+  mask-image: repeating-linear-gradient(0deg, #000 0 3px, rgba(0, 0, 0, 0.55) 3px 4px);
+  animation: holo-flicker 4s infinite;
+}
+.legend.talking .legend-sprite { animation: holo-flicker 4s infinite, legend-talk 0.24s steps(1) infinite; }
+.legend.done .legend-sprite { background-position: 50% 0; }
+@keyframes legend-talk {
+  0% { background-position: 0 0; }
+  50% { background-position: 25% 0; }
+}
+@keyframes holo-flicker {
+  0%, 46%, 50%, 100% { opacity: 0.88; transform: none; }
+  47% { opacity: 0.35; transform: translateX(2px) skewX(-6deg); }
+  49% { opacity: 0.7; transform: translateX(-1px); }
+}
+.legend-bubble {
+  position: relative;
+  min-width: 0;
+  padding: 0.6em 0.8em;
+  border: 1px solid rgba(25, 245, 255, 0.6);
+  border-radius: 6px;
+  background: rgba(4, 30, 40, 0.75);
+  color: #c9fbff;
+  font-size: 0.68em;
+  line-height: 1.6;
+  box-shadow: 0 0 12px rgba(25, 245, 255, 0.3);
+}
+.legend-bubble b {
+  display: block;
+  margin-bottom: 0.2em;
+  color: var(--neon-cyan);
+  font-weight: 400;
+  font-size: 0.85em;
+}
+
+/* ------------------------------------------------- Pre-drop loadout */
+.loadout-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.8em;
+}
+.card.mini {
+  min-height: 0;
+  gap: 0.3em;
+  padding: 0.7em 0.4em 1.6em;
+  font-size: 0.62em;
+  animation: none;
+}
+.card.mini .hw-art {
+  width: 6.4em;
+  height: 4em;
+}
+.card.mini .card-icon {
+  width: 2.6em;
+  height: 2.6em;
+  margin-top: -1.2em;
+}
+.card.mini .card-desc {
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+.card.mini[aria-pressed="false"] {
+  filter: saturate(0.45) brightness(0.8);
+}
+.card.mini[aria-pressed="true"] {
+  transform: translateY(-4px);
+  box-shadow: 0 0 26px var(--accent), inset 0 0 22px rgba(0, 0, 0, 0.5);
+}
+.card.mini[aria-pressed="true"] .hw-tag {
+  border-color: #ffe14d;
+  color: #ffe14d;
+}
+.loadout-actions {
+  display: flex;
+  flex: none;
+  gap: 0.8em;
+  justify-content: center;
+}
+.loadout .levelup-panel > p b {
+  color: #ffe14d;
+}
+
+/* ------------------------------------------------- Respec */
+.respec-panel {
+  width: min(100%, 46em);
+  padding: 1.2em;
+  border: 2px solid #ffe14d;
+  border-radius: 10px;
+  background: var(--panel);
+}
+.respec-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5em 1.2em;
+  margin: 0 0 1em;
+  text-align: left;
+}
+.respec-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 0.65em;
+}
+.respec-row .card-icon {
+  width: 2.4em;
+  height: 2.4em;
+  margin: 0;
+}
+.respec-pips {
+  color: #ffe14d;
+  letter-spacing: -0.1em;
+}
+.respec-btn {
+  width: 2.2em;
+  height: 2.2em;
+  border: 1px solid var(--neon-cyan);
+  border-radius: 4px;
+  background: rgba(25, 245, 255, 0.12);
+  color: #fff;
+  font: inherit;
+}
+.respec-btn:disabled {
+  opacity: 0.3;
+}
+
+/* ------------------------------------------------- Phones */
+body.touch .levelup-panel h2 {
+  font-size: 1.5em;
+}
+body.touch .card {
+  min-height: 0;
+  padding: 0.7em 0.5em 1.8em;
+  font-size: 0.68em;
+}
+body.touch .hw-art {
+  width: 7em;
+  height: 4.4em;
+}
+body.touch .loadout-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.5em;
+}
+body.touch .card.mini .card-desc {
+  display: none;
+}
+body.touch .legend-sprite {
+  width: 4em;
+  height: 4em;
+}
 body.touch.portrait .levelup {
   position: fixed;
-  padding: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px);
-  font-size: 12px;
+  padding: calc(var(--safe-top) + 12px) 8px calc(var(--safe-bottom) + 12px);
+  font-size: 11px;
 }
-
 body.portrait .cards {
-  grid-template-columns: 1fr;
+  gap: 0.5em;
 }
-
 body.portrait .card {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas: "icon name" "icon level" "icon desc";
-  justify-items: start;
-  text-align: left;
-  gap: 0.2em 0.9em;
+  font-size: 0.6em;
 }
-
-body.portrait .card-icon {
-  grid-area: icon;
-  align-self: center;
-}
-
-body.portrait .card-name {
-  grid-area: name;
-}
-
-body.portrait .card-level {
-  grid-area: level;
-}
-
 body.portrait .card-desc {
-  grid-area: desc;
+  font-size: 0.9em;
+}
+body.portrait .loadout-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+body.portrait .levelup-foot {
+  flex-direction: column;
+}
+body.portrait .respec-list {
+  grid-template-columns: 1fr;
 }
 
 /* ------------------------------------------------- Tap mode (right side) */
@@ -837,6 +1163,24 @@ body.touch.portrait .breach {
 }
 
 /* ------------------------------------------------- Character select */
+.ic-label {
+  margin: 0 0 0.5em;
+  font-size: 0.6em;
+  letter-spacing: 0.08em;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 8px rgba(25, 245, 255, 0.6);
+}
+
+.overlay-tip {
+  margin: 0.2em 0 1em;
+  font-size: 0.6em;
+  line-height: 1.6;
+  color: #b9a6e6;
+}
+.overlay-tip:empty {
+  display: none;
+}
+
 .char-select {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

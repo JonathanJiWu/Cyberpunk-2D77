@@ -30,14 +30,20 @@ function unlockSecret(id) {
     /* storage unavailable */
   }
   const s = SECRETS.find((x) => x.id === id);
-  game.toast = { text: `SECRET FOUND: ${s.name.toUpperCase()}`, time: 3.5 };
+  neonNote(`SECRET FOUND: ${s.name.toUpperCase()}`, "#ff2fd6", 4.5);
   sfx.levelUp.play({ rate: 1.6 });
   renderSecretsList();
 }
 
-// A letterboxed, movie-style subtitle
+// Easter-egg lines show as small neon signs down the left edge of the screen,
+// out of the way of the action
 function cinematic(text, duration = 5) {
-  game.cinematic = { text, time: duration, max: duration };
+  neonNote(text, "#9ffcff", duration);
+}
+const neonNotes = [];
+function neonNote(text, color, duration = 4) {
+  neonNotes.push({ text, color, time: duration, max: duration, seed: Math.random() * 10 });
+  if (neonNotes.length > 3) neonNotes.shift();
 }
 
 function slowMo(duration, scale) {
@@ -55,7 +61,8 @@ function enemyTimeScale() {
 
 // -------------------------------------------------------------- Run state ---
 const weather = { raining: false, timer: 0, amount: 0, idle: 0, tearsDone: false, drops: [], lastCam: 0 };
-const holo = { x: EASTER.hologram.x, look: 0, done: false, pulse: 0, frame: 0, glitch: 0 };
+const holo = { x: EASTER.hologram.x, look: 0, done: false, pulse: 0, frame: 0, glitch: 0, act: "idle", actT: 0, kissCd: 3, face: 1, slice: 0 };
+const kisses = []; // hearts the billboard blows at you
 const ripper = { x: EASTER.ripperdoc.x, hold: 0, near: false };
 const terminals = EASTER.terminals.map((x) => ({ x, hold: 0, cooldown: 0, near: false }));
 const katanaPickup = { taken: false };
@@ -66,7 +73,8 @@ const slashes = [];
 function resetSecretsRun() {
   runSecrets.clear();
   Object.assign(weather, { raining: false, timer: EASTER.rain.firstAt, amount: 0, idle: 0, tearsDone: false });
-  Object.assign(holo, { look: 0, done: false, pulse: 0 });
+  Object.assign(holo, { look: 0, done: false, pulse: 0, act: "idle", actT: 0, kissCd: 3 });
+  kisses.length = 0;
   ripper.hold = 0;
   terminals.forEach((t) => Object.assign(t, { hold: 0, cooldown: 0 }));
   katanaPickup.taken = false;
@@ -155,8 +163,7 @@ function updateSecrets(dt) {
     holo.look = 0;
   }
   holo.pulse = Math.max(0, holo.pulse - dt);
-  if (Math.random() < dt * 4) holo.frame = 1 - holo.frame;
-  holo.glitch = Math.random() < 0.03 ? rand(-14, 14) : 0;
+  updateBillboard(dt, pc);
 
   // Ripperdoc: hold down at the booth to install Mantis Blades
   ripper.near = !player.mantis && onStreet && Math.abs(pc.x - ripper.x) < 90;
@@ -252,7 +259,7 @@ function updateSecrets(dt) {
   }
   for (let i = slashes.length - 1; i >= 0; i--) if ((slashes[i].life -= dt) <= 0) slashes.splice(i, 1);
   if (game.slowmo) game.slowmo.time -= dt;
-  if (game.cinematic && (game.cinematic.time -= dt) <= 0) game.cinematic = null;
+  for (let i = neonNotes.length - 1; i >= 0; i--) if ((neonNotes[i].time -= dt) <= 0) neonNotes.splice(i, 1);
   if (game.toast && (game.toast.time -= dt) <= 0) game.toast = null;
 }
 
@@ -546,42 +553,166 @@ function drawMoon() {
   }
 }
 
-// World-space things behind the action
-function drawSecretsBack(time) {
-  // The giant hologram ad
-  if (holo.x > camera.x - 400 && holo.x < camera.x + W + 400) {
-    const img = IMG.hologram;
-    const scale = 6;
-    const w = 48 * scale;
-    const h = 96 * scale;
-    const x = holo.x - w / 2 + holo.glitch;
-    const y = GROUND_Y - h - 6;
-    const boost = holo.pulse > 0 ? 0.25 : 0;
-    glow(holo.x, y + h * 0.45, 330, "rgba(255,80,200,0.35)", 0.7 + boost);
-    ctx.fillStyle = "#1d0d36";
-    ctx.fillRect(holo.x - 50, GROUND_Y - 24, 100, 24);
-    ctx.fillStyle = "#19f5ff";
-    ctx.fillRect(holo.x - 34, GROUND_Y - 26, 68, 4);
-    // projector beam
-    ctx.fillStyle = "rgba(25,245,255,0.06)";
-    ctx.beginPath();
-    ctx.moveTo(holo.x - 30, GROUND_Y - 24);
-    ctx.lineTo(x - 20, y + h * 0.1);
-    ctx.lineTo(x + w + 20, y + h * 0.1);
-    ctx.lineTo(holo.x + 30, GROUND_Y - 24);
-    ctx.fill();
-    ctx.globalAlpha = 0.62 + 0.08 * Math.sin(time * 9) + boost;
-    if (isReady(img)) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, holo.frame * 48, 0, 48, 96, x, y, w, h);
+// The giant billboard hologram: idles, waves, and when you come close she
+// turns to you and blows kisses that float over and heal a sliver of HP
+function updateBillboard(dt, pc) {
+  holo.glitch = Math.random() < 0.03 ? rand(-14, 14) : 0;
+  holo.slice = Math.random() < 0.05 ? rand(-30, 30) : holo.slice * 0.8;
+  const near = Math.abs(pc.x - holo.x) < 1100;
+  if (near) holo.face = pc.x < holo.x ? -1 : 1;
+  holo.actT += dt;
+  holo.kissCd -= dt;
+  if (holo.act === "idle") {
+    holo.frame = Math.floor(holo.actT / 0.8) % 2;
+    if (near && holo.kissCd <= 0) {
+      holo.act = "kiss";
+      holo.actT = 0;
+    } else if (holo.actT > 4 && Math.random() < dt) {
+      holo.act = "wave";
+      holo.actT = 0;
     }
-    ctx.globalAlpha = 1;
-    const tag = signSprite("COMPANION 2D77", "#ff8fe0");
-    ctx.imageSmoothingEnabled = true;
-    ctx.globalAlpha = 0.8;
-    ctx.drawImage(tag, holo.x + w / 2 - 20, y + h * 0.55, tag.width * 0.6, tag.height * 0.6);
+  } else if (holo.act === "wave") {
+    holo.frame = 2;
+    if (holo.actT > 1.2) (holo.act = "idle"), (holo.actT = 0);
+  } else {
+    // kiss: fingertips to lips, blow, wink
+    const t = holo.actT;
+    holo.frame = t < 0.5 ? 3 : t < 1.1 ? 4 : 5;
+    if (t >= 0.5 && !holo.blown) {
+      holo.blown = true;
+      const lips = billboardLips();
+      for (let i = 0; i < 3; i++) {
+        kisses.push({ x: lips.x, y: lips.y, vx: holo.face * rand(160, 320), vy: rand(-160, 40), t: 0, life: 4, frame: i % 2, spin: rand(-2, 2) });
+      }
+      sfx.pickup.play({ rate: 2 });
+    }
+    if (t > 1.9) {
+      holo.act = "idle";
+      holo.actT = 0;
+      holo.blown = false;
+      holo.kissCd = rand(5, 7.5);
+    }
+  }
+  // hearts drift, then home in on you
+  for (let i = kisses.length - 1; i >= 0; i--) {
+    const k = kisses[i];
+    k.t += dt;
+    const dx = pc.x - k.x;
+    const dy = pc.y - k.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const pull = k.t < 0.6 ? 0 : 900;
+    k.vx += (dx / d) * pull * dt - k.vx * 0.9 * dt;
+    k.vy += (dy / d) * pull * dt - k.vy * 0.9 * dt;
+    k.x += k.vx * dt;
+    k.y += k.vy * dt;
+    if (d < 46 && k.t > 0.4) {
+      kisses.splice(i, 1);
+      burst(k.x, k.y, 8, "#ff8fe0", 200);
+      player.hp = Math.min(stats.maxHp, player.hp + 1);
+      if (Math.random() < 0.3) popup("<3", k.x, k.y - 20, "#ff8fe0", 22, 0.8);
+    } else if (k.t > k.life) kisses.splice(i, 1);
+  }
+}
+
+const BILLBOARD = { scale: 5.6, fw: 96, fh: 128 };
+function billboardRect() {
+  const w = BILLBOARD.fw * BILLBOARD.scale;
+  const h = BILLBOARD.fh * BILLBOARD.scale;
+  return { x: holo.x - w / 2, y: GROUND_Y - h - 30, w, h };
+}
+function billboardLips() {
+  const r = billboardRect();
+  return { x: holo.x + holo.face * r.w * 0.04, y: r.y + r.h * 0.24 };
+}
+
+function drawBillboard(time) {
+  const img = IMG.billboard;
+  const r = billboardRect();
+  const x = r.x + holo.glitch;
+  const hue = (time * 40) % 360;
+  const boost = holo.pulse > 0 ? 0.2 : 0;
+  // projector: base unit and fanned light beams
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  [
+    ["rgba(25,245,255,0.07)", -1],
+    ["rgba(255,47,214,0.07)", 1],
+    ["rgba(176,108,255,0.05)", 0],
+  ].forEach(([color, side]) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(holo.x - 26 + side * 10, GROUND_Y - 30);
+    ctx.lineTo(r.x - 60 + side * 40, r.y + r.h * 0.05);
+    ctx.lineTo(r.x + r.w + 60 + side * 40, r.y + r.h * 0.05);
+    ctx.lineTo(holo.x + 26 + side * 10, GROUND_Y - 30);
+    ctx.fill();
+  });
+  glow(holo.x, r.y + r.h * 0.45, 460, `hsla(${hue},100%,65%,0.22)`, 0.8 + boost);
+  ctx.restore();
+  ctx.fillStyle = "#1d0d36";
+  ctx.fillRect(holo.x - 70, GROUND_Y - 30, 140, 30);
+  ctx.fillStyle = `hsl(${hue},100%,65%)`;
+  ctx.fillRect(holo.x - 54, GROUND_Y - 33, 108, 5);
+  if (isReady(img)) {
+    const sx = holo.frame * BILLBOARD.fw;
+    const flip = holo.face < 0;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    // chromatic ghosts either side, then the figure itself
+    ctx.globalAlpha = 0.28;
+    drawFrame(img, sx, 0, BILLBOARD.fw, BILLBOARD.fh, x - 7, r.y, r.w, r.h, "rgba(25,245,255,0.9)", flip);
+    drawFrame(img, sx, 0, BILLBOARD.fw, BILLBOARD.fh, x + 7, r.y, r.w, r.h, "rgba(255,47,214,0.9)", flip);
+    ctx.globalAlpha = 0.62 + 0.08 * Math.sin(time * 9) + boost;
+    drawFrame(img, sx, 0, BILLBOARD.fw, BILLBOARD.fh, x, r.y, r.w, r.h, null, flip);
+    // a glitch: one horizontal slice shoved sideways
+    if (Math.abs(holo.slice) > 4) {
+      const sliceY = Math.floor(rand(0.1, 0.9) * BILLBOARD.fh);
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(img, sx, sliceY, BILLBOARD.fw, 6, x + holo.slice, r.y + sliceY * BILLBOARD.scale, r.w, 6 * BILLBOARD.scale);
+    }
+    ctx.restore();
+    // scanlines rolling down the projection
+    ctx.fillStyle = "rgba(5,0,15,0.16)";
+    const roll = (time * 60) % 12;
+    for (let yy = r.y + roll; yy < r.y + r.h; yy += 12) ctx.fillRect(r.x, yy, r.w, 4);
+  } else if (isReady(IMG.hologram)) {
+    ctx.globalAlpha = 0.62 + 0.08 * Math.sin(time * 9) + boost;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(IMG.hologram, (holo.frame % 2) * 48, 0, 48, 96, holo.x - 144, GROUND_Y - 600, 288, 576);
     ctx.globalAlpha = 1;
   }
+  // the ad copy
+  const tag = signSprite("COMPANION 2D77", "#ff8fe0");
+  const sub = signSprite("EVERYTHING YOU WANT TO HEAR", "#19f5ff");
+  ctx.imageSmoothingEnabled = true;
+  ctx.globalAlpha = 0.85;
+  ctx.drawImage(tag, holo.x - tag.width * 0.45, r.y - 70, tag.width * 0.9, tag.height * 0.9);
+  ctx.globalAlpha = 0.55 + 0.25 * Math.sin(time * 3);
+  ctx.drawImage(sub, holo.x - sub.width * 0.3, r.y - 18, sub.width * 0.6, sub.height * 0.6);
+  ctx.globalAlpha = 1;
+}
+
+function drawKisses(time) {
+  kisses.forEach((k) => {
+    const s = 44 + 6 * Math.sin(time * 10 + k.frame);
+    glow(k.x, k.y, 40, "rgba(255,110,200,0.7)");
+    if (!drawCell("kiss", k.frame, 16, k.x, k.y, s, s, Math.sin(k.t * 3) * 0.3)) {
+      ctx.fillStyle = "#ff6fcf";
+      ctx.beginPath();
+      ctx.arc(k.x - 7, k.y - 4, 9, 0, Math.PI * 2);
+      ctx.arc(k.x + 7, k.y - 4, 9, 0, Math.PI * 2);
+      ctx.moveTo(k.x - 16, k.y);
+      ctx.lineTo(k.x, k.y + 16);
+      ctx.lineTo(k.x + 16, k.y);
+      ctx.fill();
+    }
+  });
+}
+
+// World-space things behind the action
+function drawSecretsBack(time) {
+  // The giant billboard hologram
+  if (holo.x > camera.x - 500 && holo.x < camera.x + W + 500) drawBillboard(time);
 
   // Ripperdoc booth
   if (Math.abs(ripper.x - camera.x - W / 2) < W) {
@@ -630,6 +761,7 @@ function drawPlayerTrail() {
 
 // In front of the action: slashes, doves and interaction prompts
 function drawSecretsFront(time) {
+  drawKisses(time);
   slashes.forEach((s) => {
     const k = s.life / 0.16;
     ctx.save();
@@ -700,7 +832,7 @@ function drawRain() {
   ctx.stroke();
 }
 
-// Movie-style letterbox (drawn under the HUD so health stays visible)...
+// Movie-style letterbox for boss entrances (drawn under the HUD)...
 function cinematicAmount() {
   const c = game.cinematic;
   return c ? Math.min(1, (c.max - c.time) / 0.4, c.time / 0.4) : 0;
@@ -712,11 +844,57 @@ function drawLetterbox() {
   ctx.fillRect(0, 0, W, 70 * k);
   ctx.fillRect(0, H - 96 * k, W, 96 * k);
 }
-// ...and the subtitle on top of everything
+
+// ...and the easter-egg neon signs: small, translucent, flickering tubes of
+// light stacked down the left side
+function wrapText(text, maxW) {
+  const words = text.split(" ");
+  const lines = [];
+  let line = "";
+  words.forEach((w) => {
+    const test = line ? line + " " + w : w;
+    if (line && ctx.measureText(test).width > maxW) {
+      lines.push(line);
+      line = w;
+    } else line = test;
+  });
+  if (line) lines.push(line);
+  return lines;
+}
 function drawCinematic() {
-  const k = cinematicAmount();
-  if (!k) return;
-  ctx.globalAlpha = k;
-  hudText(game.cinematic.text, W / 2, H - 48 * k, 30, "#f4ecff", "center", "middle");
+  if (!neonNotes.length) return;
+  const k = hudLayout.scale;
+  ctx.save();
+  ctx.scale(k, k);
+  const size = 17;
+  ctx.font = `${size}px ${FONT}`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  let y = (H / k) * 0.36;
+  const t = performance.now() / 1000;
+  neonNotes.forEach((n) => {
+    const lines = wrapText(n.text, 380);
+    const fade = Math.min(1, (n.max - n.time) / 0.35, n.time / 0.6);
+    // a neon tube buzzes: mostly steady, with the odd flicker
+    const flick = Math.sin(t * 37 + n.seed) > 0.96 ? 0.35 : 1;
+    const a = 0.72 * fade * flick;
+    const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 28;
+    const h = lines.length * (size + 9) + 16;
+    const x = 26 - (1 - fade) * 40;
+    ctx.globalAlpha = a * 0.45;
+    ctx.fillStyle = "#0a0216";
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = a;
+    ctx.shadowColor = n.color;
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = n.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+    ctx.fillStyle = "#f4fbff";
+    lines.forEach((l, i) => ctx.fillText(l, x + 14, y + 10 + i * (size + 9)));
+    ctx.shadowBlur = 0;
+    y += h + 12;
+  });
+  ctx.restore();
   ctx.globalAlpha = 1;
 }

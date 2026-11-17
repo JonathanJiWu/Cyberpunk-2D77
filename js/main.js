@@ -23,11 +23,17 @@ function resetGame() {
   resetPlayer();
   resetEnemies();
   resetProgress();
+  applyLoadout();
+  resetLives();
   gems.length = 0;
   powerups.length = 0;
   clearEffects();
-  Object.assign(game, { time: 0, overTime: 0, won: false, kills: 0, hurtFlash: 0, banner: null, boss: null, cinematic: null, toast: null, slowmo: null });
+  Object.assign(game, { time: 0, overTime: 0, won: false, kills: 0, hurtFlash: 0, landFlash: 0, banner: null, boss: null, cinematic: null, toast: null, slowmo: null, bossesDefeated: 0 });
+  player.hidden = false;
+  intro.active = false;
   resetSecretsRun();
+  resetBossFx();
+  resetGoat();
   breachEl.hidden = true;
   camera.x = 0;
   camera.y = 0;
@@ -36,7 +42,10 @@ function resetGame() {
 }
 
 function updateCamera(dt) {
-  const target = player.x + player.w / 2 - W / 2 + player.facing * 140;
+  let target = player.x + player.w / 2 - W / 2 + player.facing * 140;
+  // During a boss entrance, frame both of you
+  const focus = game.cinematic && game.cinematic.focus;
+  if (focus && !focus.dead) target = (player.x + player.w / 2 + focus.x + focus.w / 2) / 2 - W / 2;
   camera.x += (target - camera.x) * (1 - Math.exp(-5 * dt));
   camera.x = clamp(camera.x, 0, WORLD_W - W);
   // Follow climbs, keeping the player a bit below the middle of the screen
@@ -48,7 +57,12 @@ function update(dt) {
   game.time += dt;
   updateWorld(dt, game.time);
   refreshMouseWorld();
-  updatePlayer(dt);
+  if (bossLocked()) {
+    clearInput(); // a boss is making its entrance
+    player.invuln = Math.max(player.invuln, 0.4);
+  }
+  if (intro.active) updateIntro(dt);
+  else updatePlayer(dt);
   updateSecrets(dt);
   if (game.state !== "playing") return; // jacked into a terminal
   const edt = dt * enemyTimeScale(); // Sandevistan / slow-mo
@@ -57,6 +71,8 @@ function update(dt) {
   updatePlayerShots(dt);
   updateMissiles(dt);
   updateEnemyShots(edt);
+  updateBossFx(edt);
+  updateGoatDeath(dt);
   updatePickups(dt);
   sweepDead();
   updateEffects(dt);
@@ -64,9 +80,10 @@ function update(dt) {
   updateCamera(dt);
   game.hurtFlash = Math.max(0, game.hurtFlash - dt);
   game.hackFlash = Math.max(0, (game.hackFlash || 0) - dt);
+  game.landFlash = Math.max(0, (game.landFlash || 0) - dt);
   if (game.banner && (game.banner.time -= dt) <= 0) game.banner = null;
   if (game.state !== "playing") return; // e.g. the boss just died
-  if (player.hp <= 0) lose();
+  if (player.hp <= 0) playerDown();
   else if (progress.pending > 0) openLevelUp();
 }
 
@@ -78,7 +95,7 @@ function startGame() {
   setState("playing");
   music.setIntensity(1);
   music.play(true); // from the top
-  setTimeout(() => game.state === "playing" && say("start", null, true), 600);
+  startIntro("drop"); // the superhero landing (says the start line)
 }
 
 function pauseGame() {
@@ -138,7 +155,7 @@ function setState(state) {
       help: true,
     });
   } else if (state === "paused") {
-    showOverlay({ title: "Paused", text: "Catch your breath, the goat will wait.", button: "Resume", secondary: "Restart", help: true });
+    showOverlay({ title: "Paused", text: "Catch your breath. Hot-swap your Individual Contributor or respec below.", button: "Resume", secondary: "Restart", help: true });
   }
   // "over" shows its overlay after a short delay, see frame()
 }
@@ -148,9 +165,12 @@ function showOverlay({ title, text, button, help, secondary, stats: lines }) {
   overlayText.textContent = text;
   document.getElementById("settings").hidden = !help;
   document.getElementById("how-to").hidden = !help;
-  // Pick a runner on the start screen and after a run (not mid-run)
-  document.getElementById("char-select").hidden = game.state === "paused";
-  if (game.state !== "paused") renderCharSelect();
+  // Pick an Individual Contributor on the start screen, after a run, and
+  // (hot-swap) in the pause menu
+  renderCharSelect();
+  document.getElementById("ic-label").textContent = game.state === "paused" ? "HOT-SWAP INDIVIDUAL CONTRIBUTOR" : "CHOOSE YOUR INDIVIDUAL CONTRIBUTOR";
+  document.getElementById("respec-btn").hidden = game.state !== "paused";
+  document.getElementById("overlay-tip").textContent = game.state === "paused" ? "" : "TIP: " + HUMOR.tips[Math.floor(Math.random() * HUMOR.tips.length)];
   document.getElementById("secrets").hidden = !help && !lines;
   renderSecretsList();
   overlayStats.hidden = !lines;
@@ -177,22 +197,24 @@ function showGameOver() {
     ["Time", formatTime(game.time)],
     ["Level", String(progress.level)],
     ["Kills", String(game.kills)],
+    ["Lives used", `${Math.min(MAX_LIVES, game.livesLost + (game.won ? 0 : 1))}/${MAX_LIVES}`],
   ];
   if (runSecrets.size) lines.push(["Secrets", SECRETS.filter((s) => runSecrets.has(s.id)).map((s) => s.name).join(", ")]);
   if (game.won) {
     showOverlay({
       title: "Cyber City Is Free!",
-      text: `${CH().name}: "${CH().quotes.win}" The Demon Goat and the Overseer are scrap.`,
+      text: `${CH().name}: "${CH().quotes.win}" The Overseer and the Demon GOAT are scrap. Ship it.`,
       button: "Play Again",
       stats: lines,
     });
   } else {
     const boss = game.boss;
-    if (boss && !boss.dead) lines.push(["Goat HP left", Math.ceil((boss.hp / boss.maxHp) * 100) + "%"]);
+    if (boss && !boss.dead) lines.push([`${BOSSES[boss.type].name} HP left`, Math.ceil((boss.hp / boss.maxHp) * 100) + "%"]);
     const rain = weather.amount > 0.5;
+    const joke = HUMOR.gameOver[Math.floor(Math.random() * HUMOR.gameOver.length)];
     showOverlay({
-      title: rain ? "Like tears in rain..." : "The Goat Got Your Soul!",
-      text: rain ? "Time to die. The rain washes the street clean." : `${CH().name}: "${CH().quotes.lose}"`,
+      title: rain ? "Like tears in rain..." : director.stage >= 3 ? "The GOAT Got Your Soul!" : "Process Terminated",
+      text: rain ? "Time to die. The rain washes the street clean." : `${CH().name}: "${CH().quotes.lose}" // ${joke}`,
       button: "Try Again",
       stats: lines,
     });
@@ -203,15 +225,27 @@ function overlayPrimary() {
   // Ignore presses that were meant for the game a split-second earlier
   if (performance.now() - overlayShownAt < 400) return;
   if (game.state === "paused") resumeGame();
-  else if (game.state === "menu" || game.state === "over") startGame();
+  else if (game.state === "menu" || game.state === "over") openLoadout();
 }
 overlayBtn.addEventListener("click", overlayPrimary);
+document.getElementById("respec-btn").addEventListener("click", () => game.state === "paused" && openRespec());
 overlayBtn2.addEventListener("click", () => {
   if (performance.now() - overlayShownAt >= 400) startGame();
 });
 
 // Called by the keyboard handler first; returns true if a menu used the key
 function handleMenuKey(e) {
+  if (!loadoutEl.hidden) {
+    handleLoadoutKey(e);
+    return true;
+  }
+  if (!respecEl.hidden) {
+    if (e.code === "Escape") {
+      e.preventDefault();
+      closeRespec();
+    }
+    return true;
+  }
   if (!codexEl.hidden) {
     if (e.code === "Escape") {
       e.preventDefault();
@@ -230,7 +264,7 @@ function handleMenuKey(e) {
   if (overlay.hidden) return false;
   if (e.code === "Enter" || e.code === "Space") {
     const el = document.activeElement;
-    if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret") || el.classList.contains("char-card") || el.id === "codex-btn")) return true; // let it click
+    if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret") || el.classList.contains("char-card") || el.id === "codex-btn" || el.id === "respec-btn" || el.id === "overlay-btn-2")) return true; // let it click
     e.preventDefault();
     if (!e.repeat) overlayPrimary();
   } else if ((e.code === "Escape" || e.code === "KeyP") && game.state === "paused") {

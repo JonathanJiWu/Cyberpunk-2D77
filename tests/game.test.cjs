@@ -74,10 +74,12 @@ async function startRun(page, opts = {}) {
       s.stopLoop = () => {};
     });
     music.play = () => {};
-    Object.assign(settings, opts.settings || {});
+    // a neutral loadout (no extra weapons) unless a test picks its own
+    Object.assign(settings, { loadout: ["legs", "magnet"] }, opts.settings || {});
     applySettings();
     overlayShownAt = -1e9;
     startGame();
+    if (opts.intro !== true) skipIntro(); // land straight away
     if (opts.quiet !== false) director.firstSpawn = 1e9;
   }, opts);
 }
@@ -89,8 +91,7 @@ const fastForward = (page, seconds, bot) =>
       const botFn = bot ? new Function(bot) : null;
       for (let t = 0; t < seconds && game.state !== "over"; t += 1 / 60) {
         if (game.state === "levelup") {
-          levelUpShownAt = -1e9;
-          chooseUpgrade(0);
+          chooseUpgrade(0, true);
         }
         if (game.state === "breach") closeBreach();
         if (botFn) botFn();
@@ -119,9 +120,12 @@ const fastForward = (page, seconds, bot) =>
 
   await test("desktop: keyboard runs, jumps and fires", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // menu -> pre-drop loadout
+    await page.waitForTimeout(500);
+    await page.keyboard.press("Enter"); // loadout -> drop in
     await page.waitForTimeout(200);
     await page.evaluate(() => {
+      skipIntro();
       director.firstSpawn = 1e9;
       window.__fired = 0; // count shots as they leave (a crate may absorb them)
       const f = fireZap;
@@ -199,6 +203,186 @@ const fastForward = (page, seconds, bot) =>
       return player.heat;
     });
     assert(r === 10, "heat changed while idle: " + r);
+    await context.close();
+  });
+
+  // ------------------------------------------- Loadout, level-ups, lives ----
+  await test("pre-drop loadout: Start opens it, two picks start a level up and drop you in with a hero landing", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await page.click("#overlay-btn");
+    await page.waitForTimeout(450);
+    const shown = await page.evaluate(() => ({ open: !loadoutEl.hidden, cards: loadoutGrid.children.length, legend: document.querySelector("#legend-loadout .legend-line").textContent.length }));
+    // pick Chain Lightning and Servo Legs (replacing the defaults)
+    const ids = await page.evaluate(() => UPGRADES.map((u) => u.id));
+    await page.click(`#loadout-grid .card:nth-child(${ids.indexOf("chain") + 1})`);
+    await page.click(`#loadout-grid .card:nth-child(${ids.indexOf("legs") + 1})`);
+    const chosen = await page.evaluate(() => [...settings.loadout]);
+    await page.click("#drop-btn");
+    await page.waitForTimeout(200);
+    const drop = await page.evaluate(() => ({ state: game.state, intro: intro.active, phase: intro.phase, chain: lv("chain"), legs: lv("legs"), high: player.y < GROUND_Y - 300 }));
+    await page.waitForTimeout(2600);
+    const landed = await page.evaluate(() => ({ intro: intro.active, onGround: player.onGround, y: player.y + player.h }));
+    assert(shown.open && shown.cards === 12 && shown.legend > 0, "loadout screen: " + JSON.stringify(shown));
+    assert(chosen.includes("chain") && chosen.includes("legs") && chosen.length === 2, "loadout picks: " + chosen);
+    assert(drop.state === "playing" && drop.intro && drop.chain === 1 && drop.legs === 1 && drop.high, "drop: " + JSON.stringify(drop));
+    assert(!landed.intro && landed.onGround && landed.y === 990, "did not land: " + JSON.stringify(landed));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("level-up: loadout skills are weighted up, rare cards add 2 levels, 3 rerolls", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { loadout: ["missile", "magnet"] } });
+    const r = await page.evaluate(() => {
+      const counts = {};
+      let rare = 0;
+      let rareOk = true;
+      for (let i = 0; i < 3000; i++) {
+        rollChoices().forEach((c) => {
+          counts[c.id] = (counts[c.id] || 0) + 1;
+          if (c.rare) {
+            rare++;
+            rareOk = rareOk && upgradeInfo(c.u).max - lv(c.id) >= 2;
+          }
+        });
+      }
+      const others = UPGRADES.filter((u) => !["missile", "magnet"].includes(u.id)).map((u) => counts[u.id] || 0);
+      const avgOther = others.reduce((a, b) => a + b, 0) / others.length;
+      // a rare pick really adds two levels
+      const before = lv("orbit");
+      applyChoice({ id: "orbit", u: UPGRADES.find((u) => u.id === "orbit"), rare: true });
+      const after = lv("orbit");
+      // rerolls
+      gainXp(xpForLevel(2));
+      update(1 / 60);
+      const first = currentChoices.map((c) => c.id).join();
+      let changed = false;
+      for (let i = 0; i < 4; i++) {
+        rerollChoices();
+        changed = changed || currentChoices.map((c) => c.id).join() !== first;
+      }
+      return { pref: (counts.missile + counts.magnet) / 2, avgOther, rare, rareOk, before, after, rerolls: progress.rerolls, disabled: rerollBtn.disabled, changed, state: game.state };
+    });
+    assert(r.pref > r.avgOther * 2, "loadout skills not weighted up: " + JSON.stringify(r));
+    assert(r.rare > 0 && r.rareOk, "rare cards wrong: " + JSON.stringify(r));
+    assert(r.after === r.before + 2, "rare pick did not add 2 levels: " + JSON.stringify(r));
+    assert(r.rerolls === 0 && r.disabled && r.changed && r.state === "levelup", "rerolls: " + JSON.stringify(r));
+    await context.close();
+  });
+
+  await test("level-up: picking a card plays the install effect and holds the pause for ~0.5s", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    await page.evaluate(() => gainXp(xpForLevel(2)));
+    await page.waitForTimeout(600);
+    const r0 = await page.evaluate(() => {
+      const id = currentChoices[1].id;
+      const lv0 = lv(id);
+      document.querySelectorAll("#cards .card")[1].click();
+      return { id, lv0, lv1: lv(id), state: game.state, picked: document.querySelectorAll("#cards .card.picked").length, stamp: !!document.querySelector(".hw-installed") };
+    });
+    await page.waitForTimeout(250);
+    const mid = await page.evaluate(() => game.state);
+    await page.waitForTimeout(450);
+    const end = await page.evaluate(() => ({ state: game.state, hidden: levelUpEl.hidden }));
+    assert(r0.lv1 > r0.lv0 && r0.picked === 1 && r0.stamp, "pick did not apply/animate: " + JSON.stringify(r0));
+    assert(r0.state === "levelup" && mid === "levelup", "game resumed too early: " + mid);
+    assert(end.state === "playing" && end.hidden, "game did not resume: " + JSON.stringify(end));
+    await context.close();
+  });
+
+  await test("respec: refund every point and spend them again from the pause menu", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { loadout: ["orbit", "armor"] } });
+    await page.evaluate(() => {
+      upg.orbit = 3;
+      upg.zap = 2;
+      computeStats();
+      pauseGame();
+    });
+    await page.waitForTimeout(450);
+    await page.click("#respec-btn");
+    await page.click("#respec-reset");
+    const before = await page.evaluate(() => ({ text: respecPoints.textContent, disabled: respecApply.disabled }));
+    // put every point into Cyber Heart (max 5) and the rest into Servo Legs
+    const ids = await page.evaluate(() => UPGRADES.map((u) => u.id));
+    for (let i = 0; i < 6; i++) {
+      const plusHeart = `#respec-list .respec-row:nth-child(${ids.indexOf("heart") + 1}) .respec-btn[data-d="1"]`;
+      const plusLegs = `#respec-list .respec-row:nth-child(${ids.indexOf("legs") + 1}) .respec-btn[data-d="1"]`;
+      const heartFull = await page.evaluate((sel) => document.querySelector(sel).disabled, plusHeart);
+      const any = await page.evaluate(() => !respecApply.disabled);
+      if (any) break;
+      await page.click(heartFull ? plusLegs : plusHeart);
+    }
+    await page.click("#respec-apply");
+    const r = await page.evaluate(() => ({ upg: { ...upg }, maxHp: stats.maxHp, hidden: respecEl.hidden, state: game.state }));
+    assert(before.text.startsWith("5 / 5") && before.disabled, "respec reset: " + JSON.stringify(before));
+    assert(r.hidden && r.state === "paused", "respec did not close: " + JSON.stringify(r));
+    assert(r.upg.heart === 5 && !r.upg.orbit && !r.upg.armor && r.upg.zap === 1 && r.upg.flame === 1, "points not redistributed: " + JSON.stringify(r.upg));
+    await context.close();
+  });
+
+  await test("lives: dying rolls back to a backup twice, the third death ends the run", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      const out = [];
+      for (let life = 0; life < 3; life++) {
+        player.hp = 0;
+        update(1 / 60);
+        const snap = { lives: game.lives, state: game.state, intro: intro.active, hidden: player.hidden };
+        for (let i = 0; i < 60 * 4 && game.state === "playing"; i++) update(1 / 60);
+        snap.after = { intro: intro.active, hp: player.hp, max: stats.maxHp, onGround: player.onGround };
+        out.push(snap);
+      }
+      return { out, livesLost: game.livesLost, state: game.state };
+    });
+    const [a, b, c] = r.out;
+    assert(a.lives === 2 && a.state === "playing" && a.intro, "first death: " + JSON.stringify(a));
+    assert(!a.after.intro && a.after.hp === a.after.max && a.after.onGround, "did not redeploy: " + JSON.stringify(a.after));
+    assert(b.lives === 1 && b.state === "playing", "second death: " + JSON.stringify(b));
+    assert(c.lives === 0 && c.state === "over" && r.livesLost === 2, "third death: " + JSON.stringify(r));
+    await context.close();
+  });
+
+  await test("pause menu: hot-swap the Individual Contributor mid-run, keeping levels and lives", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "paine" } });
+    await page.evaluate(() => {
+      upg.zap = 3;
+      computeStats();
+      game.lives = 2;
+      player.hp = stats.maxHp / 2;
+      pauseGame();
+    });
+    await page.waitForTimeout(450);
+    const label = await page.evaluate(() => ({ text: document.getElementById("ic-label").textContent, cards: document.querySelectorAll(".char-card").length }));
+    await page.click(".char-card:nth-child(2)");
+    const r = await page.evaluate(() => ({ char: player.char, zap: lv("zap"), lives: game.lives, ratio: player.hp / stats.maxHp, max: stats.maxHp, saved: settings.character, state: game.state }));
+    assert(label.cards === 3 && /INDIVIDUAL CONTRIBUTOR/.test(label.text), "no IC picker in pause: " + JSON.stringify(label));
+    assert(r.char === "tetsu" && r.saved === "tetsu" && r.max === 150 && r.zap === 3 && r.lives === 2 && Math.abs(r.ratio - 0.5) < 0.02 && r.state === "paused", "hot-swap: " + JSON.stringify(r));
+    await context.close();
+  });
+
+  await test("easter eggs talk in small neon notes on the left; the billboard blows kisses that heal", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      cinematic("All those moments...", 4);
+      const notes = neonNotes.length;
+      const letterbox = cinematicAmount();
+      player.x = holo.x - 400;
+      player.hp = 20;
+      holo.kissCd = 0;
+      let blown = 0;
+      for (let i = 0; i < 60 * 5; i++) {
+        update(1 / 60);
+        blown = Math.max(blown, kisses.length);
+      }
+      return { notes, letterbox, blown, hp: player.hp };
+    });
+    assert(r.notes === 1 && r.letterbox === 0, "egg text should be a neon note, not a letterbox: " + JSON.stringify(r));
+    assert(r.blown >= 3 && r.hp > 20, "billboard kisses: " + JSON.stringify(r));
     await context.close();
   });
 
@@ -479,40 +663,70 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
-  await test("two bosses: the goat falls, the Overseer arrives and attacks, beating it wins", async () => {
+  await test("bosses: the Overseer (minions derez, no spawns, vents) then the GOAT as final boss; beating it wins", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
-    await startRun(page, { settings: { autoFire: false, autoFlame: false } });
+    await startRun(page, { quiet: false, settings: { autoFire: false, autoFlame: false } });
     const r = await page.evaluate(() => {
       const out = {};
-      spawnBoss();
-      out.goat = !!game.boss && game.boss.type === "goat" && director.stage === 1;
-      damageEnemy(game.boss, game.boss.hp + 1, { source: "test" });
-      for (let i = 0; i < 5; i++) update(1 / 60);
-      out.afterGoat = { stage: director.stage, wait: Math.round(director.nextBossAt - game.time) };
-      director.nextBossAt = game.time;
-      update(1 / 60);
+      const step = (n) => {
+        for (let i = 0; i < n && game.state !== "over"; i++) {
+          player.hp = stats.maxHp;
+          if (game.state === "levelup") chooseUpgrade(0, true);
+          update(1 / 60);
+        }
+      };
+      director.firstSpawn = 0;
+      step(240);
+      out.minionsBefore = enemies.filter((e) => !e.dead).length;
+      game.time = director.nextBossAt;
+      step(2);
       const o = game.boss;
-      out.overseer = !!o && o.type === "overseer" && director.stage === 3;
+      out.overseer = !!o && o.type === "overseer" && director.stage === 1;
+      out.locked = bossLocked();
+      out.minionsAfter = enemies.filter((e) => !e.dead && !e.boss).length;
       const states = new Set();
-      for (let i = 0; i < 60 * 25 && game.state === "playing"; i++) {
-        player.hp = stats.maxHp;
-        if (game.state === "levelup") chooseUpgrade(0);
-        update(1 / 60);
+      for (let i = 0; i < 60 * 45; i++) {
+        step(1);
         states.add(o.state);
       }
       out.states = [...states];
+      out.spawnedDuringBoss = enemies.filter((e) => !e.dead && !e.boss).length;
+      out.grounded = o.y + o.h <= GROUND_Y + 1;
       damageEnemy(o, o.hp + 1, { source: "test" });
-      for (let i = 0; i < 5; i++) update(1 / 60);
+      step(5);
+      out.afterOverseer = { stage: director.stage, wait: Math.round(director.nextBossAt - game.time), defeated: game.bossesDefeated };
+      director.nextBossAt = game.time;
+      step(2);
+      const g = game.boss;
+      out.goat = !!g && g.type === "goat" && director.stage === 3 && BOSSES.goat.title === "Final boss";
+      const gStates = new Set();
+      for (let i = 0; i < 60 * 40; i++) {
+        step(1);
+        gStates.add(g.state);
+        if (i === 60 * 20) g.hp = g.maxHp * 0.5; // into phase 2
+      }
+      out.goatStates = [...gStates];
+      out.phase = g.phase;
+      damageEnemy(g, g.hp + 1, { source: "test" });
+      step(10);
+      out.dying = !!game.goatDeath && game.state === "playing";
+      step(60 * 3);
       out.won = game.won;
       out.state = game.state;
       return out;
     });
-    assert(r.goat, "goat did not spawn");
-    assert(r.afterGoat.stage === 2 && r.afterGoat.wait > 10, "no interlude after the goat: " + JSON.stringify(r.afterGoat));
-    assert(r.overseer, "the Overseer did not arrive");
-    assert(["rings", "laser", "barrage", "summon"].filter((s) => r.states.includes(s)).length >= 3, "Overseer used too few attacks: " + r.states.join(","));
+    assert(r.minionsBefore > 0 && r.minionsAfter === 0, "minions did not derez for the boss: " + JSON.stringify(r));
+    assert(r.overseer && r.locked, "the Overseer did not make a locked entrance: " + JSON.stringify(r));
+    assert(["burst", "dash", "slam", "laser"].filter((s) => r.states.includes(s)).length >= 3, "Overseer used too few attacks: " + r.states.join(","));
     assert(!r.states.includes("laser") || r.states.includes("vent"), "the Overseer did not vent after its laser: " + r.states.join(","));
-    assert(r.won && r.state === "over", "killing the Overseer did not win: " + JSON.stringify(r));
+    assert(r.spawnedDuringBoss === 0, "minions spawned during the boss fight: " + r.spawnedDuringBoss);
+    assert(r.grounded, "the Overseer is not on the ground");
+    assert(r.afterOverseer.stage === 2 && r.afterOverseer.wait > 10 && r.afterOverseer.defeated === 1, "no interlude after the Overseer: " + JSON.stringify(r.afterOverseer));
+    assert(r.goat, "the GOAT did not arrive as the final boss");
+    assert(["charge", "leap", "breath"].filter((s) => r.goatStates.includes(s)).length >= 2, "GOAT used too few attacks: " + r.goatStates.join(","));
+    assert(r.phase >= 1 && r.goatStates.includes("roar"), "GOAT did not enrage with a roar: " + JSON.stringify(r));
+    assert(r.dying, "no death sequence for the GOAT");
+    assert(r.won && r.state === "over", "killing the GOAT did not win: " + JSON.stringify(r));
     assert(!problems.length, problems.join("; "));
     await context.close();
   });
@@ -533,7 +747,7 @@ const fastForward = (page, seconds, bot) =>
     await page.click("#codex-close");
     const closed = await page.evaluate(() => document.getElementById("codex").hidden && game.state === "menu");
     assert(open1 && closed, "codex did not open and close");
-    assert(counts.characters.all === 3, "characters: " + JSON.stringify(counts.characters));
+    assert(counts.characters.all === 3, "ICs: " + JSON.stringify(counts.characters));
     assert(counts.enemies.all === 8 && counts.enemies.locked === 8, "enemies: " + JSON.stringify(counts.enemies));
     assert(counts.bosses.all === 2 && counts.bosses.locked === 2, "bosses: " + JSON.stringify(counts.bosses));
     assert(counts.skills.all >= 10 && counts.skills.locked === 0, "skills: " + JSON.stringify(counts.skills));

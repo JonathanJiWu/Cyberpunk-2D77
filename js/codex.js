@@ -1,7 +1,7 @@
 "use strict";
 // =============================================================================
-// Menus built from the database: the character select cards and the
-// DATABASE screen (runners, enemies, bosses and skills). Enemies and bosses
+// Menus built from the database: the Individual Contributor cards and the
+// DATABASE screen (ICs, enemies, bosses and skills). Enemies and bosses
 // stay locked until you've met them.
 // =============================================================================
 
@@ -73,8 +73,11 @@ function renderCharSelect() {
     info.append(el("span", "char-kit", `${ch.primary.name} + ${ch.special.name}`));
     card.append(info);
     card.addEventListener("click", () => {
-      settings.character = id;
-      applySettings();
+      if (game.state === "paused") switchCharacter(id); // hot-swap mid-run
+      else {
+        settings.character = id;
+        applySettings();
+      }
       renderCharSelect();
     });
     charSelectEl.append(card);
@@ -159,19 +162,19 @@ function renderCodex() {
     Object.entries(BOSSES).forEach(([id, b]) => {
       const locked = !discovered.has(id);
       const card = entry(locked);
-      const img = isReady(IMG[b.img]) || !b.fallback ? b.img : b.fallback;
-      card.append(spriteCanvas(img, 0, 0, b.fw, b.fh, 120, locked));
+      const sh = isReady(IMG[b.sheet.img]) ? b.sheet : b.fallback;
+      card.append(spriteCanvas(sh.img, 0, 0, sh.fw, sh.fh, 120, locked));
       const info = el("div", "codex-info");
       if (locked) info.append(el("h3", "", `??? // ${b.title.toUpperCase()}`), el("p", "codex-lore", "Survive long enough to meet it."));
       else {
-        info.append(el("h3", "", `${b.name} // ${b.title.toUpperCase()}`), statBar("HP", b.hp / 2600, "#ff2457"));
+        info.append(el("h3", "", `${b.name} // ${b.title.toUpperCase()}`), statBar("HP", b.hp / 3200, "#ff2457"));
         info.append(el("p", "codex-kit", b.desc), el("p", "codex-lore", b.lore));
       }
       card.append(info);
       codexBody.append(card);
     });
   } else {
-    // Skills: each runner's own two, then the shared ones
+    // Skills: each IC's own two, then the shared ones
     CHARACTER_ORDER.forEach((id) => {
       const ch = CHARACTERS[id];
       [ch.primary, ch.special].forEach((u) => codexBody.append(skillEntry(u.name, u.icon, u.desc, `${ch.name} ONLY`, ch.color)));
