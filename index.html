@@ -80,6 +80,16 @@
               <button type="button" data-music="synthwave" aria-pressed="true">Darksynth</button>
               <button type="button" data-music="classic" aria-pressed="false">Original</button>
             </span>
+            <label class="setting-label" for="vol-music">Music volume</label>
+            <span class="vol">
+              <input id="vol-music" type="range" min="0" max="100" step="1" value="100" data-volume="musicVolume" />
+              <output for="vol-music">100</output>
+            </span>
+            <label class="setting-label" for="vol-sfx">SFX volume</label>
+            <span class="vol">
+              <input id="vol-sfx" type="range" min="0" max="100" step="1" value="100" data-volume="sfxVolume" />
+              <output for="vol-sfx">100</output>
+            </span>
           </div>
           <details id="how-to" class="how-to">
             <summary>How to play</summary>
