@@ -2,19 +2,88 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=, initial-scale=1.0" />
-    <title>Document</title>
-    <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0b0416" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="description"
+      content="Cyberpunk 2D77 – a fast-paced 2D action game. Battle the Demon Goat in Cyber City on desktop or mobile."
+    />
+    <title>Cyberpunk 2D77</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div class="health-container">
-      <progress id="health" value="100" max="100">HEALTH</progress>
-      <progress id="healthE" value="150" max="150"></progress>
+    <main id="game" aria-label="Cyberpunk 2D77">
+      <canvas id="canvas1">Your browser does not support the canvas element.</canvas>
+
+      <div class="hud-buttons">
+        <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z" /></svg>
+        </button>
+        <button id="btn-mute" class="icon-btn" type="button" aria-label="Mute" aria-pressed="false">
+          <svg class="icon-sound" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9h4l5-4v14l-5-4H4z" />
+            <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" />
+          </svg>
+          <svg class="icon-muted" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9h4l5-4v14l-5-4H4z" />
+            <path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" />
+          </svg>
+        </button>
+        <button id="btn-fullscreen" class="icon-btn" type="button" aria-label="Fullscreen">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" />
+          </svg>
+        </button>
+      </div>
+
+      <div id="overlay" class="overlay">
+        <div class="panel" role="dialog" aria-labelledby="overlay-title">
+          <h1 id="overlay-title">Cyberpunk 2D77</h1>
+          <p id="overlay-text">It's year 2D77. You're a Cyber Badass. Don't kiss the Demon Goat.</p>
+          <dl id="controls-help" class="controls">
+            <dt class="kb-only">WASD / Arrows</dt>
+            <dt class="touch-only">Left thumb</dt>
+            <dd>Move &amp; aim</dd>
+            <dt><span class="kb-only">J</span><span class="touch-only">ZAP</span></dt>
+            <dd>Energy ball (hold to auto-fire)</dd>
+            <dt><span class="kb-only">K</span><span class="touch-only">FLAME</span></dt>
+            <dd>Hold to catch fire: the goat can't touch you and gets burned. Watch your heat!</dd>
+            <dt><span class="kb-only">Space</span><span class="touch-only">JUMP</span></dt>
+            <dd>Jump (double jump) to hop over fireballs</dd>
+            <dt class="kb-only">P / M</dt>
+            <dd class="kb-only">Pause / mute</dd>
+          </dl>
+          <div class="overlay-actions">
+            <button id="overlay-btn" class="primary-btn" type="button">Start Game</button>
+            <button id="overlay-btn-2" class="secondary-btn" type="button" hidden>Restart</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="rotate-hint">Rotate your phone for a bigger view</p>
+    </main>
+
+    <div id="touch-controls" class="touch-controls">
+      <div id="stick-zone" class="stick-zone">
+        <div id="stick" class="stick"><div id="stick-knob" class="stick-knob"></div></div>
+      </div>
+      <div class="action-pad">
+        <button class="action-btn btn-jump" type="button" data-action="jump">JUMP</button>
+        <button class="action-btn btn-flame" type="button" data-action="flame">FLAME</button>
+        <button class="action-btn btn-zap" type="button" data-action="zap">ZAP</button>
+      </div>
     </div>
-    <canvas id="canvas1"> </canvas>
+
+    <script src="sound.js"></script>
+    <script src="app.js"></script>
   </body>
-  <script src="app.js"></script>
-  <script src="sound.js"></script>
 </html>
