@@ -92,7 +92,7 @@ function computeStats() {
   };
   // Sudo
   stats.daemon = {
-    damage: 6 + (z >= 2 ? 3 : 0) + (z >= 7 ? 3 : 0),
+    damage: 7 + (z >= 2 ? 3 : 0) + (z >= 7 ? 3 : 0),
     radius: 80 * (z >= 3 ? 1.25 : 1) * (z >= 7 ? 1.2 : 1),
     split: z >= 4,
     cooldown: 0.5 * (z >= 5 ? 0.8 : 1) * cdMul,
@@ -390,14 +390,14 @@ function updateFlame(dt) {
   if (!p.flameOn) return;
 
   const pc = centerOf(p);
-  // The aura melts enemy bullets that fly into it (each one costs a little heat)
+  // The aura melts enemy bullets that fly into it (costs heat equal to the damage blocked)
   const melt = stats.flame.radius * 0.9;
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
     if (Math.hypot(s.x - pc.x, s.y - pc.y) > melt + s.r) continue;
     enemyShots.splice(i, 1);
     burst(s.x, s.y, 5, "#ffb35a", 200);
-    p.heat = Math.max(0, p.heat - 2);
+    p.heat = Math.max(0, p.heat - (s.damage || 8));
   }
   const r = stats.flame.radius;
   enemies.forEach((e) => {
@@ -426,7 +426,15 @@ function holdAim() {
 // Auto-fire: pick the nearest enemy on screen and lead it a little
 function autoAim(range = 1150, projSpeed = TUNING.zap.speed) {
   const pc = centerOf(player);
-  const target = nearestEnemy(pc.x, pc.y, range, onScreen);
+  let target = nearestEnemy(pc.x, pc.y, range, onScreen);
+  // A boss takes priority, unless a minion is right on top of you
+  const boss = game.boss;
+  if (boss && !boss.dead && target !== boss && onScreen(boss)) {
+    const bc = centerOf(boss);
+    const tc = target && centerOf(target);
+    const close = tc && Math.hypot(tc.x - pc.x, tc.y - pc.y) < 280;
+    if (!close && Math.hypot(bc.x - pc.x, bc.y - pc.y) < range) target = boss;
+  }
   if (!target) return null;
   const c = centerOf(target);
   const t = projSpeed ? Math.min(0.6, Math.hypot(c.x - pc.x, c.y - pc.y) / projSpeed) : 0;

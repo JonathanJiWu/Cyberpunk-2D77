@@ -36,7 +36,7 @@ const TUNING = {
     ratePerSecond: 0.012, // how much faster spawning gets every second
     maxRate: 3.2,
     maxAlive: 40,
-    hpGrowth: 1 / 110, // enemy HP multiplier grows by this much per second
+    hpGrowth: 1 / 100, // enemy HP multiplier grows by this much per second
   },
   boss: {
     at: 150, // seconds into the run when the Demon Goat shows up (its HP is in database.js)
@@ -47,8 +47,8 @@ const TUNING = {
     windup: 0.6,
     shotInterval: 0.42,
     fireballSpeed: 520,
-    fireballDamage: 10,
-    contactDamage: 16,
+    fireballDamage: 12,
+    contactDamage: 18,
     enrageAt: 0.5,
     enrageSpeedMul: 1.3,
   },

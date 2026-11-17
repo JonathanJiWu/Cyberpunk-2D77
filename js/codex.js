@@ -164,7 +164,7 @@ function renderCodex() {
       const info = el("div", "codex-info");
       if (locked) info.append(el("h3", "", `??? // ${b.title.toUpperCase()}`), el("p", "codex-lore", "Survive long enough to meet it."));
       else {
-        info.append(el("h3", "", `${b.name} // ${b.title.toUpperCase()}`), statBar("HP", b.hp / 1500, "#ff2457"));
+        info.append(el("h3", "", `${b.name} // ${b.title.toUpperCase()}`), statBar("HP", b.hp / 2600, "#ff2457"));
         info.append(el("p", "codex-kit", b.desc), el("p", "codex-lore", b.lore));
       }
       card.append(info);

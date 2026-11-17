@@ -97,7 +97,7 @@ function updateDirector(dt) {
   let rate = Math.min(S.maxRate, S.startRate + t * S.ratePerSecond);
   if (director.stage === 1) rate *= 0.45;
   if (director.stage === 2) rate *= 1.15; // the calm before... no calm
-  if (director.stage === 3) rate *= 0.4;
+  if (director.stage === 3) rate *= 0.5;
   director.acc += rate * dt;
   while (director.acc >= 1) {
     director.acc -= 1;

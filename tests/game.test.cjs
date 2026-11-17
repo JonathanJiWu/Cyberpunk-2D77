@@ -282,7 +282,7 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
-  await test("Paine faces where she fires even while running the other way", async () => {
+  await test("Paine faces the firing direction even while running the other way", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { settings: { character: "paine", autoFire: false } });
     const r = await page.evaluate(() => {
@@ -511,6 +511,7 @@ const fastForward = (page, seconds, bot) =>
     assert(r.afterGoat.stage === 2 && r.afterGoat.wait > 10, "no interlude after the goat: " + JSON.stringify(r.afterGoat));
     assert(r.overseer, "the Overseer did not arrive");
     assert(["rings", "laser", "barrage", "summon"].filter((s) => r.states.includes(s)).length >= 3, "Overseer used too few attacks: " + r.states.join(","));
+    assert(!r.states.includes("laser") || r.states.includes("vent"), "the Overseer did not vent after its laser: " + r.states.join(","));
     assert(r.won && r.state === "over", "killing the Overseer did not win: " + JSON.stringify(r));
     assert(!problems.length, problems.join("; "));
     await context.close();

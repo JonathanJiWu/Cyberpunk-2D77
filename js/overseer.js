@@ -6,7 +6,9 @@
 //   laser    a telegraphed beam that sweeps across the street
 //   barrage  a fast burst of aimed shots
 //   summon   calls in drones and bombers
-// Below half health it rages: faster cycles, denser rings.
+// After every laser sweep it overheats and VENTS: it sinks low, the plates
+// open and the core takes extra damage. That's the moment to go all in.
+// Below half health it rages: faster cycles, denser rings, shorter vents.
 // =============================================================================
 
 const OVERSEER = {
@@ -14,12 +16,13 @@ const OVERSEER = {
   h: 190,
   hoverSpeed: 170,
   idle: [1.2, 0.7], // pause between attacks (normal, raging)
-  contactDamage: 20,
-  ringDamage: 9,
+  contactDamage: 24,
+  ringDamage: 12,
   ringSpeed: 330,
-  beamDamage: 16,
+  beamDamage: 22,
   beamWidth: 34,
-  barrageDamage: 8,
+  barrageDamage: 11,
+  vent: [2.8, 2.1], // seconds the core stays exposed (normal, raging)
 };
 
 function spawnOverseer() {
@@ -82,8 +85,9 @@ function updateOverseer(e, dt) {
 
   // Hover above the action, drifting toward the player
   const hoverX = clamp(pc.x - e.w / 2 + Math.sin(game.time * 0.6) * 260, 0, WORLD_W - e.w);
-  const hoverY = camera.y + (e.state === "enter" ? 140 : 110) + Math.sin(game.time * 1.3) * 30;
-  const speed = e.stun > 0 ? 0 : e.state === "laser" ? 40 : OVERSEER.hoverSpeed * (rage ? 1.3 : 1);
+  const venting = e.state === "vent";
+  const hoverY = venting ? GROUND_Y - e.h - 70 : camera.y + (e.state === "enter" ? 140 : 110) + Math.sin(game.time * 1.3) * 30;
+  const speed = e.stun > 0 ? 0 : e.state === "laser" ? 40 : OVERSEER.hoverSpeed * (rage ? 1.3 : 1) * (venting ? 2.2 : 1);
   const dx = hoverX - e.x;
   const dy = hoverY - e.y;
   const d = Math.hypot(dx, dy) || 1;
@@ -91,7 +95,7 @@ function updateOverseer(e, dt) {
   e.vx += ((dx / d) * Math.min(speed, d * 3) - e.vx) * k;
   e.vy += ((dy / d) * Math.min(speed * 2, d * 3) - e.vy) * k;
   e.x = clamp(e.x + e.vx * dt, 0, WORLD_W - e.w);
-  e.y = clamp(e.y + e.vy * dt, camera.y - 340, GROUND_Y - e.h - 200);
+  e.y = clamp(e.y + e.vy * dt, camera.y - 340, GROUND_Y - e.h - (venting ? 60 : 200));
 
   if (!rage && e.hp <= e.maxHp * 0.5) {
     e.enraged = true;
@@ -156,7 +160,10 @@ function updateOverseer(e, dt) {
           }
           if (k2 >= 1) {
             e.beam = null;
-            overseerState(e, "idle");
+            overseerState(e, "vent");
+            e.vulnT = OVERSEER.vent[rage ? 1 : 0];
+            popup("CORE EXPOSED", clamp(c.x, camera.x + 200, camera.x + W - 200), Math.max(c.y + 150, camera.y + 260), "#ffe14d", 28, 1.2);
+            sfx.chain.play({ rate: 1.4 });
           }
         }
         break;
@@ -172,6 +179,11 @@ function updateOverseer(e, dt) {
         if (e.step >= shots && e.timer <= 0) overseerState(e, "idle");
         break;
       }
+      case "vent":
+        // overheated: sink low, steam, take extra damage (vulnT), no attacks
+        if (Math.random() < 0.4) particles.push({ x: c.x + rand(-80, 80), y: c.y + rand(-60, 60), vx: rand(-60, 60), vy: rand(-180, -80), life: rand(0.4, 0.8), size: rand(8, 14), color: "#cfd8ff" });
+        if (e.stateTime > OVERSEER.vent[rage ? 1 : 0]) overseerState(e, "idle");
+        break;
       case "summon":
         if (e.step === 0) {
           ["drone", "bomber", rage ? "bomber" : "drone"].forEach((t, i) => {
@@ -187,7 +199,7 @@ function updateOverseer(e, dt) {
   }
 
   // Touching the core hurts (it hovers high, but rooftops get close)
-  if (!blind && e.stun <= 0 && overlaps(e, player) && !player.flameOn) hurtPlayer(OVERSEER.contactDamage, c.x, c.y);
+  if (!blind && e.stun <= 0 && e.state !== "vent" && overlaps(e, player) && !player.flameOn) hurtPlayer(OVERSEER.contactDamage, c.x, c.y);
 }
 
 // Is the player inside the beam? (distance from the player to the beam ray)
@@ -233,7 +245,8 @@ function drawOverseer(e, time) {
   const charging = (e.state === "laser" && !(e.beam && e.beam.on)) || (e.state === "rings" && e.step === 0);
   glow(c.x, c.y, 260, e.enraged ? "rgba(255,30,70,0.45)" : "rgba(25,245,255,0.35)");
   if (charging) glow(c.x, c.y, 120, "rgba(255,255,255,0.8)", 0.5 + 0.5 * Math.sin(time * 30));
-  const frame = e.enraged ? 3 : charging ? 2 : Math.floor(e.anim) % 2;
+  if (e.state === "vent") glow(c.x, c.y, 150, "rgba(255,225,77,0.7)", 0.6 + 0.4 * Math.sin(time * 12)); // the exposed core
+  const frame = e.state === "vent" ? 2 : e.enraged ? 3 : charging ? 2 : Math.floor(e.anim) % 2;
   let tint = null;
   if (e.hurt > 0) tint = "rgba(255,255,255,0.8)";
   else if (e.stun > 0) tint = "rgba(176,108,255,0.5)";

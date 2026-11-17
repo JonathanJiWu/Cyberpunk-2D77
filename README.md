@@ -7,15 +7,15 @@ Overview
   It's year 2D77 and you're a cyber badass running the neon streets of Cyber City. This is a side-scrolling action platformer with a Vampire Survivors style run: pick one of three runners, then fight off hordes of enemies that drop XP chips; every level-up lets you pick one of three upgrades. At 2:30 the Demon Goat shows up, and once it falls, the Overseer (the city's security AI) comes online for the final fight. It plays on desktop (keyboard and mouse) and on phones and tablets (touch).
 
 Runners
-  PAINE // Pyro Runner (120 HP). Energy Ball + Flame Aura, on HEAT. The all-rounder: fire and keep the flame lit at the same time; the flame burns everything around you and melts incoming bullets. Hot-blooded: earns heat 40% faster.
+  PAINE // Pyro Runner (110 HP). Energy Ball + Flame Aura, on HEAT. The all-rounder: fire and keep the flame lit at the same time; the flame burns everything around you and melts incoming bullets. Hot-blooded: earns heat 20% faster.
   TETSU // Chrome Ronin (150 HP, blocks 25% of all damage). Monoblade + Iaido Dash, on FOCUS. Melee: a three-hit combo whose last hit is a 360-degree finisher that breaks shields, and swings parry bullets. The dash slices through everything in its path and leaves him guarded.
-  SUDO // Netrunner (70 HP). Glitch Orb + System Overload, on RAM. The crowd-control "wizard": orbs explode in an area and slow, the overload stuns and exposes a whole crowd (and deletes their bullets), and a firewall shrugs off one hit every 10 seconds.
+  SUDO // Netrunner (80 HP). Glitch Orb + System Overload, on RAM. The crowd-control "wizard": orbs explode in an area and slow, the overload stuns and exposes a whole crowd (and deletes their bullets), and a firewall shrugs off one hit every 10 seconds.
   Each runner has their own sprite, attack animations, portrait, voice lines and upgrade path (8 levels for the primary, 6 for the special).
 
 Features
   A tall, scrolling neon city: parallax skylines, flying-car traffic, rooftops to climb, rain-slick reflections, one-way and moving platforms, and breakable supply crates
   Eight kinds of cyberpunk enemies, joining as the run goes on: Glitch Crawlers, Chrome Reapers, Security Drones, Cyber Ninjas (wind up, then dash), Mecha Wyrms, Bomber Drones (arm and explode), Enforcers (riot shield: hit them from behind, stun them, or break the guard) and Sniper Sentries (a laser sight, then a fast shot). Golden elites hit harder and drop more XP.
-  Two bosses: the Demon Goat (now with cyberware), which charges, rains fireballs and enrages at half health; then the Overseer, which fires bullet rings, sweeps a telegraphed laser across the street, fires aimed barrages and calls in drones
+  Two bosses: the Demon Goat (now with cyberware), which charges, rains fireballs and enrages at half health; then the Overseer, which fires bullet rings, sweeps a telegraphed laser across the street, fires aimed barrages and calls in drones. After each laser it overheats and sinks low with its core exposed.
   The DATABASE screen (from the menu): every runner, enemy, boss and skill. Enemies and bosses stay encrypted until you meet them.
   Your runner faces the way they're firing, with attack animations, squash and stretch on jumps and landings, dust, muzzle flashes and speech bubbles
   Level-up upgrades: 6 weapons (Energy Ball, Flame Aura, Orbit Shards, Seeker Missiles, Shock Stomp, Chain Lightning) and 6 passives (Cyber Heart, Servo Legs, Magnet Coil, Nano Armor, Heat Sink, Overclock)
@@ -63,8 +63,10 @@ How a run works
 
 Difficulty
   The curve is tuned with bot runs that play full games for each runner (auto-fire and auto special on, basic dodging):
-  bots almost always reach the goat, beat it most of the time, and win roughly 15 to 50% of runs depending on the runner.
-  The Overseer is the real test: learn its laser telegraph and jump the bullet rings.
+  the pressure ramps up (faster spawns, tougher enemies, new types, golden elites), bots almost always reach the goat,
+  beat it about 80% of the time, and win about two runs in three, with all three runners within a few points of each other.
+  The Overseer is the real test: learn its laser telegraph, jump the bullet rings, and punish it while its core is exposed.
+  With auto-fire on, your attacks prefer a boss unless a minion is right on top of you.
 
 Easter eggs
   Cyber City hides 8 secrets, little homages to the cyberpunk classics: Blade Runner, Blade Runner 2049,
