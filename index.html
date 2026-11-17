@@ -50,9 +50,11 @@
           <h1 id="overlay-title">Cyberpunk 2D77</h1>
           <p id="overlay-text">It's year 2D77. You're a Cyber Badass. Don't kiss the Demon Goat.</p>
           <dl id="overlay-stats" class="stats" hidden></dl>
+          <div id="char-select" class="char-select" role="radiogroup" aria-label="Choose your runner"></div>
           <div class="overlay-actions">
             <button id="overlay-btn" class="primary-btn" type="button">Start Game</button>
             <button id="overlay-btn-2" class="secondary-btn" type="button" hidden>Restart</button>
+            <button id="codex-btn" class="secondary-btn" type="button">Database</button>
           </div>
           <div id="settings" class="settings">
             <span class="setting-label">Auto-fire <small>(assisted aim)</small></span>
@@ -65,7 +67,7 @@
               <button type="button" data-setting="touchAim" data-value="twin">Twin-stick</button>
               <button type="button" data-setting="touchAim" data-value="tap">Tap</button>
             </span>
-            <span class="setting-label">Auto flame</span>
+            <span class="setting-label">Auto special</span>
             <span class="seg">
               <button type="button" data-setting="autoFlame" data-value="true">On</button>
               <button type="button" data-setting="autoFlame" data-value="false">Off</button>
@@ -86,9 +88,9 @@
               <dt class="kb-only">Space</dt>
               <dd class="kb-only">Jump. Press again in the air to double jump</dd>
               <dt class="kb-only">J / Left click</dt>
-              <dd class="kb-only">Energy ball. Clicking aims at the cursor</dd>
+              <dd class="kb-only">Your primary attack. Clicking aims at the cursor</dd>
               <dt class="kb-only">K / Right click</dt>
-              <dd class="kb-only">Flame (hold). Burns everything around you</dd>
+              <dd class="kb-only">Your special (Paine: hold for flame; Tetsu: dash; Sudo: hack)</dd>
               <dt class="kb-only">P / M</dt>
               <dd class="kb-only">Pause / mute</dd>
 
@@ -96,17 +98,17 @@
               <dd class="touch-only">Run. Flick up to jump, flick again in the air to double jump. Hold down on a platform to drop</dd>
               <dt class="touch-only">Right stick</dt>
               <dd class="touch-only">Twin-stick: push to aim and fire. Tap mode: tap to fire there, hold to rapid-fire</dd>
-              <dt class="touch-only">FLAME</dt>
-              <dd class="touch-only">Hold to burn everything around you</dd>
+              <dt class="touch-only">SPECIAL</dt>
+              <dd class="touch-only">The corner button. Paine's flame toggles on and off; Tetsu dashes; Sudo hacks</dd>
 
               <dt>Auto-fire</dt>
               <dd>Shoots the nearest enemy for you (aiming yourself still works)</dd>
-              <dt>Auto flame</dt>
-              <dd>Lights the flame when enemies get close and you have heat</dd>
-              <dt>Heat</dt>
-              <dd>The flame costs heat. Heat doesn't refill by itself: earn it by dealing and taking damage</dd>
+              <dt>Auto special</dt>
+              <dd>Uses your special by itself when enemies get close and you have enough of its resource</dd>
+              <dt>Heat / Focus / RAM</dt>
+              <dd>Specials cost your runner's resource. It doesn't refill by itself: earn it by dealing and taking damage</dd>
               <dt>XP</dt>
-              <dd>Grab the chips enemies drop to level up and pick an upgrade. The Demon Goat shows up at 2:30</dd>
+              <dd>Grab the chips enemies drop to level up and pick an upgrade. The Demon Goat shows up at 2:30, and something worse after it</dd>
             </dl>
           </details>
           <div id="secrets" class="secrets">
@@ -122,6 +124,22 @@
           <h2 id="levelup-title">LEVEL UP!</h2>
           <p>Choose an upgrade</p>
           <div id="cards" class="cards"></div>
+        </div>
+      </div>
+
+      <div id="codex" class="overlay codex" hidden>
+        <div class="codex-panel" role="dialog" aria-labelledby="codex-title">
+          <div class="codex-head">
+            <h2 id="codex-title">DATABASE</h2>
+            <button id="codex-close" class="secondary-btn" type="button">Close</button>
+          </div>
+          <div class="codex-tabs" role="tablist">
+            <button type="button" data-tab="characters" aria-pressed="true">Runners</button>
+            <button type="button" data-tab="enemies" aria-pressed="false">Enemies</button>
+            <button type="button" data-tab="bosses" aria-pressed="false">Bosses</button>
+            <button type="button" data-tab="skills" aria-pressed="false">Skills</button>
+          </div>
+          <div id="codex-body" class="codex-body"></div>
         </div>
       </div>
 
@@ -162,14 +180,18 @@
     <script src="js/sound.js"></script>
     <script src="js/music.js"></script>
     <script src="js/config.js"></script>
+    <script src="js/database.js"></script>
     <script src="js/core.js"></script>
     <script src="js/input.js"></script>
     <script src="js/world.js"></script>
     <script src="js/pickups.js"></script>
     <script src="js/player.js"></script>
+    <script src="js/heroes.js"></script>
     <script src="js/enemies.js"></script>
+    <script src="js/overseer.js"></script>
     <script src="js/upgrades.js"></script>
     <script src="js/secrets.js"></script>
+    <script src="js/codex.js"></script>
     <script src="js/render.js"></script>
     <script src="js/main.js"></script>
   </body>

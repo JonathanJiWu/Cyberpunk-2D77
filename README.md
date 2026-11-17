@@ -4,16 +4,24 @@ Play it: https://jonathanjiwu.github.io/Cyberpunk-2D77/
 Old site: https://cyberpunk-2d77.netlify.app
 
 Overview
-  It's year 2D77 and you're a cyber badass running the neon streets of Cyber City. This is a side-scrolling action platformer with a Vampire Survivors style run: hordes of enemies keep coming, they drop XP chips, and every level-up lets you pick one of three upgrades. Survive until 2:30 and the Demon Goat shows up for the final fight. It plays on desktop (keyboard and mouse) and on phones and tablets (touch).
+  It's year 2D77 and you're a cyber badass running the neon streets of Cyber City. This is a side-scrolling action platformer with a Vampire Survivors style run: pick one of three runners, then fight off hordes of enemies that drop XP chips; every level-up lets you pick one of three upgrades. At 2:30 the Demon Goat shows up, and once it falls, the Overseer (the city's security AI) comes online for the final fight. It plays on desktop (keyboard and mouse) and on phones and tablets (touch).
+
+Runners
+  PAINE // Pyro Runner (110 HP). Energy Ball + Flame Aura, on HEAT. The all-rounder: fire and keep the flame lit at the same time; the flame burns everything around you and melts incoming bullets. Hot-blooded: earns heat 20% faster.
+  TETSU // Chrome Ronin (150 HP, blocks 25% of all damage). Monoblade + Iaido Dash, on FOCUS. Melee: a three-hit combo whose last hit is a 360-degree finisher that breaks shields, and swings parry bullets. The dash slices through everything in its path and leaves him guarded.
+  SUDO // Netrunner (80 HP). Glitch Orb + System Overload, on RAM. The crowd-control "wizard": orbs explode in an area and slow, the overload stuns and exposes a whole crowd (and deletes their bullets), and a firewall shrugs off one hit every 10 seconds.
+  Each runner has their own sprite, attack animations, portrait, voice lines and upgrade path (8 levels for the primary, 6 for the special).
 
 Features
   A tall, scrolling neon city: parallax skylines, flying-car traffic, rooftops to climb, rain-slick reflections, one-way and moving platforms, and breakable supply crates
-  Four kinds of cyberpunk minions, melee and ranged: Glitch Crawlers, Chrome Reapers, Security Drones and Mecha Wyrms
-  The Demon Goat boss (now with cyberware), which chases you, rains fireballs and gets enraged at half health
+  Eight kinds of cyberpunk enemies, joining as the run goes on: Glitch Crawlers, Chrome Reapers, Security Drones, Cyber Ninjas (wind up, then dash), Mecha Wyrms, Bomber Drones (arm and explode), Enforcers (riot shield: hit them from behind, stun them, or break the guard) and Sniper Sentries (a laser sight, then a fast shot). Golden elites hit harder and drop more XP.
+  Two bosses: the Demon Goat (now with cyberware), which charges, rains fireballs and enrages at half health; then the Overseer, which fires bullet rings, sweeps a telegraphed laser across the street, fires aimed barrages and calls in drones. After each laser it overheats and sinks low with its core exposed.
+  The DATABASE screen (from the menu): every runner, enemy, boss and skill. Enemies and bosses stay encrypted until you meet them.
+  Your runner faces the way they're firing, with attack animations, squash and stretch on jumps and landings, dust, muzzle flashes and speech bubbles
   Level-up upgrades: 6 weapons (Energy Ball, Flame Aura, Orbit Shards, Seeker Missiles, Shock Stomp, Chain Lightning) and 6 passives (Cyber Heart, Servo Legs, Magnet Coil, Nano Armor, Heat Sink, Overclock)
   Power-ups dropped by crates and enemies: health, heat cell, Overdrive (rapid fire), Shield, Magnet and an EMP blast
-  Heat: the flame runs on heat, which only builds up when you deal or take damage (it never refills on its own)
-  Optional auto-fire with assisted aim, and optional auto flame
+  Heat / Focus / RAM: each runner's special runs on a resource that only builds up when you deal or take damage (it never refills on its own)
+  Optional auto-fire with assisted aim, and optional auto special
   Touch controls: twin-stick (left stick runs and jumps, right stick aims and fires) or tap to fire
   An original darksynth soundtrack, "Neon Inferno", generated live in the browser. It builds up, then gets nastier when the boss arrives. The original "Disconnected" track is still available in the menu.
   Scales to any screen size, portrait or landscape, with fullscreen support where available
@@ -22,9 +30,10 @@ Features
   Automated browser tests that run before every deploy
 
 Settings (start and pause menus, remembered between visits)
-  Auto-fire: the energy ball fires on its own at the nearest enemy, leading moving targets. Aiming yourself still overrides it.
+  Runner: Paine, Tetsu or Sudo (the cards at the top of the menu).
+  Auto-fire: your primary attack fires on its own at the nearest enemy, leading moving targets. Aiming yourself still overrides it.
   Manual aim (touch, when auto-fire is off): Twin-stick or Tap.
-  Auto flame: the flame lights itself when enemies get close and you have enough heat, and goes out when they're gone.
+  Auto special: Paine's flame lights when enemies or bullets get close; Tetsu dashes into nearby enemies; Sudo hacks crowds of 3+ (or a boss). Only when you have enough of the resource.
   Music: Darksynth (generated) or Original.
 
 Controls
@@ -32,8 +41,8 @@ Controls
     Run: A / D or Left / Right
     Aim: W / S or Up / Down (combine with A / D for diagonals)
     Jump: Space (press again in the air to double jump; S + Space drops through a platform)
-    Energy ball: J (hold to keep firing) or left mouse button (fires at the cursor)
-    Flame: K or right mouse button (hold). Burns everything around you and the goat can't touch you while it's lit. Costs heat.
+    Primary attack: J (hold to keep attacking) or left mouse button (aims at the cursor)
+    Special: K or right mouse button. Paine: hold for the flame. Tetsu: dash (aim with the keys or the mouse). Sudo: overload at the cursor, or the biggest crowd nearby.
     Level-up cards: 1 / 2 / 3, or arrows + Enter, or click
     Pause: P or Esc
     Mute: M
@@ -42,14 +51,22 @@ Controls
     Left stick (left half of the screen): run. Flick it up to jump, flick it up again in the air to double jump. Hold it down on a platform to drop through.
     Twin-stick: the right half of the screen is a second stick. Push it in a direction to aim and fire that way.
     Tap: tap anywhere on the right to fire toward that exact spot; keep your finger down to rapid-fire and drag to aim.
-    FLAME: the button in the bottom-right corner (hold). The ring around it shows your heat.
+    SPECIAL: the button in the bottom-right corner (FLAME / DASH / HACK). Paine's flame toggles on and off with a tap, so your right thumb stays free to aim. The ring around it shows your heat / focus / RAM.
 
 How a run works
   Enemies come from both sides of the screen, and more of them come (and tougher) as time goes on.
   Kill them to drop XP chips. Walk near the chips to pull them in (Magnet Coil pulls from further away).
-  Each level-up pauses the game and offers three upgrades. Weapons fire on their own once you have them, except the Energy Ball and Flame.
+  New enemy types join at 0:45 (ninjas), 1:20 (bombers), 1:50 (enforcers) and 2:20 (snipers), and elites get more common.
+  Each level-up pauses the game and offers three upgrades. Weapons fire on their own once you have them, except your primary and special.
   Break crates for power-ups. Crates come back after a while.
-  At 2:30 the Demon Goat arrives. Beat it to win. If your HP hits zero, the run is over.
+  At 2:30 the Demon Goat arrives. Beat it and you get a breather (and some HP back); 40 seconds later the Overseer comes online. Destroy it to win. If your HP hits zero, the run is over.
+
+Difficulty
+  The curve is tuned with bot runs that play full games for each runner (auto-fire and auto special on, basic dodging):
+  the pressure ramps up (faster spawns, tougher enemies, new types, golden elites), bots almost always reach the goat,
+  beat it about 80% of the time, and win about two runs in three, with all three runners within a few points of each other.
+  The Overseer is the real test: learn its laser telegraph, jump the bullet rings, and punish it while its core is exposed.
+  With auto-fire on, your attacks prefer a boss unless a minion is right on top of you.
 
 Easter eggs
   Cyber City hides 8 secrets, little homages to the cyberpunk classics: Blade Runner, Blade Runner 2049,
@@ -67,7 +84,9 @@ Easter eggs
 
 Tests
   npm install, then npm test. This plays the game in headless Chromium (desktop and an emulated phone):
-  controls, auto-fire, auto flame, the climbing camera, a fast-forwarded 3-minute run, some easter eggs and the soundtrack.
+  controls, auto-fire, auto special, the climbing camera, a fast-forwarded 3-minute run, character select, each runner's kit,
+  facing while firing, firing with the flame lit, the new enemies, both bosses through to a win, the DATABASE screen,
+  the touch SPECIAL button, some easter eggs and the soundtrack.
   GitHub Actions runs the same tests on every push, and only deploys if they pass.
 
 Installation & Setup
@@ -83,21 +102,25 @@ Deploying (GitHub Pages)
 Code Structure
   index.html: the page, menus, level-up screen and touch controls
   style.css: responsive layout, menus, cards and touch controls
-  js/config.js: all the balance numbers, enemy types, upgrades, power-ups and the map layout. Start here to tweak the game.
+  js/config.js: the balance numbers, upgrades, power-ups and the map layout
+  js/database.js: the DATABASE: runners (stats, kits, voice lines, lore), enemy types and bosses. Start here to tweak characters and enemies.
   js/core.js: canvas, asset loading, drawing helpers and visual effects
   js/sound.js: Web Audio sound effects (falls back to <audio>) and the original mp3 soundtrack
   js/music.js: the generated darksynth soundtrack and the music setting
   tests/game.test.cjs: the automated browser tests
   js/input.js: keyboard, mouse, joystick, buttons and tap gestures
   js/world.js: platforms, crates, the street and the shared platformer physics
-  js/player.js: movement, jumping, the energy ball, the flame and the auto weapons
-  js/enemies.js: the spawn director, enemy AI, enemy shots and the Demon Goat
+  js/player.js: movement, jumping, stats, Paine's energy ball and flame, the auto weapons and drawing the hero
+  js/heroes.js: Tetsu's and Sudo's kits, plus facing, animation, effects and speech bubbles for all three
+  js/enemies.js: the spawn director, enemy AI (ninja, bomber, enforcer, sniper...), status effects, enemy shots and the Demon Goat
+  js/overseer.js: the Overseer, the final boss
+  js/codex.js: the character select cards and the DATABASE screen
   js/pickups.js: XP chips and power-ups
   js/upgrades.js: XP, levels and the upgrade cards
   js/secrets.js: the easter eggs (rain, hologram, ripperdoc, katana, Sandevistan, camo, breach, moon)
   js/render.js: drawing the scene and the HUD
   js/main.js: game state, menus, layout and the main loop
-  tools/make_sprites.py: generates the new pixel-art sprite sheets in img/ (drone, crawler, pickups, icons, projectiles, platform, crate, skyline, ground, and the easter-egg art)
+  tools/make_sprites.py: generates the new pixel-art sprite sheets in img/ (Tetsu, Sudo, Paine's attack frames, portraits, the new enemies, the Overseer, effects, pickups, icons, the city and the easter-egg art)
 
 Credits
   Player, Demon Goat, Reaper and Dragon sprites, backgrounds and sounds are the original assets from this repository.

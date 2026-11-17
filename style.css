@@ -326,6 +326,11 @@ body.touch.state-playing .touch-controls {
     conic-gradient(rgba(255, 155, 33, 0.9) calc(var(--heat) * 360deg), rgba(255, 255, 255, 0.1) 0);
 }
 
+.btn-flame.on {
+  box-shadow: 0 0 18px rgba(255, 155, 33, 0.9);
+  filter: brightness(1.3);
+}
+
 .btn-flame.overheated {
   color: #ff3b3b;
   opacity: 0.55;
@@ -829,4 +834,223 @@ body.touch.portrait .breach {
   position: fixed;
   padding: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px);
   font-size: 12px;
+}
+
+/* ------------------------------------------------- Character select */
+.char-select {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6em;
+  margin: 0 0 1em;
+}
+
+.char-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.5em;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+  font-size: 0.6em;
+  touch-action: manipulation;
+}
+
+.char-card[aria-checked="true"] {
+  border-color: var(--c);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 14px var(--c);
+}
+
+.char-card canvas {
+  flex: none;
+  width: 4.6em;
+  height: 4.6em;
+  image-rendering: pixelated;
+}
+
+.char-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  min-width: 0;
+}
+
+.char-name {
+  color: var(--c);
+  font-size: 1.15em;
+}
+
+.char-title,
+.char-kit {
+  color: #c9b6ff;
+  font-size: 0.8em;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.75em;
+}
+
+.stat-label {
+  flex: none;
+  width: 6.2em;
+  white-space: nowrap;
+  color: #a990d6;
+}
+
+.stat-bar {
+  flex: 1;
+  height: 6px;
+  min-width: 3em;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.stat-fill {
+  display: block;
+  height: 100%;
+}
+
+body.portrait .char-select {
+  grid-template-columns: 1fr;
+}
+
+/* ------------------------------------------------- Database (codex) */
+.codex {
+  z-index: 47;
+  background: rgba(5, 1, 12, 0.88);
+}
+
+.codex-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 56em);
+  height: 100%;
+  padding: 1em 1.2em;
+  border: 2px solid var(--neon-cyan);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 0 24px rgba(25, 245, 255, 0.35);
+}
+
+.codex-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.6em;
+}
+
+.codex-head h2 {
+  margin: 0;
+  font-size: 1.3em;
+  font-weight: 400;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px var(--neon-cyan);
+}
+
+.codex-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  margin-bottom: 0.8em;
+}
+
+.codex-tabs button {
+  min-height: 36px;
+  padding: 0.5em 0.9em;
+  border: 2px solid rgba(25, 245, 255, 0.4);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.65em;
+  touch-action: manipulation;
+}
+
+.codex-tabs button[aria-pressed="true"] {
+  border-color: var(--neon-cyan);
+  background: rgba(25, 245, 255, 0.22);
+}
+
+.codex-body {
+  flex: 1;
+  overflow-y: auto;
+  touch-action: pan-y;
+  padding-right: 0.3em;
+}
+
+.codex-count {
+  margin: 0 0 0.6em;
+  font-size: 0.6em;
+  color: #ffe14d;
+}
+
+.codex-entry {
+  --c: var(--neon-pink);
+  display: flex;
+  gap: 1em;
+  margin-bottom: 0.7em;
+  padding: 0.7em;
+  border-left: 4px solid var(--c);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.codex-entry.locked {
+  --c: #3d3560;
+  opacity: 0.7;
+}
+
+.codex-sprite {
+  flex: none;
+  width: 5em;
+  height: 5em;
+  image-rendering: pixelated;
+}
+
+.codex-info {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.6em;
+  line-height: 1.6;
+}
+
+.codex-info h3 {
+  margin: 0 0 0.4em;
+  font-size: 1.15em;
+  font-weight: 400;
+  color: var(--c);
+}
+
+.codex-info p {
+  margin: 0.4em 0 0;
+}
+
+.codex-kit {
+  color: #f1dcff;
+}
+
+.codex-quote {
+  color: #ffe14d;
+}
+
+.codex-lore {
+  color: #a990d6;
+}
+
+.codex-levels {
+  margin: 0;
+  padding-left: 1.6em;
+  color: #e7dbff;
+}
+
+body.touch.portrait .codex {
+  position: fixed;
+  padding: calc(var(--safe-top) + 10px) 10px calc(var(--safe-bottom) + 10px);
+  font-size: 12px;
+}
+
+/* Touch-only controls never show on desktop (overrides display rules above) */
+body:not(.touch) .touch-only {
+  display: none !important;
 }

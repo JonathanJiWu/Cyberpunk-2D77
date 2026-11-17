@@ -26,7 +26,7 @@ function gainXp(amount) {
 }
 
 function rollChoices() {
-  const available = UPGRADES.filter((u) => lv(u.id) < u.max);
+  const available = UPGRADES.filter((u) => lv(u.id) < upgradeInfo(u).max);
   // Shuffle and take 3 (Fisher-Yates)
   for (let i = available.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -34,13 +34,30 @@ function rollChoices() {
   }
   const picks = available.slice(0, 3);
   // Everything maxed out: offer a heal instead
-  if (!picks.length) picks.push({ id: "_heal", name: "Repair Kit", icon: 6, max: 99, desc: ["Heal 40 HP."] });
+  if (!picks.length) picks.push({ id: "_heal", name: "Repair Kit", icon: 6, max: 99, desc: ["Heal 40 HP."] }); // (uses icons.png)
   return picks;
 }
 
+// The primary/special upgrades take their name, icon and text from the
+// character being played; everything else is shared.
+function upgradeInfo(u) {
+  const ch = CH();
+  const own = u.id === "zap" ? ch.primary : u.id === "flame" ? ch.special : null;
+  if (own) return { name: own.name, desc: own.desc, max: own.max, icon: own.icon };
+  return { name: u.name, desc: u.desc, max: u.max, icon: { sheet: "icons", cell: u.icon } };
+}
+
 function describe(u) {
+  const info = upgradeInfo(u);
   const next = lv(u.id) + 1;
-  return u.desc[Math.min(next - 1, u.desc.length - 1)];
+  return info.desc[Math.min(next - 1, info.desc.length - 1)].replace("{resource}", CH().resource.name.toLowerCase());
+}
+
+// CSS for showing one cell of a horizontal icon strip
+const SHEET_CELLS = { icons: 12, secrets: 8, fx: 8, pickups: 8 };
+function iconStyle(icon) {
+  const n = SHEET_CELLS[icon.sheet] || 12;
+  return `background-image:url(img/${icon.sheet}.png);background-size:${n * 100}% 100%;background-position:${(icon.cell * 100) / (n - 1)}% 0`;
 }
 
 function openLevelUp() {
@@ -55,11 +72,11 @@ function openLevelUp() {
     card.className = "card";
     card.innerHTML = `
       <span class="card-key">${i + 1}</span>
-      <span class="card-icon" style="--i:${u.icon}"></span>
+      <span class="card-icon" style="${iconStyle(upgradeInfo(u).icon)}"></span>
       <span class="card-name"></span>
       <span class="card-level">${owned ? `LV ${owned} > ${owned + 1}` : u.id === "_heal" ? "" : "NEW!"}</span>
       <span class="card-desc"></span>`;
-    card.querySelector(".card-name").textContent = u.name;
+    card.querySelector(".card-name").textContent = upgradeInfo(u).name;
     card.querySelector(".card-desc").textContent = describe(u);
     if (!owned && u.id !== "_heal") card.classList.add("is-new");
     card.addEventListener("click", () => chooseUpgrade(i));
@@ -90,7 +107,8 @@ function chooseUpgrade(i) {
   player.hp = Math.min(stats.maxHp, player.hp + LEVEL_UP_HEAL);
   const pc = centerOf(player);
   burst(pc.x, pc.y, 24, "#ffe14d", 420);
-  popup(u.name.toUpperCase(), pc.x, player.y - 40, "#ffe14d", 26, 1.3);
+  popup(upgradeInfo(u).name.toUpperCase(), pc.x, player.y - 40, "#ffe14d", 26, 1.3);
+  if (Math.random() < 0.5) say("levelUp");
   levelUpEl.hidden = true;
   setState("playing");
 }

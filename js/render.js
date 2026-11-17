@@ -23,6 +23,7 @@ function render(time) {
   drawEnemies(time);
   drawPlayer(time);
   drawPlayerProjectiles();
+  drawHeroFx(time);
   drawEnemyShots();
   drawEffects();
   drawSecretsFront(time);
@@ -40,6 +41,10 @@ function render(time) {
   // Red sky while the boss is alive
   if (game.boss && !game.boss.dead && game.state !== "over") {
     ctx.fillStyle = `rgba(255,20,60,${0.08 + 0.04 * Math.sin(time * 2)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (game.hackFlash > 0) {
+    ctx.fillStyle = `rgba(90,255,122,${game.hackFlash * 0.5})`;
     ctx.fillRect(0, 0, W, H);
   }
   if (game.hurtFlash > 0) {
@@ -192,12 +197,14 @@ function drawHUD(time) {
   // Health + heat
   const lowHp = p.hp / stats.maxHp < 0.3;
   const hpColor = lowHp && Math.sin(time * 12) > 0 ? "#ff2f6d" : "#19f5ff";
-  hudText(`LV ${progress.level}`, 44, 32, 26, "#ffe14d");
+  drawIcon("portraits", 48, CH().portrait, 44, 22, 40);
+  hudText(`${CH().name}  LV ${progress.level}`, 94, 32, 24, "#ffe14d");
   drawBar(44, 70, 440, 34, p.hp / stats.maxHp, p.ghostHp / stats.maxHp, hpColor);
   hudText(`${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
-  const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : "#ff9b21";
+  const res = CH().resource;
+  const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : res.color;
   drawBar(44, 120, 300, 18, p.heat / TUNING.heat.max, 0, heatColor);
-  hudText(p.heatLocked ? "NO HEAT" : "HEAT", 360, 120, 18, heatColor);
+  hudText(p.heatLocked ? `NO ${res.name}` : res.name, 360, 120, 18, heatColor);
 
   // Active power-ups
   let ix = 44;
@@ -234,7 +241,8 @@ function drawHUD(time) {
   UPGRADES.forEach((u) => {
     const level = lv(u.id);
     if (!level) return;
-    drawIcon("icons", 24, u.icon, ux, uy, 44);
+    const icon = upgradeInfo(u).icon;
+    drawIcon(icon.sheet, icon.sheet === "fx" ? 32 : 24, icon.cell, ux, uy, 44);
     hudText(String(level), ux + 40, uy + 30, 14, "#ffe14d", "right");
     ux += 50;
   });
@@ -243,12 +251,15 @@ function drawHUD(time) {
   hudText(formatTime(game.time), VW / 2, 34, 40, "#ffffff", "center");
   const boss = game.boss;
   if (boss && !boss.dead) {
-    hudText(boss.enraged ? "DEMON GOAT !!" : "DEMON GOAT", VW / 2, 92, 22, boss.enraged ? "#ff2457" : "#ffffff", "center");
-    drawBar(VW / 2 - 320, 124, 640, 26, boss.hp / boss.maxHp, boss.ghostHp / boss.maxHp, "#ff2457");
-  } else if (!director.bossSpawned) {
-    const left = TUNING.boss.at - game.time;
+    const name = BOSSES[boss.type].name.toUpperCase();
+    const color = boss.type === "overseer" ? "#19f5ff" : "#ff2457";
+    hudText(boss.enraged ? `${name} !!` : name, VW / 2, 92, 22, boss.enraged ? color : "#ffffff", "center");
+    drawBar(VW / 2 - 320, 124, 640, 26, boss.hp / boss.maxHp, boss.ghostHp / boss.maxHp, color);
+  } else if (director.stage === 0 || director.stage === 2) {
+    const left = director.nextBossAt - game.time;
     const urgent = left < 10 && Math.sin(time * 10) > 0;
-    hudText(`BOSS IN ${formatTime(left)}`, VW / 2, 92, 20, urgent ? "#ff2457" : "#c9b6ff", "center");
+    const label = director.stage === 0 ? "BOSS IN" : "FINAL BOSS IN";
+    hudText(`${label} ${formatTime(left)}`, VW / 2, 92, 20, urgent ? "#ff2457" : "#c9b6ff", "center");
   }
 
   // Kills (just under the pause / mute / fullscreen buttons)
@@ -264,7 +275,10 @@ function drawHUD(time) {
 
   if (game.banner) {
     ctx.globalAlpha = clamp(game.banner.time / 0.4, 0, 1);
-    hudText(game.banner.text, VW / 2, H / k / 2 - 180, 52, game.banner.color || "#ff2457", "center", "middle");
+    // shrink long banners so they always fit the screen
+    ctx.font = `52px ${FONT}`;
+    const size = Math.min(52, Math.floor((52 * (VW - 80)) / ctx.measureText(game.banner.text).width));
+    hudText(game.banner.text, VW / 2, H / k / 2 - 180, size, game.banner.color || "#ff2457", "center", "middle");
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -293,9 +307,10 @@ function drawHints(VW, VH) {
   if (game.state !== "playing" || game.time > 10) return;
   const alpha = clamp((10 - game.time) / 1.5, 0, 1);
   ctx.globalAlpha = alpha;
-  if (touchMode && settings.touchScheme === "gestures") {
-    hudText("TAP: FIRE   HOLD: RAPID FIRE   CORNER: JUMP / FLAME", VW / 2, VH - 150, 24, "#ffffff", "center");
-  } else if (!touchMode) {
+  if (touchMode) {
+    const right = settings.autoFire ? "AUTO-FIRE ON" : settings.touchAim === "tap" ? "TAP: FIRE   HOLD: RAPID FIRE" : "RIGHT STICK: AIM + FIRE";
+    hudText(`LEFT STICK: MOVE (FLICK UP: JUMP)   ${right}   CORNER: ${CH().special.label}`, VW / 2, VH - 150, 20, "#ffffff", "center");
+  } else {
     const box = { x: VW / 2 - 430, y: 250, w: 860, h: 200 };
     ctx.fillStyle = "rgba(10,3,24,0.75)";
     ctx.fillRect(box.x, box.y, box.w, box.h);
@@ -309,8 +324,8 @@ function drawHints(VW, VH) {
     [
       ["A D", "MOVE    W S  AIM"],
       ["SPACE", "JUMP x2  (S+SPACE: DROP)"],
-      ["J", "ZAP  (OR LEFT CLICK)"],
-      ["K", "FLAME (OR RIGHT CLICK)"],
+      ["J", `${CH().primary.name.toUpperCase()} (L-CLICK)`],
+      ["K", `${CH().special.name.toUpperCase()} (R-CLICK)`],
     ].forEach(([key, label], i) => {
       hudText(key, box.x + 200, box.y + 26 + i * 40, 20, "#ff9b21");
       hudText(label, box.x + 340, box.y + 26 + i * 40, 20, "#ffffff");

@@ -60,8 +60,10 @@ function update(dt) {
   updatePickups(dt);
   sweepDead();
   updateEffects(dt);
+  updateHeroFx(dt);
   updateCamera(dt);
   game.hurtFlash = Math.max(0, game.hurtFlash - dt);
+  game.hackFlash = Math.max(0, (game.hackFlash || 0) - dt);
   if (game.banner && (game.banner.time -= dt) <= 0) game.banner = null;
   if (game.state !== "playing") return; // e.g. the boss just died
   if (player.hp <= 0) lose();
@@ -76,6 +78,7 @@ function startGame() {
   setState("playing");
   music.setIntensity(1);
   music.play(true); // from the top
+  setTimeout(() => game.state === "playing" && say("start", null, true), 600);
 }
 
 function pauseGame() {
@@ -145,6 +148,9 @@ function showOverlay({ title, text, button, help, secondary, stats: lines }) {
   overlayText.textContent = text;
   document.getElementById("settings").hidden = !help;
   document.getElementById("how-to").hidden = !help;
+  // Pick a runner on the start screen and after a run (not mid-run)
+  document.getElementById("char-select").hidden = game.state === "paused";
+  if (game.state !== "paused") renderCharSelect();
   document.getElementById("secrets").hidden = !help && !lines;
   renderSecretsList();
   overlayStats.hidden = !lines;
@@ -175,8 +181,8 @@ function showGameOver() {
   if (runSecrets.size) lines.push(["Secrets", SECRETS.filter((s) => runSecrets.has(s.id)).map((s) => s.name).join(", ")]);
   if (game.won) {
     showOverlay({
-      title: "Lamb Chops for Dinna!",
-      text: "You roasted the Demon Goat. Cyber City is safe... for now.",
+      title: "Cyber City Is Free!",
+      text: `${CH().name}: "${CH().quotes.win}" The Demon Goat and the Overseer are scrap.`,
       button: "Play Again",
       stats: lines,
     });
@@ -186,7 +192,7 @@ function showGameOver() {
     const rain = weather.amount > 0.5;
     showOverlay({
       title: rain ? "Like tears in rain..." : "The Goat Got Your Soul!",
-      text: rain ? "Time to die. The rain washes the street clean." : "The streets of Cyber City claimed another runner.",
+      text: rain ? "Time to die. The rain washes the street clean." : `${CH().name}: "${CH().quotes.lose}"`,
       button: "Try Again",
       stats: lines,
     });
@@ -206,6 +212,13 @@ overlayBtn2.addEventListener("click", () => {
 
 // Called by the keyboard handler first; returns true if a menu used the key
 function handleMenuKey(e) {
+  if (!codexEl.hidden) {
+    if (e.code === "Escape") {
+      e.preventDefault();
+      closeCodex();
+    }
+    return true;
+  }
   if (game.state === "breach") {
     handleBreachKey(e);
     return true;
@@ -217,7 +230,7 @@ function handleMenuKey(e) {
   if (overlay.hidden) return false;
   if (e.code === "Enter" || e.code === "Space") {
     const el = document.activeElement;
-    if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret"))) return true; // let it click
+    if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret") || el.classList.contains("char-card") || el.id === "codex-btn")) return true; // let it click
     e.preventDefault();
     if (!e.repeat) overlayPrimary();
   } else if ((e.code === "Escape" || e.code === "KeyP") && game.state === "paused") {
@@ -328,8 +341,11 @@ function frame(now) {
       dt -= step;
     }
     if (touchMode) {
+      const special = CH().special;
       flameBtn.style.setProperty("--heat", (player.heat / TUNING.heat.max).toFixed(3));
       flameBtn.classList.toggle("overheated", player.heatLocked);
+      flameBtn.classList.toggle("on", special.hold ? input.buttons.flame : false);
+      if (flameBtn.textContent !== special.label) flameBtn.textContent = special.label;
     }
   } else if (game.state === "breach") {
     updateBreach(dt);

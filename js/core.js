@@ -56,6 +56,17 @@ loadImage("crate", "img/crate.png"); // 2 frames of 32x32
 loadImage("skyline", "img/skyline.png");
 loadImage("ground", "img/ground.png");
 loadImage("background", "img/background1.jpg");
+// Heroes, new enemies, the second boss and effects
+loadImage("tetsu", "img/tetsu.png"); // 6 rows x 4 frames of 32x48 (rows 4/5: attack)
+loadImage("sudo", "img/sudo.png"); // same layout
+loadImage("paineAttack", "img/paine-attack.png"); // 2 rows x 4 frames of 32x48
+loadImage("portraits", "img/portraits.png"); // 3 portraits of 48x48
+loadImage("ninja", "img/ninja.png"); // 4 frames of 40x48
+loadImage("enforcer", "img/enforcer.png"); // 4 frames of 56x56
+loadImage("bomber", "img/bomber.png"); // 4 frames of 32x32
+loadImage("sniper", "img/sniper.png"); // 4 frames of 40x40
+loadImage("overseer", "img/overseer.png"); // 4 frames of 96x96
+loadImage("fx", "img/fx.png"); // 8 cells of 32x32
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64
