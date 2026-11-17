@@ -541,6 +541,200 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ----------------------------------------------------- Leaderboard ----
+  const desktop = { viewport: { width: 1280, height: 720 } };
+  // End the current run with these stats and wait for the game-over screen
+  const finishRun = async (page, s) => {
+    await page.evaluate((s) => {
+      Object.assign(game, { time: s.time, kills: s.kills });
+      progress.level = s.level;
+      if (s.won) win();
+      else lose();
+    }, s);
+    await page.waitForFunction(() => game.state === "over" && !document.getElementById("overlay").hidden);
+  };
+  const seedBoard = (page, entries) => page.evaluate((list) => localStorage.setItem("cp2d77-leaderboard", JSON.stringify(list)), entries);
+  const seedEntry = (name, score, i, extra = {}) => ({ name, score, char: ["paine", "tetsu", "sudo"][i % 3], time: 30 + i * 10, kills: i, level: 1 + i, won: false, bossesDefeated: 0, livesLost: 0, date: new Date(Date.UTC(2026, 0, 1 + i)).toISOString(), ...extra });
+
+  await test("leaderboard: score formula, name cleanup and the anonymous fallback", async () => {
+    const { context, page, problems } = await open(browser, url, desktop);
+    const r = await page.evaluate(() => ({
+      base: scoreRun({ kills: 40, time: 95.9, level: 4, won: false }),
+      full: scoreRun({ kills: 300, time: 360, level: 16, won: true, bossesDefeated: 2, livesLost: 2 }),
+      floor: scoreRun({ kills: 0, time: 0, level: 1, won: false, livesLost: 3 }),
+      junk: scoreRun({ kills: "x", time: -5, level: null }),
+      name: lbCleanName("   Night  City‮ Legend 2077  "),
+      blank: lbCleanName("   \n "),
+      anon: lbFallbackName("tetsu"),
+    }));
+    assert(r.base === 40 * 10 + 95 * 2 + 3 * 50, "base score: " + r.base);
+    assert(r.full === 3000 + 720 + 750 + 2000 + 5000 - 500, "winning score: " + r.full);
+    assert(r.floor === 0 && r.junk === 0, "score went negative or NaN: " + JSON.stringify(r));
+    assert(r.name === "Night City Legen", "name not trimmed / cut to 16: " + JSON.stringify(r.name));
+    assert(r.blank === "" && r.anon === "ANON-TETSU", "fallback: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("leaderboard: finish a run, enter a name, save once: ranked and highlighted", async () => {
+    const { context, page, problems } = await open(browser, url, desktop);
+    await seedBoard(page, [seedEntry("TOP", 999999, 0, { won: true }), seedEntry("LOW", 10, 1)]);
+    await startRun(page, { settings: { character: "paine" } });
+    await finishRun(page, { time: 95.5, kills: 40, level: 4, won: false });
+    const shown = await page.evaluate(() => ({ visible: !!document.getElementById("lb-entry").offsetParent, score: document.getElementById("lb-score").textContent }));
+    assert(shown.visible && shown.score === "740", "name entry not shown with the score: " + JSON.stringify(shown));
+    await page.fill("#lb-name", "Night City Legend 2077"); // the field stops at 16
+    await page.click("#lb-save");
+    const r = await page.evaluate(() => {
+      const again = lbSaveScore(); // a second save must do nothing
+      const list = JSON.parse(localStorage.getItem("cp2d77-leaderboard"));
+      const row = document.querySelector("#lb-body .lb-new");
+      return {
+        again,
+        names: list.map((e) => e.name),
+        entry: list[1],
+        open: !document.getElementById("leaderboard").hidden,
+        rows: document.querySelectorAll("#lb-body .lb-row").length,
+        row: row && [...row.children].map((td) => td.textContent),
+        sub: document.getElementById("lb-sub").textContent,
+        saved: document.getElementById("lb-saved").textContent,
+        formHidden: document.getElementById("lb-form").hidden,
+        remembered: localStorage.getItem("cp2d77-name"),
+        state: game.state,
+      };
+    });
+    assert(r.again === 0, "saved twice");
+    assert(JSON.stringify(r.names) === JSON.stringify(["TOP", "Night City Legen", "LOW"]), "wrong order: " + r.names.join(","));
+    const e = r.entry;
+    assert(e.score === 740 && e.char === "paine" && e.kills === 40 && e.level === 4 && e.time === 95.5, "stats not stored: " + JSON.stringify(e));
+    assert(e.won === false && e.bossesDefeated === 0 && e.livesLost === 0 && !isNaN(Date.parse(e.date)), "fields missing: " + JSON.stringify(e));
+    assert(r.open && r.rows === 3, "board not shown after saving: " + JSON.stringify(r));
+    assert(r.row && r.row[0] === "2" && r.row[1].startsWith("Night City Legen") && r.row[2] === "PAINE" && r.row[3] === "740", "new row not highlighted: " + JSON.stringify(r.row));
+    assert(r.row[4] === "01:35" && r.row[5] === "40" && r.row[6] === "4" && r.row[7] === "KIA", "columns: " + JSON.stringify(r.row));
+    assert(r.sub.includes("RANK #2 OF 3") && r.saved.includes("RANK #2"), "rank not shown: " + r.sub + " / " + r.saved);
+    assert(r.formHidden && r.remembered === "Night City Legen" && r.state === "over", JSON.stringify(r));
+    await page.keyboard.press("Escape");
+    const after = await page.evaluate(() => ({ open: !document.getElementById("leaderboard").hidden, state: game.state }));
+    assert(!after.open && after.state === "over", "Escape did not close the board: " + JSON.stringify(after));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("leaderboard: saved runs survive a reload; restarting without saving saves nothing", async () => {
+    const { context, page, problems } = await open(browser, url, desktop);
+    await startRun(page, { settings: { character: "sudo" } });
+    await finishRun(page, { time: 200, kills: 120, level: 9, won: true });
+    await page.fill("#lb-name", "Persist");
+    await page.press("#lb-name", "Enter");
+    await page.reload();
+    await page.waitForTimeout(300);
+    const kept = await page.evaluate(() => lbReadBoard());
+    assert(kept.length === 1 && kept[0].name === "Persist" && kept[0].won && kept[0].char === "sudo", "run lost on reload: " + JSON.stringify(kept));
+    await page.click("#lb-btn");
+    const listed = await page.evaluate(() => [...document.querySelectorAll("#lb-body .lb-row")].map((tr) => [...tr.children].map((td) => td.textContent)));
+    assert(listed.length === 1 && listed[0][1] === "Persist" && listed[0][2] === "SUDO" && listed[0][7] === "WIN", "menu board: " + JSON.stringify(listed));
+    await page.click("#lb-close");
+    // Another run, then just restart: nothing new is saved
+    await startRun(page);
+    await finishRun(page, { time: 50, kills: 10, level: 2, won: false });
+    const prefill = await page.evaluate(() => document.getElementById("lb-name").value);
+    await page.waitForTimeout(450);
+    await page.click("#overlay-btn");
+    const r = await page.evaluate(() => ({ state: game.state, count: lbReadBoard().length, entryShown: !!document.getElementById("lb-entry").offsetParent }));
+    assert(prefill === "Persist", "last name not prefilled: " + prefill);
+    assert(r.state === "playing" && r.count === 1, "restarting saved the run: " + JSON.stringify(r));
+    assert(!r.entryShown, "name entry still visible mid-run");
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("leaderboard: Enter, P and M typed in the name field never restart, pause or mute", async () => {
+    const { context, page, problems } = await open(browser, url, desktop);
+    await startRun(page);
+    await finishRun(page, { time: 30, kills: 5, level: 2, won: false });
+    await page.waitForTimeout(450); // past the overlay's own input guard, so a leaked Enter would restart
+    const muted = await page.evaluate(() => SoundSystem.muted);
+    await page.click("#lb-name");
+    await page.fill("#lb-name", "");
+    await page.keyboard.type("pm Mp");
+    await page.keyboard.press("KeyP");
+    await page.keyboard.press("KeyM");
+    const mid = await page.evaluate(() => ({ state: game.state, muted: SoundSystem.muted, value: document.getElementById("lb-name").value, focused: document.activeElement.id }));
+    assert(mid.value === "pm Mppm" && mid.focused === "lb-name", "keys did not reach the field: " + JSON.stringify(mid));
+    assert(mid.state === "over" && mid.muted === muted, "a key leaked to the game: " + JSON.stringify(mid));
+    await page.keyboard.down("Enter");
+    const r = await page.evaluate(() => ({ state: game.state, muted: SoundSystem.muted, board: lbReadBoard().map((e) => e.name), open: !document.getElementById("leaderboard").hidden }));
+    assert(r.state === "over" && r.muted === muted, "Enter restarted or muted: " + JSON.stringify(r));
+    assert(r.open && r.board.length === 1 && r.board[0] === "pm Mppm", "Enter did not save: " + JSON.stringify(r));
+    // Keep holding it: the auto-repeats must not close the board, restart or save again
+    await page.waitForTimeout(350);
+    await page.keyboard.down("Enter");
+    await page.keyboard.down("Enter");
+    await page.keyboard.up("Enter");
+    const held = await page.evaluate(() => ({ state: game.state, open: !document.getElementById("leaderboard").hidden, count: lbReadBoard().length }));
+    assert(held.state === "over" && held.open && held.count === 1, "held Enter leaked: " + JSON.stringify(held));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("leaderboard: the menu panel opens (click and keyboard), shows the top 10, Escape and Close shut it", async () => {
+    const { context, page, problems } = await open(browser, url, desktop);
+    await page.click("#lb-btn");
+    const empty = await page.evaluate(() => ({ text: document.getElementById("lb-body").textContent, rows: document.querySelectorAll("#lb-body .lb-row").length }));
+    assert(empty.rows === 0 && empty.text.includes("No commits yet"), "empty state: " + JSON.stringify(empty));
+    await page.click("#lb-close");
+    await seedBoard(page, Array.from({ length: 12 }, (_, i) => seedEntry(i === 6 ? "<img src=x onerror=alert(1)>" : "Runner " + i, 1000 + i * 100, i, { won: i === 11 })));
+    await page.focus("#lb-btn");
+    await page.keyboard.press("Enter");
+    const r = await page.evaluate(() => ({
+      open: !document.getElementById("leaderboard").hidden,
+      state: game.state,
+      head: [...document.querySelectorAll("#lb-body th")].map((th) => th.textContent),
+      rows: [...document.querySelectorAll("#lb-body .lb-row")].map((tr) => [...tr.children].map((td) => td.textContent)),
+      injected: !!document.querySelector("#lb-body img"),
+      highlighted: document.querySelectorAll("#lb-body .lb-new").length,
+    }));
+    assert(r.open && r.state === "menu", "Enter on the button did not open the board: " + JSON.stringify(r));
+    assert(JSON.stringify(r.head) === JSON.stringify(["#", "NAME", "IC", "SCORE", "TIME", "KILLS", "LV", "RESULT"]), "columns: " + r.head.join(","));
+    assert(r.rows.length === 10, "expected the top 10, got " + r.rows.length);
+    assert(r.rows[0][0] === "1" && r.rows[0][1] === "Runner 11" && r.rows[0][2] === "SUDO" && r.rows[0][3] === "2,100" && r.rows[0][7] === "WIN", "first row: " + JSON.stringify(r.rows[0]));
+    assert(r.rows[0][4] === "02:20" && r.rows[1][7] === "KIA" && r.rows[9][1] === "Runner 2", "rows: " + JSON.stringify(r.rows));
+    assert(!r.injected && r.highlighted === 0, "names must be text only, nothing highlighted from the menu");
+    await page.keyboard.press("Escape");
+    const esc = await page.evaluate(() => ({ open: !document.getElementById("leaderboard").hidden, state: game.state, focus: document.activeElement.id }));
+    assert(!esc.open && esc.state === "menu" && esc.focus === "lb-btn", "Escape did not close it: " + JSON.stringify(esc));
+    await page.click("#lb-btn");
+    await page.click("#lb-close");
+    const closed = await page.evaluate(() => document.getElementById("leaderboard").hidden && game.state === "menu");
+    assert(closed, "Close did not close it");
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("leaderboard: still works with storage blocked", async () => {
+    const context = await browser.newContext(desktop);
+    await context.addInitScript(() => {
+      Object.defineProperty(window, "localStorage", {
+        get() {
+          throw new Error("storage blocked");
+        },
+      });
+    });
+    const page = await context.newPage();
+    const problems = [];
+    page.on("pageerror", (e) => problems.push("page error: " + e.message));
+    await page.goto(url, { waitUntil: "load" });
+    await page.waitForTimeout(300);
+    await startRun(page);
+    await finishRun(page, { time: 60, kills: 20, level: 3, won: false });
+    await page.fill("#lb-name", "Offline");
+    await page.click("#lb-save");
+    const r = await page.evaluate(() => ({ rows: [...document.querySelectorAll("#lb-body .lb-new .lb-handle")].map((n) => n.textContent), board: lbReadBoard().length }));
+    assert(r.rows[0] === "Offline" && r.board === 1, "board did not fall back to memory: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   // --------------------------------------------------------------- Phone ----
   const phone = devices["Pixel 7 landscape"];
   const touch = (cdp, type, points) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });

@@ -108,6 +108,7 @@ function endRun(won) {
     sfx.gameOver.play();
   }
   vibrate(won ? [40, 60, 40] : 200);
+  captureRun(); // leaderboard.js: score the run, ready the name entry
 }
 const win = () => endRun(true);
 const lose = () => endRun(false);
@@ -219,6 +220,7 @@ function handleMenuKey(e) {
     }
     return true;
   }
+  if (handleLeaderboardKey(e)) return true; // leaderboard panel, name entry, its buttons
   if (game.state === "breach") {
     handleBreachKey(e);
     return true;
