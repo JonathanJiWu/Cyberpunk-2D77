@@ -263,6 +263,212 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------------------- Real audio ----
+  // A separate browser with Chrome's real autoplay policy, played with real
+  // clicks and keys. Two traps make an audio test pass when audio is broken:
+  //  - Chromium's "--autoplay-policy=user-gesture-required" only gates Web
+  //    Audio in cross-origin iframes: a same-origin AudioContext starts
+  //    "running" with no gesture at all. Desktop Chrome's default policy,
+  //    "document-user-activation-required", is the one that blocks it.
+  //  - Playwright runs page.evaluate() as a user gesture, which unlocks audio
+  //    by itself. So nothing is evaluated before the real click / key press.
+  const strictBrowser = await chromium.launch({ args: ["--autoplay-policy=document-user-activation-required"] });
+  // Logs the game's AudioContext states, plus a probe made at load (before
+  // any gesture) that shows the policy is really enforced.
+  const AUDIO_SPY = `(() => {
+    const Ctx = window.AudioContext;
+    window.AudioContext = class extends Ctx {
+      constructor(...args) {
+        super(...args);
+        console.debug("[audio] " + this.state);
+        this.addEventListener("statechange", () => console.debug("[audio] " + this.state));
+      }
+    };
+    addEventListener("load", () => {
+      const probe = new Ctx();
+      console.debug("[probe] " + probe.state);
+      probe.close();
+    });
+  })();`;
+  async function openStrict(contextOptions = { viewport: { width: 1280, height: 720 } }) {
+    const context = await strictBrowser.newContext(contextOptions);
+    const page = await context.newPage();
+    const log = [];
+    page.on("console", (m) => log.push(m.text()));
+    page.on("pageerror", (e) => log.push("page error: " + e.message));
+    await page.addInitScript(AUDIO_SPY);
+    await page.goto(url, { waitUntil: "load" });
+    await page.waitForTimeout(450);
+    return { context, page, log };
+  }
+  // Waits for a console line without touching the page
+  async function waitForLog(log, line, ms = 3000) {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 50))) if (log.includes(line)) return true;
+    return false;
+  }
+  // Loudest RMS reaching the speakers (an AnalyserNode on the master bus)
+  // over `ms` of real time, while `during` runs
+  async function masterRms(page, ms = 400, during) {
+    await page.evaluate(() => {
+      if (window.__an) SoundSystem.master.disconnect(window.__an);
+      const an = (window.__an = SoundSystem.ctx.createAnalyser());
+      an.fftSize = 2048;
+      SoundSystem.master.connect(an);
+      const buf = new Float32Array(an.fftSize);
+      window.__rms = 0;
+      clearInterval(window.__rmsTimer);
+      window.__rmsTimer = setInterval(() => {
+        an.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (const v of buf) sum += v * v;
+        window.__rms = Math.max(window.__rms, Math.sqrt(sum / buf.length));
+      }, 20);
+    });
+    if (during) await during();
+    await page.waitForTimeout(ms);
+    return page.evaluate(() => (clearInterval(window.__rmsTimer), window.__rms));
+  }
+
+  await test("Chrome autoplay policy: a real click or Enter starts the game with the AudioContext running", async () => {
+    for (const how of ["click", "Enter"]) {
+      const { context, page, log } = await openStrict();
+      assert(log.includes("[probe] suspended"), "autoplay policy not enforced, the test would prove nothing: " + log.join(" | "));
+      assert(!log.some((l) => l.startsWith("[audio]")), `${how}: an AudioContext was made before any gesture`);
+      if (how === "click") await page.click("#overlay-btn");
+      else await page.keyboard.press("Enter");
+      assert(await waitForLog(log, "[audio] running"), `${how}: the AudioContext never ran: ` + log.join(" | "));
+      const r = await page.evaluate(() => ({ state: game.state, ctx: SoundSystem.ctx.state }));
+      assert(r.state === "playing" && r.ctx === "running", `${how}: ` + JSON.stringify(r));
+      assert(!log.some((l) => l.startsWith("page error")), log.join(" | "));
+      await context.close();
+    }
+  });
+
+  await test("real audio: the music and a shot are audible on the master bus", async () => {
+    const { context, page, log } = await openStrict();
+    await page.click("#overlay-btn");
+    assert(await waitForLog(log, "[audio] running"), "the AudioContext never ran");
+    await page.evaluate(() => (director.firstSpawn = 1e9)); // no enemies: their shots make sounds too
+    await page.waitForFunction(() => sfx.energy.buffer, null, { timeout: 3000 });
+    const musicRms = await masterRms(page, 500);
+    assert(musicRms > 0.02, "the music is silent: " + musicRms);
+    await page.evaluate(() => music.pause());
+    await page.waitForTimeout(500); // let it fade out
+    const quiet = await masterRms(page, 300);
+    const shot = await masterRms(page, 400, async () => {
+      await page.keyboard.down("KeyJ");
+      await page.waitForTimeout(200);
+      await page.keyboard.up("KeyJ");
+    });
+    assert(quiet < 0.005, "still loud with the music off: " + quiet);
+    assert(shot > 0.01, "the shot was silent: " + shot);
+    await context.close();
+  });
+
+  await test("real audio keeps working through pause, a hidden tab, a boss, level-up and game over", async () => {
+    const { context, page, log } = await openStrict();
+    await page.click("#overlay-btn");
+    assert(await waitForLog(log, "[audio] running"), "the AudioContext never ran");
+    await page.evaluate(() => (director.firstSpawn = 1e9));
+    const rms = {};
+    await page.waitForFunction(() => Object.values(sfx).every((s) => s.buffer), null, { timeout: 3000 });
+    await page.keyboard.press("KeyP");
+    await page.waitForTimeout(500); // menus ignore clicks for 400 ms after opening
+    await page.click("#overlay-btn"); // Resume
+    rms.resumed = await masterRms(page);
+    // Tab hidden: the game pauses and the browser suspends the context; back
+    // in view, Resume must bring the sound back
+    await page.evaluate(async () => {
+      const setHidden = (hidden) => {
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+        document.dispatchEvent(new Event("visibilitychange"));
+      };
+      setHidden(true);
+      await SoundSystem.ctx.suspend();
+      setHidden(false);
+    });
+    await page.waitForTimeout(500);
+    await page.click("#overlay-btn");
+    rms.afterHidden = await masterRms(page);
+    await page.evaluate(() => music.setIntensity(2)); // what the bosses do
+    rms.boss = await masterRms(page);
+    await page.evaluate(() => (progress.pending = 1)); // the next frame opens the level-up cards
+    await page.waitForTimeout(200);
+    const levelup = await page.evaluate(() => game.state);
+    rms.levelup = await masterRms(page);
+    await page.evaluate(() => endRun(false));
+    rms.gameOver = await masterRms(page, 500); // the game-over sting
+    await page.waitForTimeout(1200); // the game-over menu opens after 0.9 s
+    await page.click("#overlay-btn"); // Try Again
+    rms.restarted = await masterRms(page);
+    const ctx = await page.evaluate(() => SoundSystem.ctx.state);
+    assert(levelup === "levelup", "level-up screen did not open: " + levelup);
+    assert(ctx === "running", "context ended up " + ctx);
+    for (const [when, level] of Object.entries(rms)) assert(level > 0.02, `silent ${when}: ` + JSON.stringify(rms));
+    await context.close();
+  });
+
+  await test("volume sliders set the music and SFX gains, persist across a reload, and mute still works on top", async () => {
+    const { context, page, log } = await openStrict();
+    const musicSlider = await page.$("#vol-music");
+    await musicSlider.scrollIntoViewIfNeeded();
+    const box = await musicSlider.boundingBox();
+    await page.mouse.click(box.x + box.width * 0.3, box.y + box.height / 2); // real click on the track
+    await page.focus("#vol-sfx");
+    await page.keyboard.press("Home");
+    for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(250); // the gains glide over a few ms
+    const read = () =>
+      page.evaluate(() => ({
+        music: settings.musicVolume,
+        sfx: settings.sfxVolume,
+        sliders: [+document.getElementById("vol-music").value, +document.getElementById("vol-sfx").value],
+        musicGain: SoundSystem.musicBus && SoundSystem.musicBus.gain.value,
+        sfxGain: SoundSystem.sfxBus && SoundSystem.sfxBus.gain.value,
+        master: SoundSystem.master && SoundSystem.master.gain.value,
+        saved: JSON.parse(localStorage.getItem("cp2d77-settings") || "{}"),
+      }));
+    const a = await read();
+    assert(a.music > 5 && a.music < 60 && a.sfx === 5, "sliders did not move: " + JSON.stringify(a));
+    assert(Math.abs(a.musicGain - (a.music / 100) ** 2) < 0.01, "music gain does not follow its slider: " + JSON.stringify(a));
+    assert(Math.abs(a.sfxGain - 0.0025) < 0.001, "SFX gain does not follow its slider: " + JSON.stringify(a));
+    assert(a.saved.musicVolume === a.music && a.saved.sfxVolume === 5, "not saved: " + JSON.stringify(a.saved));
+
+    log.length = 0;
+    await page.reload();
+    await page.waitForTimeout(450);
+    const b = await read();
+    assert(b.music === a.music && b.sfx === 5 && b.sliders[0] === a.music && b.sliders[1] === 5, "lost on reload: " + JSON.stringify(b));
+    await page.click("#overlay-btn");
+    assert(await waitForLog(log, "[audio] running"), "the AudioContext never ran after the reload");
+    await page.evaluate(() => (director.firstSpawn = 1e9));
+    await page.waitForTimeout(250);
+    const c = await read();
+    assert(Math.abs(c.musicGain - (a.music / 100) ** 2) < 0.01 && Math.abs(c.sfxGain - 0.0025) < 0.001, "saved volume not applied: " + JSON.stringify(c));
+
+    // M mutes everything on top of the sliders...
+    await page.keyboard.press("KeyM");
+    await page.waitForTimeout(100);
+    const mutedRms = await masterRms(page, 300);
+    const d = await read();
+    assert(d.master < 0.01 && mutedRms < 0.001, `mute did not silence: ${mutedRms} ` + JSON.stringify(d));
+    assert(Math.abs(d.musicGain - c.musicGain) < 0.01, "mute moved the music volume");
+    // ...the menu says so, and moving a slider unmutes
+    await page.keyboard.press("KeyP");
+    await page.waitForTimeout(200);
+    const badge = await page.evaluate(() => getComputedStyle(document.querySelector(".vol"), "::after").content);
+    assert(badge.includes("MUTED"), "the menu does not show the mute: " + badge);
+    const pausedSlider = await page.$("#vol-music"); // the page was reloaded
+    await pausedSlider.scrollIntoViewIfNeeded();
+    const box2 = await pausedSlider.boundingBox();
+    await page.mouse.click(box2.x + box2.width * 0.8, box2.y + box2.height / 2);
+    await page.waitForTimeout(250);
+    const e = await page.evaluate(() => ({ muted: SoundSystem.muted, master: SoundSystem.master.gain.value, button: document.getElementById("btn-mute").getAttribute("aria-pressed") }));
+    assert(!e.muted && e.master > 0.99 && e.button === "false", "moving a slider did not unmute: " + JSON.stringify(e));
+    await context.close();
+  });
+  await strictBrowser.close();
+
 
   // ------------------------------------------------------ Characters ----
   await test("character select: three runners, the choice persists and sets the kit", async () => {
