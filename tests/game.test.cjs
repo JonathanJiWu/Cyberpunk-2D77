@@ -434,6 +434,139 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // Jack in: read the breach terminal the way a player reads the screen
+  const breachView = (page) =>
+    page.evaluate(() => {
+      const p = breach.pick;
+      const k = breach.crack;
+      return {
+        state: game.state,
+        stage: breach.stage,
+        mode: breach.mode,
+        done: breach.done,
+        // pick: past the anti-mash grace; crack: the char glows green for a while yet
+        ready: p ? p.grace <= 0 : k ? k.grace <= 0 && k.lockout <= 0 && k.match && k.phaseT > 0.15 : true,
+        cursor: p ? p.cursor : -1,
+        flagged: p && breach.stage === "exploit" ? breach.services.findIndex((s) => s.ok) : -1,
+      };
+    });
+  // Plays the whole hack; `act` performs one input for the current view
+  async function playBreach(page, act) {
+    const stages = new Set();
+    for (let i = 0; i < 900; i++) {
+      const v = await breachView(page);
+      if (v.state !== "breach") return stages;
+      stages.add(v.stage);
+      if (v.done || (!v.ready && (v.mode === "pick" || v.mode === "crack"))) await page.waitForTimeout(v.mode === "crack" ? 20 : 60);
+      else await act(v, i);
+    }
+    throw new Error("the hack never finished");
+  }
+
+  await test("jack in (keyboard only): nmap, exploit the CVE, crack, sudo, upload OVERCLOCK", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "paine" } });
+    await page.evaluate(() => openBreach(terminals[0]));
+    const started = Date.now();
+    const stages = await playBreach(page, async (v, i) => {
+      if (v.mode === "pick") {
+        const want = v.stage === "payload" ? 2 : v.flagged; // OVERCLOCK, or the service with the CVE
+        await page.keyboard.press(v.cursor < want ? "ArrowDown" : v.cursor > want ? "ArrowUp" : "Enter");
+      } else if (v.mode === "crack") await page.keyboard.press("Space");
+      else await page.keyboard.press(["KeyH", "KeyA", "KeyC", "KeyK"][i % 4]); // hacker typer: any key types
+    });
+    const r = await page.evaluate(() => ({
+      state: game.state,
+      jackin: runSecrets.has("jackin"),
+      cooldown: terminals[0].cooldown,
+      overdrive: player.overdrive,
+      trace: breach.trace,
+      log: document.getElementById("breach-term").textContent,
+      pw: breach.pass.pw,
+    }));
+    for (const s of ["recon", "exploit", "crack", "root", "payload"]) assert(stages.has(s), `never reached ${s}: ` + [...stages].join(","));
+    assert(r.state === "playing", "did not return to the game: " + r.state);
+    assert(r.jackin, "the Jack In secret was not unlocked");
+    assert(r.cooldown > 55, "no 60 s terminal cooldown: " + r.cooldown);
+    assert(r.overdrive > 8, "OVERCLOCK daemon not granted: " + r.overdrive);
+    assert(r.trace < 100, "trace maxed out: " + r.trace);
+    assert(r.log.includes("nmap -sV") && r.log.includes(`${r.pw}`) && r.log.includes("rm -rf /ice --no-preserve-sanity"), "the terminal did not show the hack");
+    assert(Date.now() - started < 60000, "took too long");
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("jack in (phone taps): fits the screen, taps type and lock, DATAMINE levels up", async () => {
+    const { context, page, problems } = await open(browser, url, devices["Pixel 7 landscape"]);
+    await startRun(page);
+    await page.evaluate(() => openBreach(terminals[1]));
+    await page.waitForTimeout(600); // the CRT power-on animation
+    const fit = await page.evaluate(() => {
+      const r = (id) => document.getElementById(id).getBoundingClientRect();
+      const term = document.getElementById("breach-term");
+      const vis = (b) => b.width > 0 && b.left >= 0 && b.top >= 0 && b.right <= innerWidth + 1 && b.bottom <= innerHeight + 1;
+      return { screen: r("breach-screen"), w: innerWidth, h: innerHeight, ice: vis(r("breach-ice")), exit: vis(r("breach-exit")), exitH: r("breach-exit").height, hint: vis(r("breach-hint")), overflow: term.scrollWidth > term.clientWidth + 1 };
+    });
+    assert(fit.screen.width >= fit.w - 1 && fit.screen.height >= fit.h - 1, "terminal is not full-screen: " + JSON.stringify(fit));
+    assert(fit.ice && fit.exit && fit.hint && fit.exitH >= 30, "panels off screen or too small: " + JSON.stringify(fit));
+    assert(!fit.overflow, "terminal scrolls sideways");
+    const box = await page.locator("#breach-term").boundingBox();
+    const rowHeights = [];
+    const stages = await playBreach(page, async (v) => {
+      if (v.mode === "pick") {
+        const want = v.stage === "payload" ? 1 : v.flagged; // DATAMINE, or the service with the CVE
+        rowHeights.push(...(await page.$$eval("#breach-term .choice:enabled", (els) => els.map((e) => e.getBoundingClientRect().height))));
+        await page.tap(`#breach-term .choice:enabled[data-i="${want}"]`);
+      } else await page.touchscreen.tap(box.x + box.width / 2, box.y + 16); // tap the terminal: types / locks
+    });
+    await page.waitForTimeout(150);
+    const r = await page.evaluate(() => ({ state: game.state, pending: progress.pending, jackin: runSecrets.has("jackin"), cooldown: terminals[1].cooldown }));
+    for (const s of ["recon", "exploit", "crack", "root", "payload"]) assert(stages.has(s), `never reached ${s}`);
+    assert(rowHeights.length >= 6 && Math.min(...rowHeights) >= 30, "choices too small to tap: " + rowHeights.map(Math.round).join(","));
+    assert(r.jackin && r.cooldown > 55, "hack did not complete: " + JSON.stringify(r));
+    assert(r.state === "levelup" || r.pending > 0, "DATAMINE did not grant a level: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("jack in: idling lets the ICE trace hit 100%: trace damage, 30 s cooldown, no secret", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      const t = terminals[2];
+      openBreach(t);
+      const hp0 = player.hp;
+      let idle = 0;
+      while (!breach.done && idle < 300) {
+        updateBreach(0.05);
+        idle += 0.05;
+      }
+      const flash = document.getElementById("breach-flash").textContent;
+      const during = game.state;
+      for (let i = 0; i < 200 && game.state === "breach"; i++) updateBreach(0.05);
+      const out = { idle, flash, during, success: breach.success, state: game.state, hidden: breachEl.hidden, hp0, hp: player.hp, cooldown: t.cooldown, jackin: runSecrets.has("jackin") };
+      // Forcing it works too, and mistakes that push it over the top fail the run
+      player.invuln = 0;
+      openBreach(terminals[0]);
+      breach.trace = 99;
+      breachMistake(5);
+      updateBreach(1 / 60);
+      out.forced = breach.done && !breach.success;
+      closeBreach();
+      return out;
+    });
+    assert(r.idle > 45, `the trace filled too fast (${r.idle.toFixed(1)} s), it should be generous`);
+    assert(r.idle < 120, `the trace never filled (${r.idle.toFixed(1)} s)`);
+    assert(r.during === "breach" && /TRACE COMPLETE/.test(r.flash) && !r.success, "no failure screen: " + JSON.stringify(r));
+    assert(r.state === "playing" && r.hidden, "did not return to the game: " + r.state);
+    assert(r.hp < r.hp0, `no trace damage (${r.hp0} -> ${r.hp})`);
+    assert(r.cooldown === 30, "wrong failure cooldown: " + r.cooldown);
+    assert(!r.jackin, "failing should not unlock the secret");
+    assert(r.forced, "a forced 100% trace did not fail the breach");
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("the soundtrack renders (not silent, not clipping)", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     const r = await page.evaluate(async () => {

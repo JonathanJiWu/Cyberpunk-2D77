@@ -92,7 +92,7 @@ Easter eggs
     Katana: ride the highest moving platform in the arena. It parries enemy shots back.
     Sandevistan: get 77 kills in a run. When you're badly hurt, time slows down.
     Ghost in the Shell: dive from a rooftop all the way down to the street for thermoptic camo.
-    Jack In: hold Down at a data terminal and solve the breach grid for a daemon.
+    Jack In: hold Down at a data terminal and hack it (mash keys or tap) before the ICE traces you: pick your daemon.
     To the Moon: run to the far east end of the street.
 
 Tests
