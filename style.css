@@ -1,3 +1,12 @@
+/* Bundled with the game (SIL Open Font License, see fonts/OFL.txt): no internet needed */
+@font-face {
+  font-family: "Press Start 2P";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/PressStart2P-Regular.ttf") format("truetype");
+}
+
 :root {
   --neon-pink: #ff2fd6;
   --neon-cyan: #19f5ff;
@@ -533,6 +542,47 @@ body.touch .vol input[type="range"]::-moz-range-thumb {
 .sound-muted .vol::after {
   content: "MUTED";
   color: var(--neon-pink);
+}
+
+/* Display: fullscreen and resolution (js/display.js) */
+.res-select {
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0.55em 0.8em;
+  border: 2px solid rgba(25, 245, 255, 0.4);
+  border-radius: 6px;
+  background: rgba(11, 4, 22, 0.9);
+  color: #fff;
+  color-scheme: dark;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.res-select:hover,
+.res-select:focus-visible {
+  border-color: var(--neon-cyan);
+  outline: none;
+  box-shadow: 0 0 10px rgba(25, 245, 255, 0.5);
+}
+
+.display-hint {
+  grid-column: 1 / -1;
+  max-width: 34em;
+  justify-self: center;
+  color: #a990d6;
+  font-size: 0.85em;
+  line-height: 1.6;
+  text-align: center;
+}
+
+#btn-fullscreen .icon-fs-exit,
+#btn-fullscreen[aria-pressed="true"] .icon-fs-enter {
+  display: none;
+}
+
+#btn-fullscreen[aria-pressed="true"] .icon-fs-exit {
+  display: block;
 }
 
 .how-to {

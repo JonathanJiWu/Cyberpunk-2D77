@@ -311,18 +311,7 @@ muteBtn.addEventListener("click", () => {
 
 const root = document.documentElement;
 if (!(document.fullscreenEnabled || document.webkitFullscreenEnabled)) fullscreenBtn.hidden = true;
-fullscreenBtn.addEventListener("click", () => {
-  if (document.fullscreenElement || document.webkitFullscreenElement) {
-    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    return;
-  }
-  const req = root.requestFullscreen || root.webkitRequestFullscreen;
-  const p = req && req.call(root, { navigationUI: "hide" });
-  // On Android, also try to lock the screen to landscape
-  Promise.resolve(p)
-    .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape"))
-    .catch(() => {});
-});
+fullscreenBtn.addEventListener("click", () => toggleFullscreen()); // display.js: the Fullscreen API, or the desktop app's window
 // Keep buttons from holding keyboard focus (Space would "click" them)
 document.querySelectorAll(".icon-btn").forEach((b) => b.addEventListener("mouseup", () => b.blur()));
 
@@ -343,9 +332,10 @@ function layout() {
   gameEl.style.width = w + "px";
   gameEl.style.height = h + "px";
   gameEl.style.setProperty("--u", w / 100 + "px");
-  // Render at the screen's real resolution (capped at 1080p) for crisp pixels
+  // Render at the screen's real resolution (capped at 1080p) for crisp pixels,
+  // or at the resolution picked in the settings (display.js)
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const backingW = Math.max(320, Math.min(W, Math.round(w * dpr)));
+  const backingW = renderWidthFor(w, dpr);
   if (canvas.width !== backingW) {
     canvas.width = backingW;
     canvas.height = Math.round((backingW * 9) / 16);
