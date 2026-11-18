@@ -22,7 +22,7 @@ const CHARACTERS = {
     armor: 0,
     speed: 470,
     jump: 1080,
-    resource: { name: "HEAT", color: "#ff9b21", gain: 1.2 },
+    resource: { name: "HEAT", color: "#ff9b21", gain: 0.9 },
     primary: {
       id: "zap",
       name: "Cyber Bow",

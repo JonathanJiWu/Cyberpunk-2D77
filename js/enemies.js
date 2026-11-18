@@ -451,6 +451,7 @@ function fireEnemyShot(x, y, shot, angle, dmgMul = 1, owner = null) {
 function updateEnemyShots(dt) {
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
+    if (!s) continue; // a hit just now cleared the list (e.g. Ronin's reflection killed a boss)
     const frozen = player.dilation > 0 && stats.dilation.freezeShots && Math.hypot(s.x - player.x - player.w / 2, s.y - player.y - player.h / 2) < 220;
     if (!frozen) {
       s.x += s.vx * dt;

@@ -187,7 +187,7 @@ function updateHeatWave(dt) {
     return;
   }
   p.heat -= H.cost;
-  p.specialCd = 0.6;
+  p.specialCd = 3.5; // a real cooldown: Flame On is a panic button, not a stance
   flameOn(H.damage);
 }
 
@@ -195,7 +195,7 @@ function flameOn(damage) {
   const p = player;
   const pc = centerOf(p);
   heatWaves.push({ x: pc.x, y: pc.y, r: 20, max: stats.heatwave.radius, t: 0, dur: 0.45, hit: new Set(), damage, echo: stats.heatwave.echo });
-  p.invuln = Math.max(p.invuln, 0.35);
+  p.invuln = Math.max(p.invuln, 0.2);
   p.flameFlash = 0.6;
   squash(1.25, 0.8);
   dust(pc.x, p.y + p.h, 14, 2);
