@@ -1,5 +1,92 @@
 # Patch Notes
 
+## v3.1: The Desktop & Signature Update (2026-11-18)
+
+> *"There is no spoon. There is only technical debt."* (THE LEGEND)
+
+### Desktop app and display
+- **Cyberpunk 2D77 is a desktop app** (Electron) for Windows x64, Linux x64 (AppImage and .deb) and Intel macOS.
+  - It runs fully offline with the pixel font bundled.
+  - It needs no click to start the audio.
+  - It remembers its window, and the AppImage and Windows builds update themselves in the background.
+  - Tagging a version (`v3.1.0`) builds every installer and attaches it to a GitHub Release.
+- **Display settings:**
+  - Windowed or Fullscreen, kept in sync with the fullscreen button and F11.
+  - A **Resolution** list (Auto, 720p up to 4K): in fullscreen and in the browser it sets the internal render size, and in the desktop app's window it resizes the window.
+- The browser version now uses the bundled font too, so it no longer needs Google Fonts.
+
+### Controllers
+- **Xbox, PlayStation (DualShock 4 / DualSense) and generic pads** in both the browser and the desktop app.
+- **Mapping:** left stick moves, A jumps, RT is primary, LT is special, and the right stick aims and fires.
+- **Menus:** every menu, the loadout, level-ups, respec, the DATABASE, the leaderboard and the hacking terminal work with a pad, with the right button prompts (A/B/X/Y or ✕/○/□/△).
+- **Dual-stick with auto-fire:** the left stick always moves and the right stick aims. Auto-fire fires where the right stick points, and picks its own target only when the stick is centered. The touch twin-stick works the same way.
+- Optional rumble.
+
+### Local co-op (2 players)
+- **Joining:** press Start or A on a second controller, on the menu or mid-run, to drop in as Player 2. Single player stays the default.
+- **Shared:** team XP, level-ups and upgrades, and a shared pool of 3 lives. A downed partner drops back in after a few seconds.
+- **Enemies:** they hunt the nearest player.
+- **Camera:** it frames you both.
+- **HUD:** P2 gets its own panel and a tag over its head.
+- **Two-player scaling:** spawns ×1.5, enemy HP ×1.25, boss HP ×1.4.
+- **Limitations:** Player 2 needs a controller, easter eggs are Player 1's, and there's no split screen.
+
+### Signature kits
+- **PAINE is now the CYBER WIDOW.** The energy ball is gone.
+  - **Cyber Bow:** draw and release heavy arrows, with a visible draw pose and sound; letting go early cancels the shot.
+  - **Arrow effects:**
+    - they knock enemies back;
+    - they have a **15% chance to pierce**, rising 2% per level (shown on the HUD);
+    - they **shoot flyers out of the sky**, and downed bombers explode;
+    - enemies knocked off ledges take **fall damage** that grows with the height.
+  - **Bosses** can't be shoved, but **bleed**.
+  - **Flame On** (special): a radial heat wave from her heat-proof suit. It shoves enemies, burns them, and melts bullets, on a 3.5 s cooldown.
+- **TETSU, the Ronin: Mirror Steel.**
+  - Reflects **15% of all incoming damage** back at whoever dealt it, +1% per level up to 40%.
+  - From level 8, reflections stagger; from level 16, they splash to two more enemies.
+  - Reflected damage can never loop.
+- **SUDO is now HACKERMAN.**
+  - **EM Projector:** a hacked electromagnetic wave projector, wired to his laptop and a backpack battery. Its waves grow, pass through everything and slow it.
+  - **System Glitch:** every hit has a 15%+ chance to make the whole area stutter like a lagging stream.
+  - **Time Dilation** (special): bullet time. Enemies and bullets slow to a crawl while he moves at full speed and hits 40%+ harder, in a rain of green code.
+- New art for the Widow and Hackerman (sprites, landings, portraits), new attack effects, and **unique synthesized sounds** for every IC: bow creak and twang, arrow thunk, falling whistle, heat-wave roar, steel ricochet, EM zaps, glitch stutter, bullet-time drop.
+
+### A third boss: NULL
+- **NULL, "the assassin who isn't there"**, arrives between the Overseer and the GOAT. Its moves:
+  - **Copies:** it splits into holographic copies, and only the real one casts a shadow. Hitting a copy pops it and reveals the real one.
+  - **Blink strikes:** it teleports to a glowing glyph and slashes.
+  - **Shuriken fans.**
+  - **Rail snipe:** a shot from the rooftops, after a locking aim line.
+  - **Smoke bombs.**
+- It has its own glitch entrance, its own boss bar ("REAL TARGET: ?") and its own sounds.
+- **Phases:** below 60% it's MULTITHREADED, and below 25% it hits STACK OVERFLOW.
+- **Rewards:** +1 life and a **RARE CACHE** (your next level-up is all rare cards).
+
+### Difficulty
+- **Coordinated squads** arrive together, announced on screen:
+  - **PINCER**: ninjas from both sides;
+  - **DRONE ESCORT**: a wyrm behind a drone screen;
+  - **BOMBING RUN**: bombers diving from the sky;
+  - **SHIELD WALL**: an enforcer covering two snipers.
+- Busier interludes between bosses, a few more elites late in a run, and slightly shorter boss weak-point windows.
+- In bot playtests every IC still usually wins, but loses 1–2 of its 3 lives along the way.
+
+### Skills and XP
+- **Skill cards are 3:4 movie posters.** Three in a row on level-up; the pre-drop loadout is a **4 × 3 wall**.
+- **Guidance on every loadout skill:** a color-coded role (OFFENSE, DEFENSE, MOBILITY or UTILITY), what it does, its edge, its mechanic, and a limitation or synergy.
+- **The reroll button** is a big amber arcade button. It shows "3 LEFT", its keyboard key and controller button, spins its die, and greys out at zero.
+- **XP drops as shiny hardware:**
+  - RAM sticks, NVMe SSDs and, from big kills, CPUs;
+  - a shine sweep, a glow and a satisfying zip-in with sparkles, "+XP" and rising chimes;
+  - chips left lying around slowly drift to you.
+
+### Fixes
+- Fixed a crash when Ronin's reflection killed a boss while bullets were in flight.
+- Fixed a long bow draw swallowing quick taps in tap-to-fire mode.
+- Fixed several timing-sensitive tests.
+
+---
+
 ## v3.0: The Individual Contributor Update (2026-11-17)
 
 > *"Every bug is a feature you haven't met yet."* (THE LEGEND)
