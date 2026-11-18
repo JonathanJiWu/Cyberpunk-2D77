@@ -771,23 +771,23 @@ const fastForward = (page, seconds, bot) =>
     assert((await read()).state === "menu", "Enter on a display control started the game");
 
     await page.click('[data-display="fullscreen"]');
-    await page.waitForFunction(() => !!document.fullscreenElement);
+    await page.waitForFunction(() => !!document.fullscreenElement && settings.displayMode === "fullscreen");
     let r = await read();
     assert(r.mode === "fullscreen" && r.seg === "fullscreen" && r.hud === "true" && r.saved === "fullscreen", "settings -> fullscreen: " + JSON.stringify(r));
     // The HUD button (mid-run) leaves and re-enters; the settings follow
     await startRun(page);
     await page.click("#btn-fullscreen");
-    await page.waitForFunction(() => !document.fullscreenElement);
+    await page.waitForFunction(() => !document.fullscreenElement && settings.displayMode === "windowed");
     r = await read();
     assert(r.mode === "windowed" && r.seg === "windowed" && r.hud === "false" && r.saved === "windowed", "HUD -> windowed: " + JSON.stringify(r));
     await page.click("#btn-fullscreen");
-    await page.waitForFunction(() => !!document.fullscreenElement);
+    await page.waitForFunction(() => !!document.fullscreenElement && settings.displayMode === "fullscreen");
     await page.keyboard.press("KeyP");
     await page.waitForTimeout(450);
     r = await read();
     assert(r.state === "paused" && r.seg === "fullscreen" && r.hud === "true", "HUD -> fullscreen: " + JSON.stringify(r));
     await page.click('[data-display="windowed"]');
-    await page.waitForFunction(() => !document.fullscreenElement);
+    await page.waitForFunction(() => !document.fullscreenElement && settings.displayMode === "windowed");
     assert((await read()).seg === "windowed", "settings -> windowed");
 
     // A browser that refuses fullscreen: nothing breaks, the setting stays honest

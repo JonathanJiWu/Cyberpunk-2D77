@@ -38,7 +38,7 @@ const CHARACTERS = {
         "40% more knockback.",
         "+8 damage and +15% pierce chance.",
       ],
-      guide: { role: "OFFENSE", what: "Slow, heavy arrows you draw and release", edge: "Huge hits, knockback, shoots down flyers", mechanic: "Downed flyers and enemies knocked off ledges take fall damage", note: "Slow to fire: keep your distance. Bosses bleed instead" },
+      guide: { role: "OFFENSE", what: "Heavy arrows: draw, then release", edge: "Big hits, knockback, downs flyers", mechanic: "Falls off ledges deal damage", note: "Slow fire; bosses bleed instead" },
     },
     special: {
       id: "flame",
@@ -55,7 +55,7 @@ const CHARACTERS = {
         "Bigger, hotter wave.",
         "A second wave follows the first.",
       ],
-      guide: { role: "DEFENSE", what: "A radial heat wave from her heat-proof suit", edge: "Clears space, shoves enemies, melts bullets", mechanic: "Shoved enemies can fall off ledges for extra damage", note: "Costs heat: earn it by hitting and getting hit" },
+      guide: { role: "DEFENSE", what: "A heat wave from her suit", edge: "Clears space, melts bullets", mechanic: "Shoves enemies off ledges", note: "Costs heat (earned in combat)" },
     },
     passive: "Precision: arrows knock enemies back, shoot flyers out of the sky (they take fall damage) and make bosses bleed. Pierce chance: 15%, +2% per level.",
     quotes: {
@@ -98,7 +98,7 @@ const CHARACTERS = {
         "Every second swing is a finisher.",
         "Huge reach and +5 damage.",
       ],
-      guide: { role: "OFFENSE", what: "A three-hit monoblade combo", edge: "Hits everything in an arc and parries bullets", mechanic: "Every third swing is a 360° finisher that breaks shields", note: "Melee range: pair with armor and HP" },
+      guide: { role: "OFFENSE", what: "A three-hit monoblade combo", edge: "Arc hits, parries bullets", mechanic: "3rd swing: 360° shield-breaker", note: "Melee range: pair with armor/HP" },
     },
     special: {
       id: "flame",
@@ -115,7 +115,7 @@ const CHARACTERS = {
         "Longer dash, +12 damage.",
         "Dash leaves a cutting shockwave behind.",
       ],
-      guide: { role: "MOBILITY", what: "A slicing dash through everything in its path", edge: "Invulnerable while dashing, guarded after", mechanic: "Guard halves damage for a few seconds after", note: "Costs focus; bosses take reduced blade damage" },
+      guide: { role: "MOBILITY", what: "A slicing dash through foes", edge: "Invulnerable while dashing", mechanic: "Guard halves damage after", note: "Costs focus; weaker on bosses" },
     },
     passive: "Mirror Steel: reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). Level 8: reflections stagger. Level 16: they splash to 2 nearby enemies. Heavy chrome: 150 HP, blocks 25% of damage.",
     quotes: {
@@ -159,7 +159,7 @@ const CHARACTERS = {
         "+4 wave damage.",
         "Waves slow enemies much harder.",
       ],
-      guide: { role: "UTILITY", what: "Piercing EM waves that grow as they travel", edge: "Hits whole lines of enemies and slows them", mechanic: "Every hit can trigger System Glitch on the area", note: "Low damage per hit: pair with damage upgrades" },
+      guide: { role: "UTILITY", what: "Piercing EM waves that grow", edge: "Hits whole lines, slows them", mechanic: "Hits can trigger System Glitch", note: "Low damage per hit" },
     },
     special: {
       id: "flame",
@@ -176,7 +176,7 @@ const CHARACTERS = {
         "Lasts longer, hits harder.",
         "Bullets right next to you freeze in mid-air.",
       ],
-      guide: { role: "UTILITY", what: "Bullet time: everything slows except you", edge: "Dodge anything; you hit 40%+ harder meanwhile", mechanic: "Enemies, bullets and boss attacks all run slow", note: "Costs a lot of RAM: save it for bosses and swarms" },
+      guide: { role: "UTILITY", what: "Bullet time: all but you slows", edge: "Dodge anything, hit 40%+ harder", mechanic: "Slows enemies, bullets, bosses", note: "Costs lots of RAM: save it" },
     },
     passive: "System Glitch: every EM hit has a 15% chance (+1.2% per level) to glitch the area around it: enemies stutter like a lagging stream. Radius 150px, growing with level.",
     quotes: {
