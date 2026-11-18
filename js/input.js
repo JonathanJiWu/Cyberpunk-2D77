@@ -52,6 +52,7 @@ const settings = {
   autoFlame: false, // the flame lights itself when enemies are close
   touchAim: "twin", // touch, when auto-fire is off: "twin" (right stick) or "tap"
   character: "paine",
+  perfMode: false, // Performance mode (js/display.js, perfMode() in core.js)
 };
 try {
   Object.assign(settings, JSON.parse(localStorage.getItem("cp2d77-settings") || "{}"));

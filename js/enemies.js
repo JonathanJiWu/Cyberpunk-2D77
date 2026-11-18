@@ -613,8 +613,10 @@ function drawEnemies(time) {
     }
     let glitching = drawGlitch(img, frame * s.fw, sy, s.fw, s.fh, dx, dy, dw, dh, flip, e.bob);
     if (e.glitchT > 0) {
-      // System Glitch: RGB-split ghosts and a jittering body
+      // System Glitch: RGB-split ghosts (not in Performance mode) and a jittering body
       glitching += rand(-9, 9);
+    }
+    if (e.glitchT > 0 && !perfMode()) {
       ctx.globalAlpha = 0.45;
       drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx - 8, dy, dw, dh, "rgba(255,0,80,0.9)", flip);
       drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + 8, dy, dw, dh, "rgba(0,255,220,0.9)", flip);
@@ -670,7 +672,7 @@ function drawSniperSight(e) {
 }
 
 function drawGlitch(img, sx, sy, sw, sh, dx, dy, dw, dh, flip, phase) {
-  if (!isReady(img)) return 0;
+  if (!isReady(img) || perfMode()) return 0; // Performance mode: no ghosting
   const g = (game.time * 0.8 + phase * 3.1) % 3.2;
   if (g > 0.14) return 0;
   const split = 6 + 6 * Math.sin(g * 90);

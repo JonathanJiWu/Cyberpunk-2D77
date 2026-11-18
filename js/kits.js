@@ -478,6 +478,7 @@ function updateKits(dt) {
 
 const RAIN_GLYPHS = "01アイウエオカキクケコｱｲｳｴｵ<>{}#$%&";
 function drawKitFx(time) {
+  const lite = perfMode(); // Performance mode: lighter rings, shorter code rain
   // Flame On rings: wobbling heat shimmer, flame tongues, a warm core
   heatWaves.forEach((w) => {
     if (w.t < 0) return;
@@ -485,6 +486,7 @@ function drawKitFx(time) {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     for (let band = 0; band < 3; band++) {
+      if (lite && band === 1) continue; // the outer edge and the white core still show the reach
       ctx.strokeStyle = ["rgba(255,120,30,0.55)", "rgba(255,220,140,0.45)", "rgba(255,255,255,0.35)"][band];
       ctx.lineWidth = [26, 12, 4][band];
       ctx.globalAlpha = fade;
@@ -501,12 +503,13 @@ function drawKitFx(time) {
     }
     ctx.restore();
     if (fade > 0.3) {
-      for (let i = 0; i < 10; i++) {
-        const a = (i / 10) * Math.PI * 2 + w.t * 2;
+      const n = lite ? 5 : 10;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + w.t * 2;
         drawCell("fx2", 6, 32, w.x + Math.cos(a) * w.r, w.y + Math.sin(a) * w.r * 0.75, 44, 44, a + Math.PI / 2);
       }
     }
-    glow(w.x, w.y, w.r * 0.8, "rgba(255,140,40,0.25)", fade);
+    decorGlow(w.x, w.y, w.r * 0.8, "rgba(255,140,40,0.25)", fade);
   });
   kitFx.forEach((f) => {
     const k = f.life / f.max;
@@ -544,12 +547,13 @@ function drawKitFx(time) {
   if (codeRain.length) {
     const pc = centerOf(player);
     ctx.save();
-    ctx.font = `20px ${FONT}`;
+    ctx.font = fontPx(20);
     ctx.textAlign = "center";
     codeRain.forEach((r) => {
-      for (let j = 0; j < r.len; j++) {
+      const len = lite ? Math.min(r.len, 6) : r.len;
+      for (let j = 0; j < len; j++) {
         const g = RAIN_GLYPHS[(r.seed + j + Math.floor(time * 12)) % RAIN_GLYPHS.length];
-        ctx.globalAlpha = j === 0 ? 0.95 : 0.6 * (1 - j / r.len);
+        ctx.globalAlpha = j === 0 ? 0.95 : 0.6 * (1 - j / len);
         ctx.fillStyle = j === 0 ? "#e9ffef" : "#5aff7a";
         ctx.fillText(g, pc.x + r.dx, pc.y + r.y - j * 22);
       }
@@ -562,11 +566,24 @@ function drawKitFx(time) {
 // Screen-space: the bullet-time tint and the in/out flash
 function drawDilationOverlay(time) {
   if (somePlayer(() => player.dilation > 0) && game.state !== "over") {
-    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.9);
-    g.addColorStop(0, "rgba(40,255,120,0.04)");
-    g.addColorStop(1, "rgba(10,60,20,0.45)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
+    if (perfMode()) {
+      // Performance mode: a flat tint and dark green edges instead of a
+      // full-screen gradient (several ms without a GPU)
+      const t = H * 0.14;
+      ctx.fillStyle = "rgba(40,255,120,0.06)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "rgba(10,60,20,0.38)";
+      ctx.fillRect(0, 0, W, t);
+      ctx.fillRect(0, H - t, W, t);
+      ctx.fillRect(0, t, t, H - 2 * t);
+      ctx.fillRect(W - t, t, t, H - 2 * t);
+    } else {
+      const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.9);
+      g.addColorStop(0, "rgba(40,255,120,0.04)");
+      g.addColorStop(1, "rgba(10,60,20,0.45)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
     // a thin scan line sweeping down
     const y = ((time * 400) % (H + 40)) - 20;
     ctx.fillStyle = "rgba(90,255,122,0.12)";

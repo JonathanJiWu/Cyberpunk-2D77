@@ -712,6 +712,217 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------------------ Performance mode ----
+  // A heavy scene for the Performance mode tests: Hackerman's Time Dilation
+  // with code rain and glitch fields, a glitched crowd, rain, the
+  // billboard in view, a hurt flash and plenty of particles
+  function setupHeavyScene() {
+    window.gainXp = () => {};
+    player.x = holo.x - 300;
+    camera.x = clamp(player.x - W / 2, 0, WORLD_W - W);
+    upg.zap = 7;
+    upg.flame = 6;
+    computeStats();
+    weather.raining = true;
+    weather.timer = 1e9;
+    for (let i = 0; i < 24; i++) {
+      const type = ["crawler", "drone", "reaper", "enforcer"][i % 4];
+      const def = ENEMY_TYPES[type];
+      const e = spawnEnemy(type, player.x + (i % 2 ? 1 : -1) * (200 + i * 30), def.walker ? GROUND_Y - def.h : camera.y + 200 + (i % 5) * 80);
+      e.hp = e.maxHp = 1e6;
+    }
+    window.__heavyTick = (i) => {
+      weather.amount = 1;
+      player.hp = stats.maxHp;
+      player.heat = 100;
+      if (!(player.dilation > 0)) {
+        player.specialCd = 0;
+        input.specialQueued = true;
+      }
+      game.hurtFlash = 0.4;
+      enemies.forEach((e) => (e.glitchT = 0.5));
+      if (i % 3 === 0) burst(player.x, player.y, 40, "#19f5ff", 400);
+      if (i % 10 === 0) {
+        glitchCd = 0;
+        systemGlitch(player.x + 300, player.y);
+      }
+    };
+  }
+
+  await test("Performance mode: the setting persists, applies live (render size, effects) and leaves a picked resolution alone", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const read = () =>
+      page.evaluate(() => ({
+        on: perfMode(),
+        canvas: canvas.width,
+        body: document.body.classList.contains("perf-mode"),
+        pressed: document.querySelector('[data-setting="perfMode"][aria-pressed="true"]').dataset.value,
+        saved: JSON.parse(localStorage.getItem("cp2d77-settings") || "{}").perfMode,
+        hint: document.getElementById("display-hint").textContent,
+        particles: particles.length,
+      }));
+    let r = await read();
+    assert(!r.on && r.canvas === 1280 && !r.body && r.pressed === "false", "off by default: " + JSON.stringify(r));
+    // Mid-run, from the pause menu
+    await startRun(page, { settings: { character: "sudo" } });
+    await page.evaluate(() => {
+      for (let i = 0; i < 12; i++) burst(player.x, player.y, 30, "#19f5ff", 400);
+      pauseGame();
+    });
+    const before = (await read()).particles;
+    await page.click('[data-setting="perfMode"][data-value="true"]');
+    r = await read();
+    assert(r.on && r.body && r.pressed === "true" && r.saved === true, "did not switch on: " + JSON.stringify(r));
+    assert(r.canvas === 858, "Auto in Performance mode should render at 2/3 (858 px wide): " + r.canvas);
+    assert(/Performance mode/.test(r.hint) && /720p/.test(r.hint), "the display hint does not explain it: " + r.hint);
+    assert(before > 200 && r.particles <= 90, `particles not trimmed: ${before} -> ${r.particles}`);
+    // fewer particles per burst from now on, under a lower cap
+    const caps = await page.evaluate(() => {
+      particles.length = 0;
+      burst(0, 0, 20, "#fff", 100);
+      const one = particles.length;
+      for (let i = 0; i < 20; i++) burst(0, 0, 30, "#fff", 100);
+      return { one, max: particles.length };
+    });
+    assert(caps.one === 10 && caps.max === 90, "Performance mode particle budget: " + JSON.stringify(caps));
+    // It survives a reload
+    await page.reload();
+    await page.waitForTimeout(300);
+    r = await read();
+    assert(r.on && r.canvas === 858 && r.body && r.pressed === "true", "not restored after a reload: " + JSON.stringify(r));
+    // A resolution you pick wins (Performance mode only lowers Auto)
+    await page.selectOption("#resolution", "1600x900");
+    r = await read();
+    assert(r.on && r.canvas === 1600, "Performance mode fought the picked resolution: " + JSON.stringify(r));
+    await page.selectOption("#resolution", "auto");
+    await page.click('[data-setting="perfMode"][data-value="false"]');
+    r = await read();
+    assert(!r.on && r.canvas === 1280 && !r.body && r.saved === false && /1080p/.test(r.hint), "did not switch off: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("Performance mode: slow frames suggest it once; fast frames never do", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      // feed the monitor synthetic frame times (as its rAF loop does); each
+      // feed starts after a pause, which starts the 5 s window over
+      let clock = performance.now() + 1e6;
+      const feed = (ms, seconds) => {
+        let shown = perfHintSample((clock += 1000));
+        for (let i = 0; i < (seconds * 1000) / ms; i++) shown = perfHintSample((clock += ms)) || shown;
+        return shown;
+      };
+      settings.perfHintShown = false;
+      game.toast = null;
+      const fast = feed(16.7, 8);
+      const slowFor3s = feed(30, 3);
+      const slow = feed(30, 5.5);
+      const toast = game.toast && game.toast.text;
+      const saved = JSON.parse(localStorage.getItem("cp2d77-settings")).perfHintShown;
+      game.toast = null;
+      const again = feed(40, 12);
+      settings.perfHintShown = false;
+      settings.perfMode = true; // already on: no tip
+      const whenOn = feed(40, 12);
+      settings.perfMode = false;
+      return { fast, slowFor3s, slow, toast, saved, again, whenOn };
+    });
+    assert(!r.fast && !r.slowFor3s, "tip shown too early: " + JSON.stringify(r));
+    assert(r.slow && /PERFORMANCE MODE/.test(r.toast) && r.saved === true, "no tip after 5 s of slow frames: " + JSON.stringify(r));
+    assert(!r.again && !r.whenOn, "the tip should show once, and never with Performance mode on: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("Performance mode: a heavy scene makes far fewer expensive canvas calls (no radial gradients, fewer particles)", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "sudo", autoFire: true } });
+    await page.evaluate(`(${setupHeavyScene})()`);
+    const run = (perf) =>
+      page.evaluate((perf) => {
+        setPerfMode(perf);
+        const frame = (i) => {
+          __heavyTick(i);
+          update(1 / 60);
+          render(game.time);
+        };
+        for (let i = 0; i < 40; i++) frame(i); // warm the sprite caches
+        const counts = { radial: 0, linear: 0, drawImage: 0, fillText: 0, canvases: 0, particles: 0 };
+        const P = CanvasRenderingContext2D.prototype;
+        const wrap = (name, key) => {
+          const orig = P[name];
+          P[name] = function () {
+            counts[key]++;
+            return orig.apply(this, arguments);
+          };
+          return () => (P[name] = orig);
+        };
+        const undo = [wrap("createRadialGradient", "radial"), wrap("createLinearGradient", "linear"), wrap("drawImage", "drawImage"), wrap("fillText", "fillText")];
+        const createEl = document.createElement;
+        document.createElement = function (tag) {
+          if (String(tag).toLowerCase() === "canvas") counts.canvases++;
+          return createEl.apply(this, arguments);
+        };
+        const frames = 30;
+        for (let i = 40; i < 40 + frames; i++) {
+          frame(i);
+          counts.particles = Math.max(counts.particles, particles.length);
+        }
+        undo.forEach((u) => u());
+        document.createElement = createEl;
+        ["linear", "drawImage", "fillText"].forEach((k) => (counts[k] = Math.round((counts[k] / frames) * 10) / 10)); // per frame (radial, canvases: totals)
+        counts.dilation = player.dilation > 0;
+        counts.glitched = enemies.filter((e) => e.glitchT > 0).length;
+        return counts;
+      }, perf);
+    const normal = await run(false);
+    const perf = await run(true);
+    console.log(`       30 frames, normal: ${JSON.stringify(normal)}\n       30 frames, Performance mode: ${JSON.stringify(perf)}`);
+    assert(normal.dilation && perf.dilation && normal.glitched > 10, "the scene is not heavy: " + JSON.stringify({ normal, perf }));
+    assert(normal.radial >= 30, "the normal scene should draw its gradient overlays every frame: " + JSON.stringify(normal));
+    // (a cache fill for a glow colour or a tinted frame seen for the first time is fine)
+    assert(perf.radial <= 1 && perf.linear === 0 && perf.canvases <= 6, "Performance mode still makes gradients or canvases every frame: " + JSON.stringify(perf));
+    assert(perf.particles <= 90 && normal.particles > 150, "particle caps: " + JSON.stringify({ normal: normal.particles, perf: perf.particles }));
+    assert(perf.drawImage < normal.drawImage * 0.75, "Performance mode should draw far fewer images: " + JSON.stringify({ normal: normal.drawImage, perf: perf.drawImage }));
+    assert(perf.fillText < normal.fillText, "Performance mode should draw less text (shorter code rain): " + JSON.stringify({ normal: normal.fillText, perf: perf.fillText }));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("Performance mode: frame-time sanity for the heavy scene in both modes", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "sudo", autoFire: true } });
+    await page.evaluate(`(${setupHeavyScene})()`);
+    const run = (perf) =>
+      page.evaluate(async (perf) => {
+        window.frame = () => {}; // the test drives every frame itself
+        setPerfMode(perf);
+        const times = [];
+        for (let i = 0; i < 70; i++) {
+          await new Promise((done) => requestAnimationFrame(done));
+          __heavyTick(i);
+          const t0 = performance.now();
+          update(1 / 60);
+          render(t0 / 1000);
+          ctx.getImageData(0, 0, 1, 1); // make it rasterize now, so the pixels count too
+          if (i >= 10) times.push(performance.now() - t0);
+        }
+        times.sort((a, b) => a - b);
+        return { avg: times.reduce((a, b) => a + b, 0) / times.length, median: times[30], p90: times[54], canvas: canvas.width };
+      }, perf);
+    const normal = await run(false);
+    const perf = await run(true);
+    const f = (r) => `avg ${r.avg.toFixed(1)} ms, median ${r.median.toFixed(1)} ms, p90 ${r.p90.toFixed(1)} ms at ${r.canvas}px`;
+    console.log(`       heavy scene, update + render + raster: normal ${f(normal)}; Performance mode ${f(perf)}`);
+    assert(normal.avg < 150 && normal.median < 120, "the heavy scene is far too slow: " + JSON.stringify(normal));
+    assert(perf.avg < 100 && perf.median < 80, "the heavy scene is far too slow in Performance mode: " + JSON.stringify(perf));
+    assert(perf.median < normal.median * 1.25 + 5, "Performance mode should not be slower: " + JSON.stringify({ normal, perf }));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   // ------------------------------------------- Font and display settings ----
   await test("the bundled font: no internet request, and canvas text waits for it (document.fonts)", async () => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });

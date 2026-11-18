@@ -10,8 +10,13 @@
 //                In windowed mode a resolution also resizes the window to it
 //                (shrunk to fit the screen); in fullscreen it is the render
 //                size, as in the browser.
-// Saved with the other settings (cp2d77-settings): displayMode, resolution.
-// js/main.js's layout() calls renderWidthFor() to size the canvas.
+//   Performance mode (perfMode): fewer effects (see perfMode() in core.js)
+//                and, with the resolution on Auto, a lower render size: two
+//                thirds of the screen's pixels, up to 720p. A resolution you
+//                pick is kept as it is. Slow frames suggest it, once.
+// Saved with the other settings (cp2d77-settings): displayMode, resolution,
+// perfMode (and perfHintShown). js/main.js's layout() calls renderWidthFor()
+// to size the canvas.
 // =============================================================================
 
 const desktopApp = window.desktop && window.desktop.isDesktop ? window.desktop : null;
@@ -25,6 +30,8 @@ const fullscreenElement = () => document.fullscreenElement || document.webkitFul
 
 if (!RESOLUTIONS.includes(settings.resolution)) settings.resolution = "auto";
 if (settings.displayMode !== "fullscreen") settings.displayMode = "windowed";
+if (typeof settings.perfMode !== "boolean") settings.perfMode = false;
+const PERF_AUTO = { scale: 0.67, max: 1280 }; // Performance mode, Auto: 2/3 of the pixels across, up to 720p
 
 function parseResolution(value) {
   const m = /^(\d+)x(\d+)$/.exec(value || "");
@@ -36,8 +43,9 @@ const isFullscreen = () => (desktopApp ? displayInfo.fullscreen : !!fullscreenEl
 // The canvas width for a game area cssW CSS pixels wide (called by layout())
 function renderWidthFor(cssW, dpr) {
   const res = parseResolution(settings.resolution);
-  // Auto: the screen's real pixels, capped at 1080p
-  const width = res ? res.w : Math.max(320, Math.min(W, Math.round(cssW * dpr)));
+  // Auto: the screen's real pixels, capped at 1080p (Performance mode: less)
+  const auto = settings.perfMode ? Math.min(PERF_AUTO.max, Math.round(cssW * dpr * PERF_AUTO.scale)) : Math.min(W, Math.round(cssW * dpr));
+  const width = res ? res.w : Math.max(320, auto);
   // Shrinking a bigger render to fit looks better smoothed than blocky
   canvas.style.imageRendering = width > cssW * dpr + 1 ? "auto" : "";
   Promise.resolve().then(updateDisplayUI); // once layout() has resized the canvas
@@ -116,7 +124,8 @@ function updateDisplayUI() {
   const res = parseResolution(settings.resolution);
   const sizesWindow = desktopApp && !full;
   let what;
-  if (!res) what = sizesWindow ? "Auto: matches the window, up to 1080p." : "Auto: matches your screen, up to 1080p.";
+  if (!res && settings.perfMode) what = `Auto (Performance mode): two thirds of the ${sizesWindow ? "window" : "screen"}, up to 720p.`;
+  else if (!res) what = sizesWindow ? "Auto: matches the window, up to 1080p." : "Auto: matches your screen, up to 1080p.";
   else if (sizesWindow) what = "Sets the window size (shrunk to fit your screen).";
   else what = "Stretched to fill the screen. Lower runs faster.";
   const now = `Render ${canvas.width}x${canvas.height}` + (sizesWindow ? ` · window ${innerWidth}x${innerHeight}` : "");
@@ -139,6 +148,50 @@ document.querySelectorAll("[data-display]").forEach((b) =>
   })
 );
 
+// ------------------------------------------------------- Performance mode --
+// The switch is a plain data-setting button pair (input.js saves it); here it
+// also applies live: the render size, and any extra particles go.
+function applyPerfMode() {
+  document.body.classList.toggle("perf-mode", perfMode());
+  if (typeof particles !== "undefined") while (particles.length > particleCap()) particles.pop();
+  relayout();
+}
+function setPerfMode(on) {
+  settings.perfMode = !!on;
+  applySettings(); // saves
+  applyPerfMode();
+}
+document.querySelectorAll('[data-setting="perfMode"]').forEach((b) => b.addEventListener("click", applyPerfMode));
+
+// Frames that stay slow (over 22 ms on average, i.e. under ~45 fps, for 5 s
+// of play) get a one-time tip to try Performance mode.
+const perfHint = { ms: 22, window: 5000, since: 0, sum: 0, n: 0, last: 0 };
+function perfHintSample(now) {
+  const dt = now - perfHint.last;
+  perfHint.last = now;
+  const watching = typeof game !== "undefined" && game.state === "playing" && !document.hidden && !settings.perfMode && !settings.perfHintShown;
+  if (!watching || dt <= 0 || dt > 250) {
+    // not playing, or a hitch / a background tab: start over
+    perfHint.sum = perfHint.n = 0;
+    return false;
+  }
+  if (!perfHint.n) perfHint.since = now - dt;
+  perfHint.sum += dt;
+  perfHint.n++;
+  if (now - perfHint.since < perfHint.window) return false;
+  const avg = perfHint.sum / perfHint.n;
+  perfHint.sum = perfHint.n = 0;
+  if (avg <= perfHint.ms) return false;
+  settings.perfHintShown = true;
+  applySettings(); // saves: the tip shows once
+  game.toast = { text: "LAGGING? TRY PERFORMANCE MODE (PAUSE MENU)", time: 6 };
+  return true;
+}
+(function perfHintLoop(now) {
+  if (now !== undefined) perfHintSample(now);
+  requestAnimationFrame(perfHintLoop);
+})();
+
 // ------------------------------------------------------------ Start-up -----
 if (desktopApp) {
   quitBtn.hidden = false;
@@ -160,4 +213,5 @@ if (desktopApp) {
   );
   saveDisplayMode();
 }
+document.body.classList.toggle("perf-mode", perfMode());
 updateDisplayUI();

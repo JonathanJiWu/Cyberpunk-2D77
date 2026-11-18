@@ -130,7 +130,7 @@ function updateSecrets(dt) {
     }
   }
   weather.amount = clamp(weather.amount + ((weather.raining ? 1 : -1) * dt) / 3, 0, 1);
-  if (weather.amount > 0.2 && Math.random() < weather.amount * 0.9) {
+  if (weather.amount > 0.2 && Math.random() < weather.amount * 0.9 && !perfMode()) {
     // splashes on the street
     particles.push({ x: camera.x + rand(0, W), y: GROUND_Y - 2, vx: rand(-40, 40), vy: rand(-160, -60), life: 0.25, size: 3, color: "#9fc8ff" });
   }
@@ -1356,7 +1356,7 @@ function drawMoon() {
   const x = W * 0.64 - camera.x * 0.03;
   const y = 170 - camera.y * 0.08;
   const size = 200 + moonState.glow * 6;
-  glow(x + size / 2, y + size / 2, size * (0.9 + moonState.glow * 0.08), "rgba(220,210,255,0.35)");
+  decorGlow(x + size / 2, y + size / 2, size * (0.9 + moonState.glow * 0.08), "rgba(220,210,255,0.35)");
   if (isReady(img)) {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, x, y, size, size);
@@ -1446,24 +1446,27 @@ function drawBillboard(time) {
   const x = r.x + holo.glitch;
   const hue = (time * 40) % 360;
   const boost = holo.pulse > 0 ? 0.2 : 0;
+  const lite = perfMode(); // Performance mode: no beams, halo, ghosts, glitch slice or scanlines
   // projector: base unit and fanned light beams
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  [
-    ["rgba(25,245,255,0.07)", -1],
-    ["rgba(255,47,214,0.07)", 1],
-    ["rgba(176,108,255,0.05)", 0],
-  ].forEach(([color, side]) => {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(holo.x - 26 + side * 10, GROUND_Y - 30);
-    ctx.lineTo(r.x - 60 + side * 40, r.y + r.h * 0.05);
-    ctx.lineTo(r.x + r.w + 60 + side * 40, r.y + r.h * 0.05);
-    ctx.lineTo(holo.x + 26 + side * 10, GROUND_Y - 30);
-    ctx.fill();
-  });
-  glow(holo.x, r.y + r.h * 0.45, 460, `hsla(${hue},100%,65%,0.22)`, 0.8 + boost);
-  ctx.restore();
+  if (!lite) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    [
+      ["rgba(25,245,255,0.07)", -1],
+      ["rgba(255,47,214,0.07)", 1],
+      ["rgba(176,108,255,0.05)", 0],
+    ].forEach(([color, side]) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(holo.x - 26 + side * 10, GROUND_Y - 30);
+      ctx.lineTo(r.x - 60 + side * 40, r.y + r.h * 0.05);
+      ctx.lineTo(r.x + r.w + 60 + side * 40, r.y + r.h * 0.05);
+      ctx.lineTo(holo.x + 26 + side * 10, GROUND_Y - 30);
+      ctx.fill();
+    });
+    glow(holo.x, r.y + r.h * 0.45, 460, `hsla(${hue},100%,65%,0.22)`, 0.8 + boost);
+    ctx.restore();
+  }
   ctx.fillStyle = "#1d0d36";
   ctx.fillRect(holo.x - 70, GROUND_Y - 30, 140, 30);
   ctx.fillStyle = `hsl(${hue},100%,65%)`;
@@ -1474,22 +1477,26 @@ function drawBillboard(time) {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     // chromatic ghosts either side, then the figure itself
-    ctx.globalAlpha = 0.28;
-    drawFrame(img, sx, 0, BILLBOARD.fw, BILLBOARD.fh, x - 7, r.y, r.w, r.h, "rgba(25,245,255,0.9)", flip);
-    drawFrame(img, sx, 0, BILLBOARD.fw, BILLBOARD.fh, x + 7, r.y, r.w, r.h, "rgba(255,47,214,0.9)", flip);
+    if (!lite) {
+      ctx.globalAlpha = 0.28;
+      drawFrame(img, sx, 0, BILLBOARD.fw, BILLBOARD.fh, x - 7, r.y, r.w, r.h, "rgba(25,245,255,0.9)", flip);
+      drawFrame(img, sx, 0, BILLBOARD.fw, BILLBOARD.fh, x + 7, r.y, r.w, r.h, "rgba(255,47,214,0.9)", flip);
+    }
     ctx.globalAlpha = 0.62 + 0.08 * Math.sin(time * 9) + boost;
     drawFrame(img, sx, 0, BILLBOARD.fw, BILLBOARD.fh, x, r.y, r.w, r.h, null, flip);
     // a glitch: one horizontal slice shoved sideways
-    if (Math.abs(holo.slice) > 4) {
+    if (Math.abs(holo.slice) > 4 && !lite) {
       const sliceY = Math.floor(rand(0.1, 0.9) * BILLBOARD.fh);
       ctx.globalAlpha = 0.5;
       ctx.drawImage(img, sx, sliceY, BILLBOARD.fw, 6, x + holo.slice, r.y + sliceY * BILLBOARD.scale, r.w, 6 * BILLBOARD.scale);
     }
     ctx.restore();
     // scanlines rolling down the projection
-    ctx.fillStyle = "rgba(5,0,15,0.16)";
-    const roll = (time * 60) % 12;
-    for (let yy = r.y + roll; yy < r.y + r.h; yy += 12) ctx.fillRect(r.x, yy, r.w, 4);
+    if (!lite) {
+      ctx.fillStyle = "rgba(5,0,15,0.16)";
+      const roll = (time * 60) % 12;
+      for (let yy = r.y + roll; yy < r.y + r.h; yy += 12) ctx.fillRect(r.x, yy, r.w, 4);
+    }
   } else if (isReady(IMG.hologram)) {
     ctx.globalAlpha = 0.62 + 0.08 * Math.sin(time * 9) + boost;
     ctx.imageSmoothingEnabled = false;
@@ -1535,7 +1542,7 @@ function drawSecretsBack(time) {
       ctx.fillStyle = "#2a2440";
       ctx.fillRect(ripper.x - 80, GROUND_Y - 180, 160, 180);
     }
-    glow(ripper.x, GROUND_Y - 150, 90, "rgba(90,255,122,0.35)", 0.6 + 0.4 * Math.sin(time * 3));
+    decorGlow(ripper.x, GROUND_Y - 150, 90, "rgba(90,255,122,0.35)", 0.6 + 0.4 * Math.sin(time * 3));
   }
 
   // Data terminals
@@ -1546,7 +1553,7 @@ function drawSecretsBack(time) {
       ctx.fillStyle = off ? "#7a1010" : "#19f5ff";
       ctx.fillRect(t.x - 30, GROUND_Y - 120, 60, 120);
     }
-    if (!off) glow(t.x, GROUND_Y - 85, 60, "rgba(90,255,122,0.4)", 0.6 + 0.4 * Math.sin(time * 4 + t.x));
+    if (!off) decorGlow(t.x, GROUND_Y - 85, 60, "rgba(90,255,122,0.4)", 0.6 + 0.4 * Math.sin(time * 4 + t.x));
   });
 
   // The katana waiting on its platform
@@ -1621,7 +1628,7 @@ function drawSecretsFront(time) {
 // Screen-space acid rain
 function drawRain() {
   if (weather.amount <= 0) return;
-  const want = Math.round(170 * weather.amount);
+  const want = Math.round((perfMode() ? 56 : 170) * weather.amount); // Performance mode: a third of the drops
   const dx = camera.x - weather.lastCam;
   weather.lastCam = camera.x;
   while (weather.drops.length < want) weather.drops.push({ x: rand(-100, W + 100), y: rand(-H, H), v: rand(1300, 1800), len: rand(30, 60) });
@@ -1676,39 +1683,60 @@ function wrapText(text, maxW) {
   if (line) lines.push(line);
   return lines;
 }
+// Each note is painted once into its own little canvas (at the screen's
+// resolution) and then just drawn, fading and flickering: its neon shadow blur
+// and text layout were costly to redo every frame.
+const NOTE = { size: 17, pad: 24 };
+function noteSprite(n, k) {
+  const f = k * renderScale; // device pixels per HUD unit
+  if (n.sprite && n.sprite.f === f) return n.sprite;
+  const size = NOTE.size;
+  ctx.font = fontPx(size);
+  const lines = wrapText(n.text, 380);
+  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 28;
+  const h = lines.length * (size + 9) + 16;
+  const c = document.createElement("canvas");
+  c.width = Math.ceil((w + NOTE.pad * 2) * f);
+  c.height = Math.ceil((h + NOTE.pad * 2) * f);
+  const g = c.getContext("2d");
+  g.scale(f, f);
+  g.translate(NOTE.pad, NOTE.pad);
+  g.font = fontPx(size);
+  g.textAlign = "left";
+  g.textBaseline = "top";
+  g.globalAlpha = 0.45;
+  g.fillStyle = "#0a0216";
+  g.fillRect(0, 0, w, h);
+  g.globalAlpha = 1;
+  g.shadowColor = n.color;
+  g.shadowBlur = 14;
+  g.strokeStyle = n.color;
+  g.lineWidth = 2;
+  g.strokeRect(0.5, 0.5, w, h);
+  g.fillStyle = "#f4fbff";
+  lines.forEach((l, i) => g.fillText(l, 14, 10 + i * (size + 9)));
+  n.sprite = { canvas: c, f, boxH: h };
+  return n.sprite;
+}
+
 function drawCinematic() {
   if (!neonNotes.length) return;
   const k = hudLayout.scale;
   ctx.save();
   ctx.scale(k, k);
-  const size = 17;
-  ctx.font = `${size}px ${FONT}`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
   let y = (H / k) * 0.36;
   const t = performance.now() / 1000;
+  const m = ctx.getTransform(); // HUD units -> device pixels: the sprites go on whole pixels, 1:1
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   neonNotes.forEach((n) => {
-    const lines = wrapText(n.text, 380);
+    const sprite = noteSprite(n, k);
     const fade = Math.min(1, (n.max - n.time) / 0.35, n.time / 0.6);
     // a neon tube buzzes: mostly steady, with the odd flicker
     const flick = Math.sin(t * 37 + n.seed) > 0.96 ? 0.35 : 1;
-    const a = 0.72 * fade * flick;
-    const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 28;
-    const h = lines.length * (size + 9) + 16;
     const x = 26 - (1 - fade) * 40;
-    ctx.globalAlpha = a * 0.45;
-    ctx.fillStyle = "#0a0216";
-    ctx.fillRect(x, y, w, h);
-    ctx.globalAlpha = a;
-    ctx.shadowColor = n.color;
-    ctx.shadowBlur = 14;
-    ctx.strokeStyle = n.color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x + 0.5, y + 0.5, w, h);
-    ctx.fillStyle = "#f4fbff";
-    lines.forEach((l, i) => ctx.fillText(l, x + 14, y + 10 + i * (size + 9)));
-    ctx.shadowBlur = 0;
-    y += h + 12;
+    ctx.globalAlpha = 0.72 * fade * flick;
+    ctx.drawImage(sprite.canvas, Math.round(m.e + (x - NOTE.pad) * m.a), Math.round(m.f + (y - NOTE.pad) * m.d));
+    y += sprite.boxH + 12;
   });
   ctx.restore();
   ctx.globalAlpha = 1;

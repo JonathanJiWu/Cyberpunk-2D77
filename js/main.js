@@ -381,6 +381,19 @@ layout();
 // requestAnimationFrame + delta time: same speed at 60Hz, 120Hz or on a slow
 // phone. Long frames are split so fast things never skip through walls.
 let lastTime = performance.now();
+// The touch SPECIAL button: its ring, state and label. The DOM is only
+// touched when something changed (in 1% steps), not every frame.
+const specialBtnState = { heat: "", hot: null, on: null };
+function syncSpecialButton() {
+  const special = CH().special;
+  const st = specialBtnState;
+  const heat = (player.heat / TUNING.heat.max).toFixed(2);
+  const on = special.hold ? input.buttons.flame : false;
+  if (heat !== st.heat) flameBtn.style.setProperty("--heat", (st.heat = heat));
+  if (player.heatLocked !== st.hot) flameBtn.classList.toggle("overheated", (st.hot = player.heatLocked));
+  if (on !== st.on) flameBtn.classList.toggle("on", (st.on = on));
+  if (flameBtn.textContent !== special.label) flameBtn.textContent = special.label;
+}
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = Math.min(0.1, Math.max(0, (now - lastTime) / 1000));
@@ -391,13 +404,7 @@ function frame(now) {
       update(step);
       dt -= step;
     }
-    if (touchMode) {
-      const special = CH().special;
-      flameBtn.style.setProperty("--heat", (player.heat / TUNING.heat.max).toFixed(3));
-      flameBtn.classList.toggle("overheated", player.heatLocked);
-      flameBtn.classList.toggle("on", special.hold ? input.buttons.flame : false);
-      if (flameBtn.textContent !== special.label) flameBtn.textContent = special.label;
-    }
+    if (touchMode) syncSpecialButton();
   } else if (game.state === "breach") {
     updateBreach(dt);
   } else if (game.state === "over") {

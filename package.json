@@ -12,6 +12,7 @@
   "desktopName": "cyberpunk-2d77.desktop",
   "scripts": {
     "test": "node tests/game.test.cjs",
+    "bench": "node tools/bench.cjs",
     "desktop": "electron .",
     "pack:linux": "electron-builder --linux dir --x64 --publish never",
     "dist": "electron-builder --publish never",
@@ -43,7 +44,9 @@
       "img/**/*",
       "sound/**/*",
       "fonts/**/*",
-      "desktop/**/*"
+      "desktop/**/*",
+      "!sound/Where+There+Is+No+Darkness.mp3",
+      "!img/BG2.jpg"
     ],
     "icon": "desktop/icon.png",
     "asar": true,

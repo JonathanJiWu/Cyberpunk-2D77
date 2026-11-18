@@ -135,16 +135,36 @@ const TRAFFIC = [
   { y: 560, speed: 380, parallax: 0.8, scale: 2, count: 2, alpha: 0.95 },
 ];
 
+// The far city, scaled once to the canvas resolution: drawn at whole device
+// pixels it is a plain copy, much cheaper than rescaling the photo with
+// smoothing every frame
+const farCity = { canvas: null, scale: 0, tileW: 0 };
+function farCityTile(bg, srcW, srcH, s) {
+  const k = renderScale;
+  if (farCity.canvas && farCity.scale === k) return farCity;
+  const c = farCity.canvas || document.createElement("canvas");
+  c.width = Math.round(srcW * s * k);
+  c.height = Math.round(srcH * s * k);
+  const g = c.getContext("2d");
+  g.imageSmoothingEnabled = true;
+  g.drawImage(bg, 0, 0, srcW, srcH, 0, 0, c.width, c.height);
+  Object.assign(farCity, { canvas: c, scale: k, tileW: c.width });
+  return farCity;
+}
+
 function drawParallax(time) {
+  const lite = perfMode(); // Performance mode: no stars, traffic or moon glow
   ctx.imageSmoothingEnabled = true;
   ctx.fillStyle = "rgb(19,0,56)"; // matches the sky of background1.jpg
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#e9dcff";
-  stars.forEach((st) => {
-    ctx.globalAlpha = 0.35 + 0.35 * Math.sin(time * 2 + st.t);
-    ctx.fillRect(st.x, st.y - camera.y * 0.05, st.r, st.r);
-  });
-  ctx.globalAlpha = 1;
+  if (!lite) {
+    ctx.fillStyle = "#e9dcff";
+    stars.forEach((st) => {
+      ctx.globalAlpha = 0.35 + 0.35 * Math.sin(time * 2 + st.t);
+      ctx.fillRect(st.x, st.y - camera.y * 0.05, st.r, st.r);
+    });
+    ctx.globalAlpha = 1;
+  }
 
   // Far city: background1.jpg repeats every 605px, so a 1210px slice tiles
   // seamlessly. The neon floor in that image is cropped off (we draw our own).
@@ -153,17 +173,24 @@ function drawParallax(time) {
     const srcW = 1210;
     const srcH = 715;
     const s = (GROUND_Y + 20) / srcH;
-    const tileW = srcW * s;
-    const y = -camera.y * 0.25;
-    let x = -((camera.x * 0.22) % tileW);
-    for (; x < W; x += tileW) ctx.drawImage(bg, 0, 0, srcW, srcH, x, y, tileW + 1, srcH * s);
+    const tile = farCityTile(bg, srcW, srcH, s);
+    // in device pixels, snapped to whole pixels (camera shake included)
+    const m = ctx.getTransform();
+    const tileW = tile.tileW;
+    const y = Math.round(m.f + -camera.y * 0.25 * m.d);
+    let x = Math.round(m.e - ((camera.x * 0.22 * m.a) % tileW));
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (; x < canvas.width; x += tileW) ctx.drawImage(tile.canvas, x, y);
+    ctx.restore();
   }
-  // The sky gets darker the higher you climb
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, `rgba(4,0,14,${clamp(-camera.y / 700, 0, 0.8)})`);
-  sky.addColorStop(0.6, "rgba(4,0,14,0)");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, H);
+  // The sky gets darker the higher you climb (nothing to draw on the street)
+  const dark = clamp(-camera.y / 700, 0, 0.8);
+  if (dark > 0) {
+    ctx.globalAlpha = dark;
+    drawStrip(gradientStrip("sky", [[0, "rgb(4,0,14)"], [1, "rgba(4,0,14,0)"]]), 0, 0, W, H * 0.6);
+    ctx.globalAlpha = 1;
+  }
   drawMoon(); // easter egg: Edgerunners
 
   // Closer skyline silhouettes
@@ -178,7 +205,7 @@ function drawParallax(time) {
     for (; x < W; x += tileW) ctx.drawImage(skyline, x, GROUND_Y + 12 - h - camera.y * 0.45, tileW + 1, h);
     ctx.globalAlpha = 1;
   }
-  drawTraffic(time, 0, 2);
+  if (!lite) drawTraffic(time, 0, 2);
 
   // Dense neon midground
   const mid = IMG.cityMid;
@@ -190,18 +217,14 @@ function drawParallax(time) {
     let x = -((camera.x * 0.65) % tileW);
     for (; x < W; x += tileW) ctx.drawImage(mid, x, GROUND_Y + 30 - h - camera.y * 0.65, tileW + 1, h);
   }
-  drawTraffic(time, 2, 3);
+  if (!lite) drawTraffic(time, 2, 3);
   // Atmospheric depth: push the backdrop back so the action stays readable
   ctx.fillStyle = "rgba(12,3,32,0.42)";
   ctx.fillRect(0, 0, W, H);
 
   // Magenta haze rising off the street
   const gy = GROUND_Y - camera.y;
-  const haze = ctx.createLinearGradient(0, gy - 460, 0, gy);
-  haze.addColorStop(0, "rgba(255,47,214,0)");
-  haze.addColorStop(1, "rgba(255,47,214,0.18)");
-  ctx.fillStyle = haze;
-  ctx.fillRect(0, gy - 460, W, 460);
+  drawStrip(gradientStrip("haze", [[0, "rgba(255,47,214,0)"], [1, "rgba(255,47,214,0.18)"]], 128), 0, gy - 460, W, 460);
 }
 
 // Flying cars on traffic lanes between the backdrop layers
@@ -295,11 +318,7 @@ function drawBuildings(time) {
     const h = GROUND_Y - top;
     ctx.fillStyle = facadePattern(i % 2) || "#1a1030";
     ctx.fillRect(bx, top, bw, h);
-    const shade = ctx.createLinearGradient(0, top, 0, GROUND_Y);
-    shade.addColorStop(0, "rgba(10,2,24,0.3)");
-    shade.addColorStop(1, "rgba(10,2,24,0.65)");
-    ctx.fillStyle = shade;
-    ctx.fillRect(bx, top, bw, h);
+    drawStrip(gradientStrip("shade", [[0, "rgba(10,2,24,0.3)"], [1, "rgba(10,2,24,0.65)"]], 64), bx, top, bw, h);
     // neon trim down both edges
     ctx.fillStyle = "rgba(25,245,255,0.85)";
     ctx.fillRect(bx, top, 3, h);
@@ -308,7 +327,7 @@ function drawBuildings(time) {
     // rooftop antenna with a blinking light
     ctx.fillStyle = "#241040";
     ctx.fillRect(bx + 26, p.y - 70, 5, 70);
-    if (Math.sin(time * 3 + i) > 0) glow(bx + 28, p.y - 72, 22, "rgba(255,40,60,0.9)");
+    if (Math.sin(time * 3 + i) > 0) decorGlow(bx + 28, p.y - 72, 22, "rgba(255,40,60,0.9)");
     // a vertical neon sign hanging off the side (only where it clears the
     // street signs below)
     const [text, color] = ROOF_SIGNS[i % ROOF_SIGNS.length];
@@ -320,13 +339,14 @@ function drawBuildings(time) {
     ctx.globalAlpha = flicker;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(sign, sx, sy);
-    glow(sx + sign.width / 2, sy + sign.height / 2, sign.height * 0.7, color, 0.3 * flicker);
+    decorGlow(sx + sign.width / 2, sy + sign.height / 2, sign.height * 0.7, color, 0.3 * flicker);
     ctx.globalAlpha = 1;
   });
 }
 
 // Neon light reflected on the wet street
 function drawReflections() {
+  if (perfMode()) return; // decoration
   const left = camera.x - 300;
   const right = camera.x + W + 300;
   ctx.save();
@@ -398,7 +418,7 @@ function drawDecor(time) {
     ctx.fillRect(x - 6, GROUND_Y - 330, 70, 10);
     ctx.fillStyle = "#ffe9a8";
     ctx.fillRect(x + 44, GROUND_Y - 322, 26, 8);
-    glow(x + 57, GROUND_Y - 300, 120, "rgba(255,200,120,0.35)");
+    decorGlow(x + 57, GROUND_Y - 300, 120, "rgba(255,200,120,0.35)");
   }
   // Signs on poles
   LEVEL.signs.forEach((s, i) => {
@@ -410,7 +430,7 @@ function drawDecor(time) {
     ctx.globalAlpha = flicker;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(sprite, s.x - sprite.width / 2, GROUND_Y - 470);
-    glow(s.x, GROUND_Y - 425, 160, s.color, 0.35 * flicker);
+    decorGlow(s.x, GROUND_Y - 425, 160, s.color, 0.35 * flicker);
     ctx.globalAlpha = 1;
   });
 }
@@ -421,7 +441,7 @@ function drawPlatforms() {
   ctx.imageSmoothingEnabled = false;
   platforms.forEach((p) => {
     if (p.x > camera.x + W + 50 || p.x + p.w < camera.x - 50) return;
-    glow(p.x + p.w / 2, p.y + 40, p.w * 0.6, "rgba(25,245,255,0.18)");
+    decorGlow(p.x + p.w / 2, p.y + 40, p.w * 0.6, "rgba(25,245,255,0.18)");
     if (!ready) {
       ctx.fillStyle = "#3d3560";
       ctx.fillRect(p.x, p.y, p.w, p.h);
