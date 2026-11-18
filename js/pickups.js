@@ -62,6 +62,8 @@ function spawnPowerup(x, y, type) {
   powerups.push({ type, x: x - 22, y: y - 22, w: 44, h: 44, vx: rand(-80, 80), vy: -380, life: 20, onGround: false, standingOn: null });
 }
 
+const XP_DRIFT_AFTER = 5; // seconds before an uncollected chip starts drifting to you
+
 function updatePickups(dt) {
   xpFx.clock += dt;
   const pcx = player.x + player.w / 2;
@@ -74,7 +76,13 @@ function updatePickups(dt) {
     const dy = pcy - (g.y + g.h / 2);
     const d = Math.hypot(dx, dy);
     if (!g.pulled && d < reach) g.pulled = true;
-    if (g.pulled) {
+    g.age = (g.age || 0) + dt;
+    if (!g.pulled && g.age > XP_DRIFT_AFTER && d < 1600) {
+      // left lying around: it slowly homes in on you (ranged kills don't strand XP)
+      const sp = 150 + (g.age - XP_DRIFT_AFTER) * 60;
+      g.x += (dx / (d || 1)) * sp * dt;
+      g.y += (dy / (d || 1)) * sp * dt;
+    } else if (g.pulled) {
       // Zip toward the player, faster and faster
       g.speed = (g.speed || 300) + 2400 * dt;
       g.dx = dx / (d || 1);
