@@ -23,14 +23,14 @@ function resetEnemies() {
   director.stage = STAGE.start;
   director.nextBossAt = TUNING.boss.at;
   director.firstSpawn = 1.5; // (respawns push this back; a new run starts fresh)
-  director.squadAt = 55; // the first coordinated squad
+  director.squadAt = 50; // the first coordinated squad
   director.lastSquad = null;
 }
 
 // ------------------------------------------------------------- Spawning -----
 // Elites (bigger, gold-glowing, tougher, more XP) show up later in the run
 function eliteChance(t) {
-  return t > 200 ? 0.12 : t > 120 ? 0.06 : 0;
+  return t > 300 ? 0.16 : t > 200 ? 0.13 : t > 110 ? 0.07 : 0;
 }
 
 function spawnEnemy(type, x, y, opts = {}) {
@@ -133,7 +133,7 @@ function updateSquads(t) {
   director.lastSquad = q.id;
   q.make();
   game.toast = { text: `INCOMING: ${q.name}`, time: 2.2 };
-  director.squadAt = t + Math.max(14, 30 - t / 25) + rand(-3, 3); // more often as the run goes on
+  director.squadAt = t + Math.max(12, 28 - t / 25) + rand(-3, 3); // more often as the run goes on
 }
 
 // The difficulty curve: spawning speeds up over time, new enemy types join
@@ -151,7 +151,7 @@ function updateDirector(dt) {
   if (t < director.firstSpawn) return;
   updateSquads(t);
   let rate = Math.min(S.maxRate, S.startRate + t * S.ratePerSecond);
-  if (director.stage !== STAGE.start) rate *= 1.15; // the calm before... no calm
+  if (director.stage !== STAGE.start) rate *= 1.3; // the calm before... no calm
   director.acc += rate * dt;
   while (director.acc >= 1) {
     director.acc -= 1;

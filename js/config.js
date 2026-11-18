@@ -34,7 +34,7 @@ const TUNING = {
   spawn: {
     startRate: 0.75, // enemies per second at the start
     ratePerSecond: 0.012, // how much faster spawning gets every second
-    maxRate: 3.2,
+    maxRate: 3.5,
     maxAlive: 40,
     hpGrowth: 1 / 100, // enemy HP multiplier grows by this much per second
   },
