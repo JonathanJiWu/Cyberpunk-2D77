@@ -95,6 +95,11 @@ function updateBow(dt) {
   p.zapCd -= dt;
   p.releaseT = Math.max(0, (p.releaseT || 0) - dt);
   if (p.draw) {
+    // let go of fire mid-draw (with auto-fire off): the arrow is never loosed
+    if (!input.shots.length && !zapHeld() && !settings.autoFire) {
+      p.draw = null;
+      return;
+    }
     const aim = bowAim() || p.draw.aim;
     p.draw.aim = aim;
     p.draw.t += dt;

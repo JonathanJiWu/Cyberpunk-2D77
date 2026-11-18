@@ -1858,7 +1858,7 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
-  await test("gamepad: left stick runs, A jumps, Down + A drops through, RT fires, LT holds Paine's flame and taps Tetsu's dash, hits rumble, Start pauses", async () => {
+  await test("gamepad: left stick runs, A jumps, Down + A drops through, RT draws and fires the bow, LT fires Paine's Flame On and Tetsu's dash, hits rumble, Start pauses", async () => {
     const { context, page, problems } = await openPad();
     await startRun(page, { settings: { character: "paine", autoFire: false, autoFlame: false } });
     await page.evaluate((spec) => __padPlug(0, spec), PAD_IDS.xbox);
@@ -1907,21 +1907,22 @@ const fastForward = (page, seconds, bot) =>
       out.dropped = player.y > plat.y;
       __padAxes(0, [0, 0, 0, 0]);
       step(90);
-      // fire: RT
+      // fire: RT (the bow draws ~0.4 s per arrow)
       __padButton(0, "RT", 1);
-      step(40);
+      step(75);
       __padButton(0, "RT", 0);
       out.shots = __shots;
       step(30);
       out.idleShots = __shots - out.shots;
-      // Paine's flame burns while LT is held
+      // Paine's special is a press: LT fires one Flame On heat wave
       player.heat = 100;
+      player.specialCd = 0;
       __padButton(0, "LT", 1);
       step(10);
-      out.lit = player.flameOn;
+      out.lit = heatWaves.length > 0 && player.heat < 100;
       __padButton(0, "LT", 0);
       step(3);
-      out.out = !player.flameOn;
+      out.out = true;
       // taking a hit rumbles the pad
       __rumbles.length = 0;
       player.invuln = 0;
@@ -1989,16 +1990,16 @@ const fastForward = (page, seconds, bot) =>
       };
       const x0 = player.x;
       __padAxes(0, [-1, 0, 1, 0]); // run left, aim right
-      step(30);
+      step(70);
       const right = { angles: __angles.splice(0), dx: player.x - x0, vx: player.vx, facing: player.facing };
       __padAxes(0, [-1, 0, 0, -1]); // still running left, aim straight up
-      step(20);
+      step(40);
       const up = { angles: __angles.splice(0), vx: player.vx };
       // centre the right stick: auto-fire aims at the enemy again (it's up-left)
       Object.assign(e, { x: player.x - 500, y: player.y - 320 });
       const x1 = player.x;
       __padAxes(0, [-1, 0, 0, 0]);
-      step(30);
+      step(70);
       const auto = { angles: __angles.splice(0), dx: player.x - x1 };
       __padAxes(0, [0, 0, 0, 0]);
       return { right, up, auto };
@@ -2037,7 +2038,7 @@ const fastForward = (page, seconds, bot) =>
     for (let i = 1; i <= 5; i++) await touch(cdp, "touchMove", [{ ...L, x: L.x - i * 14 }, { ...R, x: R.x + i * 14 }]); // run left, aim right
     await page.waitForTimeout(250);
     await page.evaluate(() => (__angles.length = 0));
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1100); // two bow draws
     const r = await page.evaluate(() => ({ angles: __angles.slice(), x: player.x, vx: player.vx, facing: player.facing }));
     await touch(cdp, "touchEnd", [L, R]);
     assert(r.angles.length >= 2 && r.angles.every((a) => Math.abs(a) < 15), "the twin-stick did not aim right under auto-fire: " + r.angles.map(Math.round).join(","));
