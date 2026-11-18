@@ -71,7 +71,7 @@ function passiveLine() {
   const p = player;
   if (p.char === "paine") return `PIERCE ${Math.round(pierceChance() * 100)}%`;
   if (p.char === "tetsu") return `REFLECT ${Math.round(reflectPct() * 100)}%`;
-  return `GLITCH ${Math.round(glitchChance() * 100)}% / ${Math.round(glitchRadius())}PX`;
+  return `GLITCH ${Math.round(glitchChance() * 100)}%`; // (radius: see the DATABASE)
 }
 
 // ========================================================= CYBER WIDOW ======

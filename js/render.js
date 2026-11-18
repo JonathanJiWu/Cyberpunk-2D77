@@ -229,7 +229,7 @@ function drawHUD(time) {
   const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : res.color;
   drawBar(44, 120, 300, 18, p.heat / TUNING.heat.max, 0, heatColor);
   hudText(p.heatLocked ? `NO ${res.name}` : res.name, 360, 120, 18, heatColor);
-  hudText(passiveLine(), 460, 120, 16, "#c9b6ff"); // the IC's passive, as it grows with level
+  hudText(passiveLine(), 460, 122, 15, "#c9b6ff"); // the IC's passive, as it grows with level
 
   // Active power-ups
   let ix = 44;
