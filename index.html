@@ -160,7 +160,7 @@
       </div>
 
       <div id="levelup" class="overlay levelup" hidden>
-        <div class="levelup-panel" role="dialog" aria-labelledby="levelup-title">
+        <div class="levelup-panel poster-panel" role="dialog" aria-labelledby="levelup-title">
           <h2 id="levelup-title">LEVEL UP!</h2>
           <p>Install one upgrade</p>
           <div id="cards" class="cards"></div>
@@ -169,24 +169,36 @@
               <span class="legend-sprite" aria-hidden="true"></span>
               <span class="legend-bubble"><b>THE LEGEND</b><span class="legend-line"></span></span>
             </div>
-            <button id="reroll-btn" class="secondary-btn reroll-btn" type="button">REROLL (3)</button>
+            <button id="reroll-btn" class="reroll-btn" type="button" aria-keyshortcuts="R">
+              <svg class="reroll-icon" viewBox="0 0 32 32" aria-hidden="true">
+                <path class="reroll-arrows" d="M16 3.5a12.5 12.5 0 0 1 11.6 7.8M16 28.5A12.5 12.5 0 0 1 4.4 20.7" />
+                <path class="reroll-heads" d="M28.8 5.6l-.9 6.5-6.3-1.8zM3.2 26.4l.9-6.5 6.3 1.8z" />
+                <rect class="reroll-die" x="9" y="9" width="14" height="14" rx="3" transform="rotate(12 16 16)" />
+                <g class="reroll-pips" transform="rotate(12 16 16)"><circle cx="12.6" cy="12.6" r="1.6" /><circle cx="16" cy="16" r="1.6" /><circle cx="19.4" cy="19.4" r="1.6" /></g>
+              </svg>
+              <span class="reroll-text"><b class="reroll-label">REROLL</b><span id="reroll-count" class="reroll-count">3 LEFT</span></span>
+              <span class="reroll-keys"><kbd class="reroll-key">R</kbd><kbd id="reroll-pad" class="reroll-key reroll-pad" hidden></kbd></span>
+            </button>
           </div>
         </div>
       </div>
 
       <div id="loadout" class="overlay levelup loadout" hidden>
-        <div class="levelup-panel" role="dialog" aria-labelledby="loadout-title">
-          <h2 id="loadout-title">PRE-DROP LOADOUT</h2>
-          <p>Pick 2 starting skills (<b id="loadout-count">0/2</b>). They start a level up and show up more often, and rarer, in the run.</p>
+        <div class="levelup-panel poster-panel loadout-panel" role="dialog" aria-labelledby="loadout-title">
           <div id="loadout-grid" class="loadout-grid"></div>
-          <div class="levelup-foot">
-            <div id="legend-loadout" class="legend" aria-live="polite">
-              <span class="legend-sprite" aria-hidden="true"></span>
-              <span class="legend-bubble"><b>THE LEGEND</b><span class="legend-line"></span></span>
-            </div>
-            <div class="loadout-actions">
-              <button id="loadout-back" class="secondary-btn" type="button">Back</button>
-              <button id="drop-btn" class="primary-btn" type="button">Drop In</button>
+          <div class="loadout-side">
+            <h2 id="loadout-title">PRE-DROP LOADOUT</h2>
+            <p>Pick 2 starting skills (<b id="loadout-count">0/2</b>). They start a level up and show up more often, and rarer, in the run.</p>
+            <div id="loadout-spec" class="loadout-spec"></div>
+            <div class="levelup-foot">
+              <div id="legend-loadout" class="legend" aria-live="polite">
+                <span class="legend-sprite" aria-hidden="true"></span>
+                <span class="legend-bubble"><b>THE LEGEND</b><span class="legend-line"></span></span>
+              </div>
+              <div class="loadout-actions">
+                <button id="loadout-back" class="secondary-btn" type="button">Back</button>
+                <button id="drop-btn" class="primary-btn" type="button">Drop In</button>
+              </div>
             </div>
           </div>
         </div>

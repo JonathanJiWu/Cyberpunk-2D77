@@ -391,6 +391,26 @@ const HARDWARE = {
   _heal: { cell: 1, kind: "ram", part: "REPAIR KIT (DOWNLOADED MORE RAM)" },
 };
 
+// ---------------------------------------------------------- Skill guide ------
+// Starting-skill guidance on the skill cards (pre-drop loadout and level-up).
+// role: OFFENSE / DEFENSE / MOBILITY / UTILITY. what: what it does; edge: its
+// main advantage; mechanic: what makes it tick; note: a limitation or a
+// synergy. One short line each ("{resource}" becomes heat / focus / RAM).
+// The primary and special ("zap" / "flame") read theirs from
+// CHARACTERS[id].primary.guide and .special.guide instead.
+const SKILL_GUIDE = {
+  orbit: { role: "OFFENSE", what: "Orbiting shards cut foes", edge: "Hands-free crowd shredder", mechanic: "More shards, faster spin", note: "Short reach: stay close" },
+  missile: { role: "OFFENSE", what: "Fires homing missiles", edge: "Never misses its target", mechanic: "Splash blast, 3 a volley", note: "Slow reload: add Overclock" },
+  stomp: { role: "OFFENSE", what: "Landing fires a shockwave", edge: "Knocks whole crowds back", mechanic: "Triggers on jump landings", note: "Only if you keep jumping" },
+  chain: { role: "OFFENSE", what: "Lightning arcs foe to foe", edge: "Hits packs, needs no aim", mechanic: "Jumps to up to 6 enemies", note: "Weak vs a lone boss" },
+  heart: { role: "DEFENSE", what: "+20 max HP, heals 20", edge: "Survive boss combos", mechanic: "Heals on every install", note: "Pairs with Nano Armor" },
+  legs: { role: "MOBILITY", what: "Run faster, jump higher", edge: "Outrun swarms and lasers", mechanic: "+8% speed per level", note: "More air for Shock Stomp" },
+  magnet: { role: "UTILITY", what: "Pulls XP in from afar", edge: "Faster level-ups", mechanic: "+40% pickup range a level", note: "No damage: invest early" },
+  armor: { role: "DEFENSE", what: "Take 8% less damage", edge: "Every hit hurts less", mechanic: "Stacks with base armor", note: "Best with Cyber Heart" },
+  sink: { role: "UTILITY", what: "Earn 25% more {resource}", edge: "Special up far more often", mechanic: "Special costs less, too", note: "Useless without specials" },
+  clock: { role: "UTILITY", what: "Weapons recharge faster", edge: "Speeds up every weapon", mechanic: "-7% cooldowns per level", note: "Better with more weapons" },
+};
+
 // ---------------------------------------------------------------- Humor ------
 // THE LEGEND is a hologram who shows up on the loadout and level-up screens.
 const HUMOR = {
