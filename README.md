@@ -111,7 +111,7 @@ Swap ICs from the pause menu at any time: levels, upgrades, lives and resource c
 - **Screens**: it scales to any screen size, portrait or landscape, with fullscreen where available and a resolution setting (lower runs faster).
 - **Desktop app** for Windows, macOS and Linux (see [Desktop app](#desktop-app)). The web version needs no internet once loaded either: the font is bundled.
 - **8 hidden easter eggs** (see below).
-- **48 automated browser tests** run before every deploy, plus tests that play the packaged desktop app.
+- **80 automated browser tests** run before every deploy, plus 6 tests that play the packaged desktop app.
 
 ## Settings
 These are on the start and pause menus and remembered between visits.
@@ -268,7 +268,7 @@ Cyber City hides 8 secrets, little homages to the cyberpunk classics: *Blade Run
 </details>
 
 ## Tests
-Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 48 tests:
+Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 80 tests:
 - controls, auto-fire and auto special;
 - the pre-drop loadout and hero landing;
 - skill weighting, rare cards, rerolls and the half-second install pause;
@@ -338,9 +338,9 @@ In development, F12 (or Ctrl+Shift+I) opens the developer tools and Ctrl+R reloa
 
 | Command | Builds | Build it on |
 |---|---|---|
-| `npm run dist:linux` | `Cyberpunk-2D77-3.0.0-linux-x86_64.AppImage` and `Cyberpunk-2D77-3.0.0-linux-amd64.deb` (x64) | Linux |
-| `npm run dist:win` | `Cyberpunk-2D77-3.0.0-win-x64.exe`, an NSIS installer (x64) | Windows (elsewhere it needs Wine) |
-| `npm run dist:mac` | `Cyberpunk-2D77-3.0.0-mac-x64.dmg` (Intel x64) | macOS |
+| `npm run dist:linux` | `Cyberpunk-2D77-3.1.0-linux-x86_64.AppImage` and `Cyberpunk-2D77-3.1.0-linux-amd64.deb` (x64) | Linux |
+| `npm run dist:win` | `Cyberpunk-2D77-3.1.0-win-x64.exe`, an NSIS installer (x64) | Windows (elsewhere it needs Wine) |
+| `npm run dist:mac` | `Cyberpunk-2D77-3.1.0-mac-x64.dmg` (Intel x64) | macOS |
 | `npm run dist` | the installers for the system you are on | |
 | `npm run pack:linux` | just the unpacked app, `dist/linux-unpacked/cyberpunk-2d77` (the quickest, for testing) | Linux |
 
@@ -392,18 +392,20 @@ To sign, add the certificates as repository secrets (`CSC_LINK` and `CSC_KEY_PAS
 | `js/core.js` | Canvas, asset loading, drawing helpers (cached glows, tinted sprites, gradient strips), visual effects and `perfMode()` |
 | `js/sound.js` | Web Audio unlock (autoplay rules), music and SFX volume buses, sound effects, and the original mp3 soundtrack |
 | `js/music.js` | The generated darksynth soundtrack and the music setting |
+| `js/synthfx.js` | Procedural sound effects (every IC, boss, pickup and UI sound), synthesized live; open the game with `?sounds` for a sound lab |
 | `js/input.js` | Keyboard, mouse, joysticks, buttons, tap gestures and settings |
 | `js/gamepad.js` | Game controllers: pad types, deadzones, gameplay mapping, menu navigation, button prompts, rumble and player slots |
 | `js/world.js` | Platforms, crates, the street and the shared platformer physics |
 | `js/pickups.js` | XP chips and power-ups |
-| `js/player.js` | Movement, jumping, stats, Paine's energy ball and flame, auto weapons and drawing the hero |
-| `js/heroes.js` | Tetsu's and Sudo's kits, plus facing, animation, effects and speech bubbles for all three |
+| `js/player.js` | Movement, jumping, stats, the arrow/EM/shot projectiles, damage to the player (with Ronin's reflection), auto weapons and drawing the hero |
+| `js/heroes.js` | Tetsu's blade and dash, plus facing, animation, effects and speech bubbles for all three ICs |
 | `js/lives.js` | The rooftop drop and hero landing, the 3 lives and the IC hot-swap |
+| `js/kits.js` | The signature kits: the Widow's bow and Flame On, Ronin's Mirror Steel, Hackerman's EM projector, System Glitch and Time Dilation, and the enemy effects they cause (downed flyers, fall damage, bleeding, glitch stutter) |
 | `js/coop.js` | Local co-op: player contexts and binding, joining and leaving, targets, shared lives, the camera leash and player 2's HUD |
 | `js/enemies.js` | The spawn director, enemy AI, status effects and enemy shots |
 | `js/bosses.js` | Shared boss machinery: cinematic entrances, minion derez, grounded movement, shockwaves, speech and the name card |
 | `js/overseer.js` | The Overseer, the first boss |
-| `js/null.js` | NULL, the second boss (with procedural fallback art until `img/null.png` lands) |
+| `js/null.js` | NULL, the second boss |
 | `js/goat.js` | The Demon GOAT, the final boss |
 | `js/upgrades.js` | XP, levels, hardware cards, rerolls, the pre-drop loadout, respec and THE LEGEND |
 | `js/secrets.js` | The easter eggs, the billboard hologram, the hacking terminal and the neon notes |

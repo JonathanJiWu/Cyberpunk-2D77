@@ -80,6 +80,22 @@
   - a shine sweep, a glow and a satisfying zip-in with sparkles, "+XP" and rising chimes;
   - chips left lying around slowly drift to you.
 
+### Performance
+- **A performance pass**, measured with a new benchmark (`npm run bench`). Frames are about 30% cheaper in heavy scenes:
+  - glow sprites are cached and the cache stays bounded (it used to leak a canvas every frame);
+  - tinted sprites are cached;
+  - the backdrop is pre-scaled, and the sky gradient is skipped when it's invisible;
+  - particles are pooled;
+  - per-frame page updates are gone;
+  - the desktop package is smaller.
+- **Performance mode** (a setting next to Resolution):
+  - renders at a lower internal resolution;
+  - halves the particles;
+  - drops purely decorative glows, glitch ghosting and most of the rain;
+  - simplifies the effects.
+
+  Frames are 4–6× cheaper in heavy scenes. Enemies, bullets, every boss tell and the HUD look the same. If the game keeps running slowly, it suggests the mode once.
+
 ### Fixes
 - Fixed a crash when Ronin's reflection killed a boss while bullets were in flight.
 - Fixed a long bow draw swallowing quick taps in tap-to-fire mode.
