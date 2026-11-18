@@ -300,6 +300,295 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+
+  // ------------------------------------------- Skill posters, reroll, XP ----
+  // Record synth.play() calls (works with or without js/synthfx.js loaded)
+  const spySynth = (page) =>
+    page.evaluate(() => {
+      if (typeof synth === "undefined") window.synth = { play() {}, loop() {}, stop() {} };
+      window.__synth = [];
+      synth.play = (name, opts) => window.__synth.push([name, opts && opts.rate]);
+    });
+
+  // Measure a set of skill cards: size, ratio, grid and whether anything spills
+  const measureCards = (page, selector) =>
+    page.evaluate((selector) => {
+      const cards = [...document.querySelectorAll(selector)];
+      const r = cards.map((c) => {
+        const b = c.getBoundingClientRect();
+        const poster = c.querySelector(".poster");
+        return { w: c.offsetWidth, h: c.offsetHeight, x: c.offsetLeft, y: c.offsetTop, l: b.left, t: b.top, r: b.right, b: b.bottom, spill: poster.scrollHeight - poster.clientHeight };
+      });
+      return {
+        n: r.length,
+        ratios: r.map((c) => c.w / c.h),
+        sizes: [...new Set(r.map((c) => `${c.w}x${c.h}`))],
+        cols: new Set(r.map((c) => c.x)).size,
+        rows: new Set(r.map((c) => c.y)).size,
+        outside: r.filter((c) => c.l < -1 || c.t < -1 || c.r > innerWidth + 1 || c.b > innerHeight + 1).length,
+        spill: Math.max(...r.map((c) => c.spill)),
+        minW: Math.min(...r.map((c) => c.w)),
+        scrollX: document.documentElement.scrollWidth - innerWidth,
+      };
+    }, selector);
+
+  await test("skill cards are 3:4 posters: a 4 x 3 loadout wall and a row of 3 level-up cards, fitting desktop and phone screens", async () => {
+    const sizes = {
+      "1280x720": { viewport: { width: 1280, height: 720 } },
+      "1920x1080": { viewport: { width: 1920, height: 1080 } },
+      "phone 900x400": { viewport: { width: 900, height: 400 }, isMobile: true, hasTouch: true },
+      "phone portrait": devices["Pixel 7"],
+    };
+    for (const [name, opts] of Object.entries(sizes)) {
+      const { context, page, problems } = await open(browser, url, opts);
+      await page.evaluate(() => openLoadout());
+      await page.waitForTimeout(150);
+      const wall = await measureCards(page, "#loadout-grid .card");
+      const panel = await page.evaluate(() => {
+        const p = document.querySelector("#loadout .levelup-panel");
+        return { x: p.scrollWidth - p.clientWidth, y: p.scrollHeight - p.clientHeight };
+      });
+      await page.evaluate(() => (loadoutEl.hidden = true));
+      await startRun(page);
+      await page.evaluate(() => gainXp(xpForLevel(2)));
+      await page.waitForTimeout(600);
+      const deck = await measureCards(page, "#cards .card");
+      const tag = `${name}: `;
+      assert(wall.n === 12 && wall.cols === 4 && wall.rows === 3, tag + "loadout is not 4 x 3: " + JSON.stringify(wall));
+      assert(wall.ratios.every((k) => Math.abs(k - 0.75) < 0.02) && wall.sizes.length === 1, tag + "loadout cards are not equal 3:4 posters: " + JSON.stringify(wall));
+      assert(!wall.outside && wall.spill <= 1 && wall.scrollX <= 0 && panel.x <= 0 && panel.y <= 1, tag + "loadout overflows: " + JSON.stringify({ wall, panel }));
+      assert(deck.n === 3 && deck.rows === 1 && deck.ratios.every((k) => Math.abs(k - 0.75) < 0.02), tag + "level-up cards are not one row of 3:4 posters: " + JSON.stringify(deck));
+      assert(!deck.outside && deck.spill <= 1 && deck.scrollX <= 0, tag + "level-up cards overflow: " + JSON.stringify(deck));
+      assert(!problems.length, tag + problems.join("; "));
+      await context.close();
+    }
+  });
+
+  await test("reroll button: big and labelled '3 LEFT', works with R, Enter and a click, spins and flips with a sound, greys out at 0", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    await spySynth(page);
+    await page.evaluate(() => gainXp(xpForLevel(2)));
+    await page.waitForTimeout(600);
+    const btn = () =>
+      page.evaluate(() => {
+        const b = rerollBtn.getBoundingClientRect();
+        const style = getComputedStyle(rerollBtn);
+        return { w: b.width, h: b.height, text: rerollBtn.innerText.replace(/\s+/g, " ").trim(), disabled: rerollBtn.disabled, anim: style.animationName, key: document.querySelector(".reroll-key").offsetWidth > 0, spin: rerollBtn.classList.contains("spin"), flip: cardsEl.classList.contains("rerolled"), left: progress.rerolls, ids: currentChoices.map((c) => c.id).join(), state: game.state };
+      });
+    const b0 = await btn();
+    // a controller shows its button next to the R key
+    const pad = await page.evaluate(() => {
+      window.padPrompt = (b) => (b === "Y" ? "Y" : "");
+      updateRerollBtn();
+      const shown = { hidden: document.getElementById("reroll-pad").hidden, text: document.getElementById("reroll-pad").textContent };
+      delete window.padPrompt;
+      updateRerollBtn();
+      return { shown, after: document.getElementById("reroll-pad").hidden };
+    });
+    await page.keyboard.press("r");
+    await page.waitForTimeout(80);
+    const b1 = await btn();
+    await page.focus("#reroll-btn");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(80);
+    const b2 = await btn();
+    await page.click("#reroll-btn");
+    await page.waitForTimeout(80);
+    const b3 = await btn();
+    await page.keyboard.press("r"); // nothing left: the button just shakes
+    await page.waitForTimeout(80);
+    const b4 = await btn();
+    const sounds = await page.evaluate(() => window.__synth.filter(([n]) => n === "reroll").length);
+    assert(b0.w >= 150 && b0.h >= 44 && /REROLL/.test(b0.text) && /3 LEFT/.test(b0.text) && b0.key && b0.anim === "reroll-pulse" && !b0.disabled, "reroll button not prominent: " + JSON.stringify(b0));
+    assert(!pad.shown.hidden && pad.shown.text === "Y" && pad.after, "controller button not shown: " + JSON.stringify(pad));
+    assert(b1.left === 2 && /2 LEFT/.test(b1.text) && b1.spin && b1.flip, "R did not reroll: " + JSON.stringify(b1));
+    assert(b2.left === 1 && /1 LEFT/.test(b2.text), "Enter on the button did not reroll: " + JSON.stringify(b2));
+    assert(b3.left === 0 && b3.disabled && b3.text === "NO REROLLS LEFT" && b3.anim !== "reroll-pulse", "not greyed out at 0: " + JSON.stringify(b3));
+    assert(b4.left === 0 && b4.state === "levelup" && b4.ids === b3.ids, "R at 0 changed something: " + JSON.stringify(b4));
+    assert(sounds === 3, "expected 3 reroll sounds, got " + sounds);
+    await context.close();
+  });
+
+  await test("loadout cards show a colour-coded role and the guidance (does / edge / how / note); phones get a spec sheet", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await page.evaluate(() => openLoadout());
+    await page.waitForTimeout(150);
+    const r = await page.evaluate(() => {
+      const shared = ["orbit", "missile", "stomp", "chain", "heart", "legs", "magnet", "armor", "sink", "clock"];
+      const guideOk = shared.every((id) => {
+        const g = SKILL_GUIDE[id];
+        return g && ["OFFENSE", "DEFENSE", "MOBILITY", "UTILITY"].includes(g.role) && ["what", "edge", "mechanic", "note"].every((k) => typeof g[k] === "string" && g[k].length > 3 && g[k].length <= 70);
+      });
+      const visible = (el) => !!el && el.offsetWidth > 0 && el.offsetHeight > 0 && getComputedStyle(el).visibility !== "hidden";
+      const cards = [...loadoutGrid.children].map((c) => {
+        const tag = c.querySelector(".role-tag");
+        const rows = [...c.querySelectorAll(".guide-row")];
+        const guide = upgradeInfo(UPGRADES.find((u) => u.id === c.dataset.id)).guide;
+        return {
+          id: c.dataset.id,
+          role: tag.textContent,
+          roleShown: visible(tag),
+          color: getComputedStyle(tag).backgroundColor,
+          hasGuide: !!guide,
+          rows: rows.map((row) => row.querySelector("b").textContent).join(),
+          rowsShown: rows.every((row) => visible(row.querySelector("span")) && row.querySelector("span").textContent.length > 3),
+          bits: ["hw-art", "card-name", "card-level", "card-desc"].every((k) => visible(c.querySelector("." + k)) && (k === "hw-art" || c.querySelector("." + k).textContent.trim())),
+        };
+      });
+      const colors = {};
+      cards.forEach((c) => (colors[c.role] = c.color));
+      // a missing or partial guide must not break anything
+      const saved = CHARACTERS.paine.primary.guide;
+      CHARACTERS.paine.primary.guide = { what: "Throws energy balls" };
+      renderLoadout();
+      const partial = { role: loadoutGrid.children[0].dataset.role, rows: loadoutGrid.children[0].querySelectorAll(".guide-row").length };
+      CHARACTERS.paine.primary.guide = undefined;
+      renderLoadout();
+      const none = { role: loadoutGrid.children[0].dataset.role, rows: loadoutGrid.children[0].querySelectorAll(".guide-row").length };
+      CHARACTERS.paine.primary.guide = saved;
+      renderLoadout();
+      return { guideOk, cards, colors, partial, none };
+    });
+    assert(r.guideOk, "SKILL_GUIDE is incomplete");
+    const bad = r.cards.filter((c) => !c.roleShown || !["OFFENSE", "DEFENSE", "MOBILITY", "UTILITY"].includes(c.role) || !c.bits || (c.hasGuide && (c.rows !== "DOES,EDGE,HOW,NOTE" || !c.rowsShown)));
+    assert(!bad.length, "cards missing their role or guidance: " + JSON.stringify(bad));
+    assert(r.cards.filter((c) => c.hasGuide).length >= 10, "shared skills have no guide on their cards");
+    assert(new Set(Object.values(r.colors)).size === Object.keys(r.colors).length && Object.keys(r.colors).length === 4, "roles are not colour-coded: " + JSON.stringify(r.colors));
+    assert(r.partial.role === "OFFENSE" && r.partial.rows === 1 && r.none.role === "OFFENSE" && r.none.rows === 0, "missing guide not handled: " + JSON.stringify(r));
+    // hovering a card puts its full guidance on the spec sheet
+    await page.hover(`#loadout-grid .card[data-id="chain"]`);
+    const spec = await page.evaluate(() => ({ name: loadoutSpec.querySelector(".spec-name").textContent, role: loadoutSpec.querySelector(".role-tag").textContent, rows: loadoutSpec.querySelectorAll(".guide-row").length }));
+    assert(spec.name === "CHAIN LIGHTNING" && spec.role === "OFFENSE" && spec.rows === 4, "spec sheet does not follow the pointer: " + JSON.stringify(spec));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+
+    // Phone: the posters are small, so the guidance is on the spec sheet of the tapped card
+    const ph = await open(browser, url, devices["Pixel 7"]);
+    await ph.page.evaluate(() => openLoadout());
+    await ph.page.waitForTimeout(150);
+    await ph.page.tap(`#loadout-grid .card[data-id="legs"]`);
+    const p = await ph.page.evaluate(() => {
+      const visible = (el) => !!el && el.offsetWidth > 0 && el.offsetHeight > 0;
+      const b = loadoutSpec.getBoundingClientRect();
+      return {
+        roles: [...loadoutGrid.querySelectorAll(".role-tag")].filter(visible).length,
+        name: loadoutSpec.querySelector(".spec-name").textContent,
+        role: loadoutSpec.querySelector(".role-tag").textContent,
+        rows: [...loadoutSpec.querySelectorAll(".guide-row span")].filter((s) => visible(s) && s.textContent).length,
+        onScreen: b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth,
+      };
+    });
+    assert(p.roles === 12 && p.name === "SERVO LEGS" && p.role === "MOBILITY" && p.rows === 4 && p.onScreen, "phone spec sheet: " + JSON.stringify(p));
+    await ph.context.close();
+  });
+
+  await test("XP pickups: RAM / NVMe / CPU by value, zip in with a stretch, sparkles, '+XP' and a combo-pitched, throttled chime", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    await spySynth(page);
+    const r = await page.evaluate(() => {
+      const kinds = [1, 3, 4, 9, 10, 40].map((v) => XP_TYPES[xpType(v)].id).join();
+      gems.length = 0;
+      [1, 5, 12].forEach((v) => spawnGem(player.x + 400, player.y, v));
+      const spawned = gems.map((g) => XP_TYPES[g.type].id).join();
+      // the art: 3 types x 4 frames, pre-rendered once
+      const a = xpSprites();
+      const sprites = { types: a.frames.length, frames: a.frames.every((f) => f.length === 4 && f.every((c) => c instanceof HTMLCanvasElement && c.width > 0)), cached: xpSprites().frames === a.frames, image: a.image };
+      // pull them in: each one zips to the player, faster and faster (RAM first, CPU last)
+      const pc = centerOf(player);
+      gems.forEach((g, i) => ((g.x = pc.x + 100 + 50 * i - 12), (g.y = pc.y - 12), (g.vx = g.vy = 0)));
+      let gained = 0;
+      const gain = gainXp;
+      window.gainXp = (v) => {
+        gained += v;
+        gain(v);
+      };
+      updatePickups(1 / 60);
+      const zipping = gems.every((g) => g.pulled && g.dx < -0.9 && g.speed > 300);
+      render(performance.now() / 1000); // draws the stretched chips
+      for (let i = 0; i < 40 && gems.length; i++) updatePickups(1 / 60);
+      render(performance.now() / 1000);
+      window.gainXp = gain;
+      const sounds = window.__synth.filter(([n]) => n.startsWith("pickup")).map(([n]) => n);
+      return { kinds, spawned, sprites, zipping, left: gems.length, gained, sounds, pops: xpFx.pops.length, flash: popups.some((p) => /^\+\d+ XP$/.test(p.text)) };
+    });
+    assert(r.kinds === "ram,ram,ssd,ssd,cpu,cpu" && r.spawned === "ram,ssd,cpu", "wrong hardware for the value: " + JSON.stringify(r));
+    assert(r.sprites.types === 3 && r.sprites.frames && r.sprites.cached && !r.sprites.image, "sprites not pre-rendered: " + JSON.stringify(r.sprites));
+    assert(r.zipping && r.left === 0 && r.gained === 18, "chips were not pulled in and collected: " + JSON.stringify(r));
+    assert(r.pops > 0 && r.flash, "no sparkle pop / +XP flash: " + JSON.stringify(r));
+    assert(["pickupRam", "pickupSsd", "pickupCpu"].every((n) => r.sounds.includes(n)), "missing pickup sounds: " + JSON.stringify(r.sounds));
+    // quick combos raise the pitch; a burst in one frame plays a single chime
+    const c = await page.evaluate(() => {
+      window.__synth.length = 0;
+      xpFx.clock += 5; // a fresh combo
+      const pc = centerOf(player);
+      for (let i = 0; i < 4; i++) {
+        spawnGem(pc.x, pc.y, 1);
+        for (let k = 0; k < 6; k++) updatePickups(1 / 60); // 0.1 s apart
+      }
+      const rates = window.__synth.map(([, rate]) => rate);
+      window.__synth.length = 0;
+      for (let i = 0; i < 12; i++) spawnGem(pc.x, pc.y, 1);
+      updatePickups(1 / 60);
+      return { rates, burst: window.__synth.length, left: gems.length };
+    });
+    assert(c.rates.length === 4 && c.rates.every((x, i) => !i || x > c.rates[i - 1]), "combo pitch does not rise: " + JSON.stringify(c));
+    assert(c.burst === 1 && c.left === 0, "pickup chimes not throttled: " + JSON.stringify(c));
+    // the real art takes over once img/xp-hardware.png is registered
+    const art = await page.evaluate(() => {
+      const sheet = document.createElement("canvas");
+      sheet.width = 128;
+      sheet.height = 96;
+      IMG.xpHardware = sheet;
+      const withArt = xpSprites().image;
+      delete IMG.xpHardware;
+      return { withArt, fallback: !xpSprites().image };
+    });
+    assert(art.withArt && art.fallback, "xp-hardware.png is not picked up: " + JSON.stringify(art));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("XP pickups: 300 on screen stay fast (update + draw)", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(async () => {
+      window.gainXp = () => {}; // no level-ups while timing
+      game.state = "paused"; // the main loop only renders; the frames below do the pickups
+      gems.length = 0;
+      const pc = centerOf(player);
+      for (let i = 0; i < 400; i++) spawnGem(camera.x + 60 + (i % 50) * 36, camera.y + 200 + Math.floor(i / 50) * 70, [1, 1, 2, 5, 12][i % 5]);
+      const spawned = gems.length;
+      // a third of them flying at the player from far away
+      gems.forEach((g, i) => {
+        if (i % 3) return;
+        g.pulled = true;
+        g.x = pc.x + (i % 2 ? 1 : -1) * (700 + (i % 7) * 40);
+      });
+      // One timed update + draw per animation frame, so every frame gets
+      // committed (and rasterized off the main thread) like in the game
+      const times = [];
+      for (let i = 0; i < 70; i++) {
+        await new Promise((done) => requestAnimationFrame(done));
+        const t0 = performance.now();
+        updatePickups(1 / 60);
+        ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+        ctx.save();
+        ctx.translate(-camera.x, -camera.y);
+        drawPickups(i / 60);
+        ctx.restore();
+        if (i >= 10) times.push(performance.now() - t0);
+      }
+      times.sort((a, b) => a - b);
+      return { spawned, left: gems.length, avg: times.reduce((a, b) => a + b, 0) / times.length, median: times[30], p90: times[54], worst: times[59] };
+    });
+    console.log(`       300 XP chips, update + draw per frame: avg ${r.avg.toFixed(2)} ms, median ${r.median.toFixed(2)} ms, p90 ${r.p90.toFixed(2)} ms, worst ${r.worst.toFixed(2)} ms (${r.left} chips left after 70 frames)`);
+    assert(r.spawned === 300, "the chip cap is not 300: " + r.spawned);
+    assert(r.avg < 8 && r.median < 4, "300 XP chips are too slow: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
   await test("respec: refund every point and spend them again from the pause menu", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { settings: { loadout: ["orbit", "armor"] } });

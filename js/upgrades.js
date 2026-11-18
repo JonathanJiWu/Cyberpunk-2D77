@@ -77,23 +77,66 @@ function rollChoices() {
   return picks;
 }
 
-// The primary/special upgrades take their name, icon and text from the
+// The primary/special upgrades take their name, icon, text and guide from the
 // character being played; everything else is shared.
 function upgradeInfo(u) {
   const ch = CH();
   const own = u.id === "zap" ? ch.primary : u.id === "flame" ? ch.special : null;
-  if (own) return { name: own.name, desc: own.desc, max: own.max, icon: own.icon };
-  return { name: u.name, desc: u.desc, max: u.max, icon: { sheet: "icons", cell: u.icon } };
+  const info = own ? { name: own.name, desc: own.desc, max: own.max, icon: own.icon } : { name: u.name, desc: u.desc, max: u.max, icon: { sheet: "icons", cell: u.icon } };
+  info.guide = own ? own.guide : SKILL_GUIDE[u.id];
+  return info;
 }
 
+const resourceText = (s) => String(s).replace("{resource}", CH().resource.name.toLowerCase());
+const descAt = (u, level) => {
+  const desc = upgradeInfo(u).desc;
+  return resourceText(desc[clamp(level - 1, 0, desc.length - 1)]);
+};
+
 function describe(u, steps = 1) {
-  const info = upgradeInfo(u);
   const lines = [];
-  for (let k = 1; k <= steps; k++) {
-    const next = lv(u.id) + k;
-    lines.push(info.desc[Math.min(next - 1, info.desc.length - 1)].replace("{resource}", CH().resource.name.toLowerCase()));
-  }
+  for (let k = 1; k <= steps; k++) lines.push(descAt(u, lv(u.id) + k));
   return [...new Set(lines)].join(" + ");
+}
+
+// ------------------------------------------------------ Skill guidance ------
+// role + four short lines (SKILL_GUIDE, or the IC's own primary/special
+// guide). A missing or partial guide just shows fewer lines.
+const ROLES = ["OFFENSE", "DEFENSE", "MOBILITY", "UTILITY"];
+const GUIDE_ROWS = [
+  ["what", "DOES"],
+  ["edge", "EDGE"],
+  ["mechanic", "HOW"],
+  ["note", "NOTE"],
+];
+
+function skillRole(u) {
+  const g = upgradeInfo(u).guide;
+  const role = g && typeof g.role === "string" ? g.role.trim().toUpperCase() : "";
+  if (ROLES.includes(role)) return role;
+  return u.id === "_heal" ? "DEFENSE" : u.weapon ? "OFFENSE" : "UTILITY";
+}
+
+// [[label, text, key], ...] for the guide lines this skill has
+function skillGuideRows(u) {
+  const g = upgradeInfo(u).guide;
+  if (!g || typeof g !== "object") return [];
+  return GUIDE_ROWS.filter(([k]) => typeof g[k] === "string" && g[k].trim()).map(([k, label]) => [label, resourceText(g[k].trim()), k]);
+}
+
+function fillGuide(el, rows) {
+  el.textContent = "";
+  rows.forEach(([label, text, key]) => {
+    const row = document.createElement("span");
+    row.className = `guide-row g-${key}`;
+    row.title = text;
+    const b = document.createElement("b");
+    b.textContent = label;
+    const t = document.createElement("span");
+    t.textContent = text;
+    row.append(b, t);
+    el.append(row);
+  });
 }
 
 // CSS for showing one cell of a horizontal icon strip
@@ -103,28 +146,45 @@ function iconStyle(icon) {
   return `background-image:url(img/${icon.sheet}.png);background-size:${n * 100}% 100%;background-position:${(icon.cell * 100) / (n - 1)}% 0`;
 }
 
-// One upgrade drawn as a piece of hardware (used by level-up and loadout)
+// One upgrade drawn as a 3:4 movie poster printed on a piece of hardware
+// (used by level-up and loadout): role tag, part number, the hardware art as
+// the poster image, the headline, the level line, the description and the
+// guidance lines ("billing block").
 function hardwareCard(u, { rare, key, tag } = {}) {
   const hw = HARDWARE[u.id] || HARDWARE._heal;
+  const info = upgradeInfo(u);
+  const role = skillRole(u);
   const card = document.createElement("button");
   card.type = "button";
-  card.className = `card hw hw-${hw.kind}`;
+  card.className = `card hw hw-${hw.kind} role-${role.toLowerCase()}`;
+  card.dataset.id = u.id;
+  card.dataset.role = role;
   card.innerHTML = `
+    <span class="poster">
+      <span class="poster-top">${key ? `<kbd class="card-key">${key}</kbd>` : ""}<span class="role-tag"></span></span>
+      <span class="hw-part"></span>
+      <span class="poster-art">
+        <span class="hw-art" style="${iconStyle({ sheet: "hardware", cell: hw.cell })}"></span>
+        <span class="card-icon" style="${iconStyle(info.icon)}"></span>
+      </span>
+      <span class="card-name"></span>
+      <span class="card-level"></span>
+      <span class="card-desc"></span>
+      <span class="card-guide"></span>
+      <span class="hw-tag"></span>
+    </span>
     <span class="hw-led"></span>
-    ${key ? `<span class="card-key">${key}</span>` : ""}
-    <span class="hw-part"></span>
-    <span class="hw-art" style="${iconStyle({ sheet: "hardware", cell: hw.cell })}"></span>
-    <span class="card-icon" style="${iconStyle(upgradeInfo(u).icon)}"></span>
-    <span class="card-name"></span>
-    <span class="card-level"></span>
-    <span class="card-desc"></span>
-    <span class="hw-tag"></span>
     <span class="hw-pins"></span>`;
+  card.querySelector(".role-tag").textContent = role;
   card.querySelector(".hw-part").textContent = hw.part;
-  card.querySelector(".card-name").textContent = upgradeInfo(u).name;
+  card.querySelector(".card-name").textContent = info.name;
+  const rows = skillGuideRows(u);
+  if (rows.length) fillGuide(card.querySelector(".card-guide"), rows);
+  else card.querySelector(".card-guide").remove();
   if (rare) card.classList.add("rare");
-  if (tag) card.querySelector(".hw-tag").textContent = tag;
-  else card.querySelector(".hw-tag").remove();
+  const tagEl = card.querySelector(".hw-tag");
+  tagEl.textContent = tag || "\u00a0"; // an empty tag still keeps its space
+  tagEl.classList.toggle("is-empty", !tag);
   return card;
 }
 
@@ -133,6 +193,8 @@ function openLevelUp() {
   progress.pending--;
   progress.level++;
   currentChoices = rollChoices();
+  cardsEl.classList.remove("rerolled");
+  rerollBtn.classList.remove("spin", "denied");
   renderCards();
   document.getElementById("levelup-title").textContent = `LEVEL ${progress.level}!`;
   levelUpEl.hidden = false;
@@ -163,21 +225,47 @@ function renderCards() {
     card.addEventListener("click", () => chooseUpgrade(i));
     cardsEl.appendChild(card);
   });
-  rerollBtn.textContent = `REROLL (${progress.rerolls})`;
-  rerollBtn.disabled = progress.rerolls <= 0;
+  updateRerollBtn();
+}
+
+// The reroll button: "3 LEFT" (greyed "NO REROLLS LEFT" at 0), the R key
+// and, with a controller, its button.
+const rerollCount = document.getElementById("reroll-count");
+const rerollPad = document.getElementById("reroll-pad");
+function updateRerollBtn() {
+  const left = progress.rerolls;
+  rerollBtn.disabled = left <= 0;
+  rerollCount.textContent = left > 0 ? `${left} LEFT` : "NO REROLLS LEFT";
+  rerollBtn.setAttribute("aria-label", left > 0 ? `Reroll the cards: ${left} left` : "No rerolls left");
+  const pad = typeof padPrompt === "function" && padPrompt("Y");
+  rerollPad.hidden = !pad;
+  rerollPad.textContent = pad ? String(pad) : "";
+}
+
+// Restart a one-shot CSS animation
+function replayClass(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
 }
 
 function rerollChoices() {
-  if (game.state !== "levelup" || pickLock || progress.rerolls <= 0) return;
+  if (game.state !== "levelup" || pickLock) return;
+  if (progress.rerolls <= 0) {
+    replayClass(rerollBtn, "denied");
+    return;
+  }
   progress.rerolls--;
   currentChoices = rollChoices();
   renderCards();
-  cardsEl.classList.remove("rerolled");
-  void cardsEl.offsetWidth; // restart the flip animation
-  cardsEl.classList.add("rerolled");
-  sfx.zapHit.play({ rate: 1.6 });
+  replayClass(cardsEl, "rerolled"); // the new cards flip in
+  replayClass(rerollBtn, "spin"); // and the die spins
+  if (typeof synth !== "undefined") synth.play("reroll");
+  else sfx.zapHit.play({ rate: 1.6 });
+  vibrate(15);
   legendSay(levelUpLegend, pick(HUMOR.reroll));
-  if (!touchMode) cardsEl.firstElementChild.focus({ preventScroll: true });
+  // Keep focus on the button if that's what was used (Enter again rerolls again)
+  if (!touchMode && (document.activeElement !== rerollBtn || rerollBtn.disabled)) cardsEl.firstElementChild.focus({ preventScroll: true });
 }
 rerollBtn.addEventListener("click", rerollChoices);
 
@@ -317,20 +405,49 @@ function closeLoadout() {
   overlay.hidden = false;
 }
 
+// A loadout pick starts one level above the base (2 for the primary/special)
+const startLevel = (u) => Math.min(upgradeInfo(u).max, baseLevel(u.id) + 1);
+
 function renderLoadout() {
   const chosen = validLoadout();
   loadoutGrid.textContent = "";
   UPGRADES.forEach((u) => {
-    const card = hardwareCard(u, { tag: chosen.includes(u.id) ? `SLOT ${chosen.indexOf(u.id) + 1}` : null });
-    card.classList.add("mini");
+    const card = hardwareCard(u, { tag: chosen.includes(u.id) ? `SLOT ${chosen.indexOf(u.id) + 1}` : "+ ADD" });
     card.setAttribute("aria-pressed", String(chosen.includes(u.id)));
-    card.querySelector(".card-level").textContent = u.weapon ? "WEAPON" : "PASSIVE";
-    card.querySelector(".card-desc").textContent = describe(u);
+    const level = card.querySelector(".card-level");
+    level.innerHTML = `<span class="lv-kind">${u.weapon ? "WEAPON" : "PASSIVE"} · </span>`;
+    level.append(`LV ${startLevel(u)}`);
+    card.querySelector(".card-desc").textContent = descAt(u, startLevel(u));
     card.addEventListener("click", () => toggleLoadout(u.id));
+    card.addEventListener("pointerenter", (e) => e.pointerType === "mouse" && showLoadoutSpec(u.id));
+    card.addEventListener("focus", () => showLoadoutSpec(u.id));
     loadoutGrid.append(card);
   });
   loadoutCount.textContent = `${chosen.length}/2`;
   dropBtn.disabled = chosen.length < 2;
+  showLoadoutSpec(loadoutSpecId || chosen[0] || UPGRADES[0].id);
+}
+
+// The spec sheet: the full guidance for the card you point at, tap or focus
+// (on phones the cards are too small to carry it themselves)
+const loadoutSpec = document.getElementById("loadout-spec");
+let loadoutSpecId = null;
+function showLoadoutSpec(id) {
+  const u = UPGRADES.find((x) => x.id === id) || UPGRADES[0];
+  loadoutSpecId = u.id;
+  const info = upgradeInfo(u);
+  const role = skillRole(u);
+  const hw = HARDWARE[u.id] || HARDWARE._heal;
+  const slot = validLoadout().indexOf(u.id);
+  loadoutSpec.className = `loadout-spec hw-${hw.kind} role-${role.toLowerCase()}`;
+  loadoutSpec.dataset.id = u.id;
+  loadoutSpec.innerHTML = `<span class="spec-head"><span class="role-tag"></span><b class="spec-name"></b></span><span class="spec-sub"></span><span class="spec-desc"></span><span class="spec-rows"></span><span class="spec-slot"></span>`;
+  loadoutSpec.querySelector(".role-tag").textContent = role;
+  loadoutSpec.querySelector(".spec-name").textContent = info.name.toUpperCase();
+  loadoutSpec.querySelector(".spec-sub").textContent = `${hw.part} · ${u.weapon ? "WEAPON" : "PASSIVE"} · STARTS AT LV ${startLevel(u)} OF ${info.max}`;
+  loadoutSpec.querySelector(".spec-desc").textContent = descAt(u, startLevel(u));
+  fillGuide(loadoutSpec.querySelector(".spec-rows"), skillGuideRows(u));
+  loadoutSpec.querySelector(".spec-slot").textContent = slot >= 0 ? `IN SLOT ${slot + 1}` : touchMode ? "TAP TO ADD" : "CLICK TO ADD";
 }
 
 function toggleLoadout(id) {
@@ -340,6 +457,7 @@ function toggleLoadout(id) {
     l.push(id);
     if (l.length > 2) l.shift(); // replace the oldest pick
   }
+  loadoutSpecId = id;
   settings.loadout = l;
   applySettings();
   const focusedIdx = [...loadoutGrid.children].indexOf(document.activeElement);
@@ -366,7 +484,7 @@ function handleLoadoutKey(e) {
   const idx = cards.indexOf(document.activeElement);
   if (idx >= 0 && ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.code)) {
     e.preventDefault();
-    const cols = Math.max(1, Math.round(loadoutGrid.clientWidth / cards[0].offsetWidth));
+    const cols = Math.max(1, cards.filter((c) => c.offsetTop === cards[0].offsetTop).length);
     const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.code];
     cards[clamp(idx + step, 0, cards.length - 1)].focus();
   } else if (e.code === "Enter" || e.code === "Space") {
