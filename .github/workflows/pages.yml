@@ -51,7 +51,7 @@ jobs:
         run: |
           mkdir _site
           cp index.html style.css _site/
-          cp -r js img sound _site/
+          cp -r js img sound fonts _site/
 
       - uses: actions/upload-pages-artifact@v4
         with:

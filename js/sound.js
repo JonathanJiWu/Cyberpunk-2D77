@@ -24,6 +24,7 @@ const SoundSystem = {
   sfxBus: null, // sound-effect volume
   failed: false, // Web Audio could not start: everything uses <audio> elements
   muted: false,
+  autoplay: !!(window.desktop && window.desktop.autoplay), // the desktop app: audio may start without a gesture
   volume: { music: 1, sfx: 1 }, // slider positions, 0..1
   sounds: [],
   elements: [], // every <audio> element, for mute
@@ -36,7 +37,7 @@ const SoundSystem = {
       // Before the page's first real gesture Chrome would only give us a
       // context stuck in "suspended" (and a console warning): wait for one.
       const ua = navigator.userActivation;
-      if (ua && !ua.hasBeenActive) return;
+      if (ua && !ua.hasBeenActive && !this.autoplay) return;
       try {
         this.ctx = new AudioCtor();
         this.master = this.ctx.createGain();

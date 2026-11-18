@@ -1,0 +1,110 @@
+# Builds the desktop app (Electron) for Linux, Windows and macOS, smoke-tests
+# the packaged Linux build, and attaches the installers to the GitHub Release
+# of the tag:
+#
+#   npm version 3.1.0 --no-git-tag-version   # the version is in the file names
+#   git commit -am "v3.1.0" && git tag v3.1.0 && git push origin main v3.1.0
+#
+# The tag must match "version" in package.json (the auto-updater compares
+# them). Tags with a "-" (v3.1.0-beta.1) become pre-releases, which the
+# auto-updater ignores. Running it by hand (Actions tab) only builds: the
+# installers are then kept as workflow artifacts.
+name: Desktop app
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64 (AppImage, deb)
+            os: ubuntu-latest
+            dist: dist:linux
+            files: |
+              dist/*.AppImage
+              dist/*.deb
+              dist/latest-linux.yml
+          - name: Windows x64 (NSIS installer)
+            os: windows-latest
+            dist: dist:win
+            files: |
+              dist/*.exe
+              dist/*.exe.blockmap
+              dist/latest.yml
+          # Intel. (macos-13, the older Intel image, was retired by GitHub in
+          # late 2025; macos-15-intel is its replacement.)
+          - name: macOS x64 (dmg)
+            os: macos-15-intel
+            dist: dist:mac
+            files: |
+              dist/*.dmg
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Check that the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json ($version)"
+            exit 1
+          fi
+
+      - name: Build the installers
+        run: npm run ${{ matrix.dist }}
+        env:
+          # Unsigned builds (no certificates in this repository, see README)
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Launches the packaged app (and the AppImage) and plays it: menu, font,
+      # audio, a run, fullscreen, resolution, persistence, Quit, offline update check
+      - name: Smoke-test the packaged app
+        if: runner.os == 'Linux'
+        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" node tests/electron.test.cjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}-x64
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          pattern: desktop-*
+          merge-multiple: true
+
+      - name: Attach the installers to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installers/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

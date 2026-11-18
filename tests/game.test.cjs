@@ -712,6 +712,158 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------- Font and display settings ----
+  await test("the bundled font: no internet request, and canvas text waits for it (document.fonts)", async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    const remote = [];
+    page.on("request", (r) => r.url().startsWith(url) || remote.push(r.url()));
+    // Note what every document.fonts.ready (the neon sign caches wait on it) saw
+    await page.addInitScript(() => {
+      const ready = Object.getOwnPropertyDescriptor(FontFaceSet.prototype, "ready");
+      Object.defineProperty(FontFaceSet.prototype, "ready", {
+        get() {
+          return ready.get.call(this).then((v) => ((window.__fontsAtReady = window.__fontsAtReady || []).push([...this].map((f) => f.status).join()), v));
+        },
+      });
+    });
+    await page.goto(url, { waitUntil: "load" });
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => {
+      const g = document.createElement("canvas").getContext("2d");
+      g.font = '16px "Press Start 2P"';
+      const cached = signSprite("RAMEN", "#19f5ff").width;
+      signCache.clear();
+      return { atReady: window.__fontsAtReady, faces: [...document.fonts].map((f) => f.status), glyphs: g.measureText("CYBER").width, cached, fresh: signSprite("RAMEN", "#19f5ff").width };
+    });
+    assert(!remote.length, "requests left the site: " + remote.join(", "));
+    assert(r.faces.join() === "loaded" && Math.round(r.glyphs) === 80, "Press Start 2P did not load: " + JSON.stringify(r));
+    assert(r.atReady && r.atReady.length && r.atReady.every((s) => s === "loaded"), "document.fonts.ready resolved before the font loaded: " + JSON.stringify(r.atReady));
+    assert(r.cached === r.fresh, "a neon sign was drawn with the fallback font: " + JSON.stringify(r));
+    await context.close();
+  });
+
+  await test("display settings: Fullscreen uses the Fullscreen API and stays in sync with the HUD button; no desktop-only options", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const read = () =>
+      page.evaluate(() => ({
+        fs: !!document.fullscreenElement,
+        mode: settings.displayMode,
+        seg: document.querySelector('[data-display][aria-pressed="true"]').dataset.display,
+        hud: document.getElementById("btn-fullscreen").getAttribute("aria-pressed"),
+        saved: JSON.parse(localStorage.getItem("cp2d77-settings") || "{}").displayMode,
+        state: game.state,
+      }));
+    const ui = await page.evaluate(() => ({
+      quit: document.getElementById("quit-btn").hidden,
+      api: typeof window.desktop,
+      display: !document.querySelector(".display-mode").hidden,
+      hint: document.getElementById("display-hint").textContent,
+    }));
+    assert(ui.quit && ui.api === "undefined", "desktop-only controls in the browser: " + JSON.stringify(ui));
+    assert(ui.display && !/window/i.test(ui.hint), "display settings: " + JSON.stringify(ui));
+    // Enter on these controls is theirs, not "Start Game"
+    await page.focus('[data-display="windowed"]');
+    await page.keyboard.press("Enter");
+    await page.focus("#resolution");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape"); // close the drop-down if it opened
+    assert((await read()).state === "menu", "Enter on a display control started the game");
+
+    await page.click('[data-display="fullscreen"]');
+    await page.waitForFunction(() => !!document.fullscreenElement);
+    let r = await read();
+    assert(r.mode === "fullscreen" && r.seg === "fullscreen" && r.hud === "true" && r.saved === "fullscreen", "settings -> fullscreen: " + JSON.stringify(r));
+    // The HUD button (mid-run) leaves and re-enters; the settings follow
+    await startRun(page);
+    await page.click("#btn-fullscreen");
+    await page.waitForFunction(() => !document.fullscreenElement);
+    r = await read();
+    assert(r.mode === "windowed" && r.seg === "windowed" && r.hud === "false" && r.saved === "windowed", "HUD -> windowed: " + JSON.stringify(r));
+    await page.click("#btn-fullscreen");
+    await page.waitForFunction(() => !!document.fullscreenElement);
+    await page.keyboard.press("KeyP");
+    await page.waitForTimeout(450);
+    r = await read();
+    assert(r.state === "paused" && r.seg === "fullscreen" && r.hud === "true", "HUD -> fullscreen: " + JSON.stringify(r));
+    await page.click('[data-display="windowed"]');
+    await page.waitForFunction(() => !document.fullscreenElement);
+    assert((await read()).seg === "windowed", "settings -> windowed");
+
+    // A browser that refuses fullscreen: nothing breaks, the setting stays honest
+    await page.evaluate(() => (document.documentElement.requestFullscreen = () => Promise.reject(new TypeError("Permissions check failed"))));
+    await page.click('[data-display="fullscreen"]');
+    await page.waitForTimeout(200);
+    r = await read();
+    assert(!r.fs && r.mode === "windowed" && r.seg === "windowed" && r.hud === "false", "a refused request changed the setting: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("display settings: Resolution sets the render size live (the canvas still fills the screen) and persists", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const read = () =>
+      page.evaluate(() => {
+        const box = canvas.getBoundingClientRect();
+        const mid = clientToWorld(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          canvas: [canvas.width, canvas.height],
+          box: [Math.round(box.width), Math.round(box.height)],
+          scale: renderScale,
+          smooth: canvas.style.imageRendering,
+          select: document.getElementById("resolution").value,
+          saved: JSON.parse(localStorage.getItem("cp2d77-settings") || "{}").resolution,
+          hint: document.getElementById("display-hint").textContent,
+          mid: [Math.round(mid.x - camera.x), Math.round(mid.y - camera.y)],
+        };
+      });
+    const auto = await read();
+    assert(auto.select === "auto" && auto.canvas.join() === "1280,720" && /Auto/.test(auto.hint), "Auto: " + JSON.stringify(auto));
+    await page.selectOption("#resolution", "1600x900");
+    let r = await read();
+    assert(r.canvas.join() === "1600,900" && r.box.join() === "1280,720" && Math.abs(r.scale - 1600 / 1920) < 1e-9, "1600x900: " + JSON.stringify(r));
+    assert(r.saved === "1600x900" && /Stretched/.test(r.hint) && /1600x900/.test(r.hint), "1600x900 not saved / explained: " + JSON.stringify(r));
+    assert(r.mid.join() === "960,540", "aiming no longer maps to the world: " + JSON.stringify(r.mid));
+    await page.selectOption("#resolution", "3840x2160");
+    r = await read();
+    assert(r.canvas.join() === "3840,2160" && r.box.join() === "1280,720" && r.smooth === "auto", "4K supersampling: " + JSON.stringify(r));
+    await page.selectOption("#resolution", "1366x768");
+    // It renders a run at that size, and survives a reload
+    await startRun(page);
+    await fastForward(page, 1);
+    await page.reload();
+    await page.waitForTimeout(300);
+    r = await read();
+    assert(r.select === "1366x768" && r.canvas.join() === "1366,768" && r.box.join() === "1280,720", "not restored after a reload: " + JSON.stringify(r));
+    await page.selectOption("#resolution", "auto");
+    r = await read();
+    assert(r.canvas.join() === "1280,720" && r.saved === "auto" && r.smooth === "", "back to Auto: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("display settings on a phone: they fit the screen and the resolution picker works", async () => {
+    const { context, page, problems } = await open(browser, url, devices["Pixel 7"]);
+    const r = await page.evaluate(() => {
+      const panel = document.querySelector("#overlay .panel");
+      const rects = [...document.querySelectorAll(".display-mode, #resolution, #display-hint")].map((el) => el.getBoundingClientRect());
+      const select = document.getElementById("resolution").getBoundingClientRect();
+      return {
+        fits: rects.every((b) => b.left >= 0 && b.right <= innerWidth + 0.5),
+        sideScroll: panel.scrollWidth > panel.clientWidth + 1,
+        selectH: select.height,
+        quit: document.getElementById("quit-btn").hidden,
+        touch: document.body.classList.contains("touch"),
+      };
+    });
+    assert(r.touch && r.fits && !r.sideScroll && r.selectH >= 36 && r.quit, "phone layout: " + JSON.stringify(r));
+    await page.selectOption("#resolution", "1280x720");
+    const c = await page.evaluate(() => [canvas.width, canvas.height].join());
+    assert(c === "1280,720", "the resolution did not apply on a phone: " + c);
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("a fast-forwarded run survives 3 minutes of simulation and the boss arrives", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { quiet: false, settings: { autoFire: true, autoFlame: true } });

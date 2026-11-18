@@ -104,9 +104,10 @@ Swap ICs from the pause menu at any time: levels, upgrades, lives and resource c
 - **Music**: "Neon Inferno", an original darksynth soundtrack generated live in the browser, which gets nastier during boss fights. The original "Disconnected" track is still available.
 - **Audio**: it starts on your first click, tap or key press, recovers when the tab is hidden, and has music and SFX volume sliders.
 - **Optional assists**: auto-fire with assisted aim, and auto special.
-- **Screens**: it scales to any screen size, portrait or landscape, with fullscreen where available.
+- **Screens**: it scales to any screen size, portrait or landscape, with fullscreen where available and a resolution setting (lower runs faster).
+- **Desktop app** for Windows, macOS and Linux (see [Desktop app](#desktop-app)). The web version needs no internet once loaded either: the font is bundled.
 - **8 hidden easter eggs** (see below).
-- **51 automated browser tests** run before every deploy.
+- **48 automated browser tests** run before every deploy, plus tests that play the packaged desktop app.
 
 ## Settings
 These are on the start and pause menus and remembered between visits.
@@ -121,6 +122,8 @@ These are on the start and pause menus and remembered between visits.
 | Music | Darksynth (generated) or Original. |
 | Music / SFX volume | Sliders from 0 to 100. M or the speaker button still mutes everything. |
 | Rumble | Controller rumble on hits and hero landings. Shown while a pad is in use. |
+| Display | Windowed or Fullscreen, kept in sync with the fullscreen button at the top right. In the browser it uses the browser's fullscreen (hidden on iPhones, which have none), and a page always opens windowed. In the desktop app it is the real window, also on F11, and it is remembered. |
+| Resolution | Auto, or 1280x720 up to 3840x2160 (4K). In the browser and in fullscreen it is the game's internal render size: the picture still fills the screen, so a lower one runs faster and a higher one looks sharper. Auto matches your screen, up to 1080p. In the desktop app's windowed mode it also resizes the window to that size, shrunk to fit your screen. The line under it says what it does and the size the game is rendering at. |
 
 ## Controls
 
@@ -222,7 +225,7 @@ Cyber City hides 8 secrets, little homages to the cyberpunk classics: *Blade Run
 </details>
 
 ## Tests
-Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 51 tests:
+Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 48 tests:
 - controls, auto-fire and auto special;
 - the pre-drop loadout and hero landing;
 - skill weighting, rare cards, rerolls and the half-second install pause;
@@ -236,13 +239,78 @@ Run `npm install`, then `npm test`. This plays the game in headless Chromium, on
 - real audio under Chrome's autoplay policy, and the volume sliders;
 - easter eggs, the billboard and the soundtrack;
 - the touch controls, including the twin-stick with auto-fire on;
-- game controllers (mocked pads): connecting, play, auto-fire with two sticks, every menu, the hacking terminal and the button prompts.
+- game controllers (mocked pads): connecting, play, auto-fire with two sticks, every menu, the hacking terminal and the button prompts;
+- the bundled font (no internet, canvas text waits for it) and the display settings: fullscreen in sync with the HUD button, a refused fullscreen request, resolution, persistence and the phone layout.
 
-GitHub Actions runs the same tests on every push and only deploys if they pass.
+GitHub Actions runs the same tests on every push and only deploys if they pass. The desktop app has its own tests, see [Desktop app](#desktop-app).
 
 ## Installation and setup
 1. Clone or download the repository.
-2. Open `index.html` in a browser, or serve the folder with any static server (for example `npx serve .` or `python3 -m http.server`) for the best audio on mobile.
+2. Open `index.html` in a browser, or serve the folder with any static server (for example `npx serve .` or `python3 -m http.server`) for the best audio on mobile. Nothing is loaded from the internet: the font is in `fonts/`.
+
+Or install the desktop app from the [Releases](https://github.com/JonathanJiWu/Cyberpunk-2D77/releases) page.
+
+## Desktop app
+The same game, packaged with Electron as a desktop app for Windows, macOS and Linux:
+- it works offline;
+- audio starts without a click;
+- it remembers the window's size and position, and fullscreen;
+- the menu has a **Quit** button;
+- keys: **F11** fullscreen, **Ctrl+Q** quit. There is no menu bar (macOS keeps its usual app menu).
+
+Settings, the leaderboard and the window state live in the app's own data folder, separate from the browser's: `~/.config/Cyberpunk 2D77` (Linux), `%APPDATA%\Cyberpunk 2D77` (Windows), `~/Library/Application Support/Cyberpunk 2D77` (macOS). Its log is `logs/main.log` in there.
+
+**Run it from the source**
+
+```sh
+npm install
+npm run desktop
+```
+
+In development, F12 (or Ctrl+Shift+I) opens the developer tools and Ctrl+R reloads.
+
+**Build the installers.** They appear in `dist/`, named with the version and architecture:
+
+| Command | Builds | Build it on |
+|---|---|---|
+| `npm run dist:linux` | `Cyberpunk-2D77-3.0.0-linux-x86_64.AppImage` and `Cyberpunk-2D77-3.0.0-linux-amd64.deb` (x64) | Linux |
+| `npm run dist:win` | `Cyberpunk-2D77-3.0.0-win-x64.exe`, an NSIS installer (x64) | Windows (elsewhere it needs Wine) |
+| `npm run dist:mac` | `Cyberpunk-2D77-3.0.0-mac-x64.dmg` (Intel x64) | macOS |
+| `npm run dist` | the installers for the system you are on | |
+| `npm run pack:linux` | just the unpacked app, `dist/linux-unpacked/cyberpunk-2d77` (the quickest, for testing) | Linux |
+
+Only the game goes in: `index.html`, `style.css`, `js/`, `img/`, `sound/`, `fonts/` and `desktop/`, not the tests or tools. The icon, `desktop/icon.png`, is Paine's portrait, made by `python3 tools/make_icon.py`.
+
+**Test the packaged app.** `npm run test:electron` builds `dist/linux-unpacked` and plays it with Playwright, under `xvfb-run` when there is no display. It checks that:
+- the menu renders offline with the bundled font and no console errors;
+- the page has no Node.js and no devtools;
+- audio runs without a click;
+- a run starts (Start, loadout, Drop In) and takes input;
+- fullscreen, F11 and the resolution apply live and stay in sync with the HUD button;
+- everything comes back after a relaunch;
+- Quit closes the app.
+
+If there is an AppImage in `dist/` (from `npm run dist:linux`), it is launched too, with the update check running offline. `node tests/electron.test.cjs` tests an existing build, and `node tests/electron.test.cjs --dev` tests `npm run desktop` instead.
+
+**Release a version**
+1. Bump the version: `npm version 3.1.0 --no-git-tag-version`, then commit.
+2. Tag it and push the tag: `git tag v3.1.0 && git push origin v3.1.0`. The tag must match `package.json`.
+3. `.github/workflows/desktop.yml` then:
+   - builds the installers on Linux, Windows and macOS (Intel);
+   - smoke-tests the packaged Linux app;
+   - attaches the installers to the tag's GitHub Release, on the [Releases](https://github.com/JonathanJiWu/Cyberpunk-2D77/releases) page. Tags with a `-` (`v3.1.0-beta.1`) become pre-releases.
+
+   Run it by hand from the Actions tab to only build: the installers are then under that run's **Artifacts**.
+
+**Updates.** The AppImage and the Windows version check the GitHub Releases a few seconds after they start. A newer version downloads in the background and installs when you quit. There are never any pop-ups. Offline or failed checks are only logged. The .dmg and the .deb don't update themselves: download the new version from Releases. (macOS only installs signed updates, and the .deb belongs to your package manager.) Set `CP2D77_NO_UPDATE=1` to turn updates off.
+
+**Unsigned builds.** The repository has no code-signing certificates, so:
+- **Windows**: SmartScreen may say "Windows protected your PC". Choose *More info*, then *Run anyway*.
+- **macOS**: the app isn't signed or notarized. Right-click it and choose *Open* the first time, or run `xattr -dr com.apple.quarantine "/Applications/Cyberpunk 2D77.app"`.
+
+To sign, add the certificates as repository secrets (`CSC_LINK` and `CSC_KEY_PASSWORD`; for macOS notarization, also `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`), pass them to the build step, and remove `CSC_IDENTITY_AUTO_DISCOVERY: "false"` from the workflow.
+
+**Security.** The game page runs sandboxed, with context isolation and no Node.js. It only sees `window.desktop`: display mode, window size and quit. It only loads files from the game folder (served as `app://cp2d77/`, with a strict Content-Security-Policy), and it can't navigate away or open windows.
 
 ## Deploying (GitHub Pages)
 - The workflow in `.github/workflows/pages.yml` publishes the game to GitHub Pages on every push to `main`. You can also run it by hand from the Actions tab.
@@ -279,6 +347,13 @@ GitHub Actions runs the same tests on every push and only deploys if they pass.
 | `js/main.js` | Game state, menus, layout and the main loop |
 | `tests/game.test.cjs` | The automated browser tests |
 | `tools/make_sprites.py` | Generates the new pixel art in `img/` |
+| `js/display.js` | The display settings (fullscreen, resolution) and the desktop app's Quit button |
+| `fonts/` | Press Start 2P, bundled so the game needs no internet |
+| `desktop/main.js` | The desktop app (Electron): the window and its saved state, keys, serving the game, auto-update |
+| `desktop/preload.js` | The small `window.desktop` API the page gets in the desktop app |
+| `tests/electron.test.cjs` | Tests that play the packaged desktop app |
+| `tools/make_icon.py` | Makes the desktop app's icon, `desktop/icon.png`, from Paine's portrait |
+| `.github/workflows/desktop.yml` | Builds the desktop installers and attaches them to a release |
 
 **Leaderboard score** = kills ×10 + seconds survived ×2 + levels ×50 + bosses defeated ×1000 + 5000 for a win − 250 per life lost.
 
@@ -286,6 +361,7 @@ GitHub Actions runs the same tests on every push and only deploys if they pass.
 - The Player, Demon Goat, Reaper and Dragon sprites, the backgrounds and the sounds are the original assets from this repository.
 - All other pixel art in `img/` is generated by `tools/make_sprites.py`. That includes the ICs' new frames, the enemies, both bosses, THE LEGEND, the billboard and the hardware cards.
 - THE LEGEND and the billboard are original characters: homages to the genre, not likenesses of real people.
+- The font is [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P) by CodeMan38, under the SIL Open Font License 1.1 (`fonts/OFL.txt`).
 
 ## License
 This project is open-source and available for modification. Have fun hacking and improving it!
