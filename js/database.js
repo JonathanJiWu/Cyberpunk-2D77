@@ -352,6 +352,22 @@ const BOSSES = {
     lore: "Every camera in Cyber City reports to one eye. It got tired of watching, printed itself a body, and asked HR for a parking spot.",
     taunts: ["Your access level: GUEST.", "I have read all your commit messages. All of them.", "Compliance is mandatory.", "Threat level... 404 not found.", "Rebooting you in safe mode.", "Please hold. Your call is important to me."],
     hurtLines: ["Core temperature critical.", "That's going in your performance review."],
+    tells: "The cannon glows before a burst, it flashes before a dash, and a thin red line comes before the laser.",
+  },
+  nullptr: {
+    name: "NULL",
+    title: "Second boss",
+    sheet: { img: "nullBoss", fw: 64, fh: 96 },
+    fallback: { img: "nullFallback", fw: 64, fh: 96 }, // painted by null.js until the art lands
+    hp: 3200,
+    intro: "THE ASSASSIN WHO ISN'T THERE",
+    desc: "A glitch-ninja assassin. It splits into holographic copies (only one is real), blinks out and reappears behind or above you to slash, throws fans of shuriken, snipes from the rooftops with a rail shot and vanishes in smoke. Below 60% it makes more copies and blinks faster; below 25% it hits a STACK OVERFLOW and chains its blinks.",
+    lore: "Officially, there is no assassin. Its employee ID dereferences to nothing, its payroll entry is empty and its badge photo is a dead pixel. Every corp in Cyber City has paid it at least once. None of them remember hiring it.",
+    tells: "Only the real one casts a shadow, and it barely flickers. The copies flicker and have an RGB split; popping one reveals the real one. A violet glyph marks where it will reappear. The aim line turns white just before the rail shot.",
+    taunts: ["You can't dereference me.", "Segfault incoming.", "I'm not here. I'm a dangling pointer.", "Undefined behavior.", "404: assassin not found.", "I was never initialized.", "Null check failed. Yours.", "git blame says: nobody."],
+    hurtLines: ["fork(); fork(); fork();", "Undefined behavior."],
+    popLines: ["Wrong pointer.", "That was a shallow copy.", "Copy-paste detected.", "Missed. Try a deep compare."],
+    heroLines: ["Which one of you is real?", "An assassin made of nothing. Great.", "Null check... failed."],
   },
   goat: {
     name: "Demon GOAT",
@@ -364,6 +380,7 @@ const BOSSES = {
     lore: "Nobody knows where it came from. The rumours say a corp tried to upload a demon into a combat chassis. The rumours say it worked. The rumours were written by the goat.",
     taunts: ["BAAAH. Your pull request is REJECTED.", "I am the G.O.A.T. Greatest Of All Threats.", "Kneel before the legacy codebase!", "I was deprecated once. I came back.", "Your stack trace ends with me.", "WORKS ON MY MACHINE."],
     hurtLines: ["BAAAH!", "You dare refactor ME?"],
+    tells: "It paws the ground before a charge, crouches before a leap, its mouth glows before the fire, and red markers show where the meteors land.",
   },
 };
 
@@ -416,6 +433,7 @@ const HUMOR = {
   gameOver: ["Segmentation fault (core dumped).", "Process exited with code 137: OOM-killed by a goat.", "Uncaught GoatException at you.js:1.", "Build failed: 0 lives remaining, 0 retries left.", "Blue screen of death. It was neon pink, actually."],
   tips: [
     "The Overseer kneels after its laser. That's your merge window.",
+    "NULL's copies cast no shadow. The real one does. Trust the shadow.",
     "Your loadout skills show up more often in level-ups. It's a weighted random, not favoritism.",
     "Out of good choices? Reroll. You get three per run.",
     "Hit the pause menu to respec, or hot-swap your Individual Contributor.",

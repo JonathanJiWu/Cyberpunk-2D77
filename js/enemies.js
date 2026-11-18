@@ -1,15 +1,18 @@
 "use strict";
 // =============================================================================
-// Enemies: the spawn director (difficulty curve + the two-boss run), minion AI
-// (melee, ranged, ninja dashes, bombers, shielded enforcers, snipers), status
-// effects (slow / stun / vulnerable), elites, enemy shots and the Demon Goat.
-// The Overseer (second boss) is in overseer.js; enemy stats in database.js.
+// Enemies: the spawn director (difficulty curve + the three-boss run), minion
+// AI (melee, ranged, ninja dashes, bombers, shielded enforcers, snipers),
+// status effects (slow / stun / vulnerable), elites and enemy shots. The
+// bosses are in overseer.js, null.js and goat.js; enemy stats in database.js.
 // =============================================================================
 
 const enemies = [];
 const enemyShots = [];
-// stage: 0 before the goat, 1 goat fight, 2 interlude, 3 Overseer fight
-const director = { acc: 0, stage: 0, nextBossAt: 0, firstSpawn: 1.5 };
+// The run, in stages: the Overseer, an interlude, NULL, an interlude, then the
+// GOAT (final boss). Odd stages are boss fights.
+const STAGE = { start: 0, overseer: 1, interlude1: 2, nullptr: 3, interlude2: 4, goat: 5 };
+const director = { acc: 0, stage: STAGE.start, nextBossAt: 0, firstSpawn: 1.5 };
+const bossFight = () => director.stage % 2 === 1;
 
 const onScreen = (e) => e.x + e.w > camera.x && e.x < camera.x + W && e.y + e.h > camera.y && e.y < camera.y + H;
 
@@ -17,7 +20,7 @@ function resetEnemies() {
   enemies.length = 0;
   enemyShots.length = 0;
   director.acc = 0;
-  director.stage = 0;
+  director.stage = STAGE.start;
   director.nextBossAt = TUNING.boss.at;
   director.firstSpawn = 1.5; // (respawns push this back; a new run starts fresh)
 }
@@ -88,18 +91,20 @@ function spawnAtEdge(type) {
 const countAlive = (type) => enemies.reduce((n, e) => n + (!e.dead && e.type === type ? 1 : 0), 0);
 
 // The difficulty curve: spawning speeds up over time, new enemy types join
-// as the run goes on (ENEMY_TYPES[].from), and two bosses punctuate it:
-// the Overseer at 2:30, then the GOAT (final boss) after an interlude.
+// as the run goes on (ENEMY_TYPES[].from), and three bosses punctuate it:
+// the Overseer at 2:30, NULL after an interlude, then after another one the
+// GOAT (final boss).
 function updateDirector(dt) {
   const S = TUNING.spawn;
   const t = game.time;
-  if (director.stage === 0 && t >= director.nextBossAt) spawnOverseer();
-  if (director.stage === 2 && t >= director.nextBossAt) spawnGoat();
+  if (director.stage === STAGE.start && t >= director.nextBossAt) spawnOverseer();
+  if (director.stage === STAGE.interlude1 && t >= director.nextBossAt) spawnNull();
+  if (director.stage === STAGE.interlude2 && t >= director.nextBossAt) spawnGoat();
   // Boss fights are one-on-one: nothing else spawns
-  if (director.stage === 1 || director.stage === 3) return;
+  if (bossFight()) return;
   if (t < director.firstSpawn) return;
   let rate = Math.min(S.maxRate, S.startRate + t * S.ratePerSecond);
-  if (director.stage === 2) rate *= 1.15; // the calm before... no calm
+  if (director.stage !== STAGE.start) rate *= 1.15; // the calm before... no calm
   director.acc += rate * dt;
   while (director.acc >= 1) {
     director.acc -= 1;
@@ -127,6 +132,7 @@ function updateEnemies(dt) {
     e.vulnT = Math.max(0, e.vulnT - dt);
     if (e.boss) {
       if (e.type === "overseer") updateOverseer(e, dt);
+      else if (e.type === "nullptr") updateNull(e, dt);
       else updateGoat(e, dt);
       continue;
     }
@@ -397,7 +403,7 @@ function updateEnemyShots(dt) {
       gone = true;
     }
     if (gone) {
-      const color = s.kind === "laser" || s.kind === "snipe" ? "#ff2f6d" : s.kind === "ring" ? "#19f5ff" : "#ff9b21";
+      const color = s.color || (s.kind === "laser" || s.kind === "snipe" ? "#ff2f6d" : s.kind === "ring" ? "#19f5ff" : "#ff9b21");
       burst(s.x, Math.min(s.y, GROUND_Y), 6, color, 200);
       enemyShots.splice(i, 1);
     }
@@ -409,6 +415,7 @@ const SHIELD_BLOCKS = new Set(["zap", "orb", "blade", "missile", "chain"]);
 
 function damageEnemy(e, amount, opts = {}) {
   if (e.dead || amount <= 0) return;
+  if (e.type === "nullptr" && nullIntercept(e)) return; // NULL's copies pop instead
   // Enforcer shields block most damage from the front
   if (e.def && e.def.shielded && !(e.stun > 0) && SHIELD_BLOCKS.has(opts.source) && opts.fromX !== undefined) {
     const fromFront = Math.sign(opts.fromX - (e.x + e.w / 2)) === e.facing;
@@ -450,6 +457,7 @@ function killEnemy(e) {
     burst(c.x, c.y, 40, "#ffe14d", 500);
     camera.shake = 24;
     if (e.type === "overseer") overseerDefeated(e);
+    else if (e.type === "nullptr") nullDefeated(e);
     else goatDefeated(e);
     return;
   }
@@ -482,6 +490,7 @@ function drawEnemies(time) {
     if (e.dead) continue;
     if (e.boss) {
       if (e.type === "overseer") drawOverseer(e, time);
+      else if (e.type === "nullptr") drawNull(e, time);
       else drawGoat(e, time);
       continue;
     }
@@ -582,6 +591,7 @@ function drawEnemyShots() {
   const flame = smallOr("fire");
   ctx.imageSmoothingEnabled = true;
   enemyShots.forEach((s) => {
+    if (s.kind === "shuriken") return drawShuriken(s); // NULL's
     if (s.kind === "laser") {
       glow(s.x, s.y, 40, "rgba(255,47,109,0.6)");
       if (!drawCell("projectiles", 2, 16, s.x, s.y, 44, 44, s.angle)) {

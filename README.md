@@ -9,7 +9,7 @@ It's year 2D77 and you're a cyber badass running the neon streets of Cyber City.
 1. Pick an **Individual Contributor** (IC) and two starting skills.
 2. Drop into the city with a superhero landing.
 3. Fight off hordes of enemies that drop XP chips. Every level-up lets you install one of three hardware upgrades.
-4. At **2:30** the **Overseer** arrives. Once it falls, the **Demon GOAT** comes for the final fight.
+4. At **2:30** the **Overseer** arrives. Next comes **NULL**, the assassin who isn't there. Once it falls, the **Demon GOAT** comes for the final fight.
 
 You have **3 lives**. The game plays on desktop (keyboard and mouse) and on phones and tablets (touch).
 
@@ -53,13 +53,21 @@ Swap ICs from the pause menu at any time: levels, upgrades, lives and resource c
   - Sniper Sentries: laser sight, then a fast shot.
 
   Golden elites hit harder and drop more XP.
-- **Two bosses that fight like rival ICs**, on the ground, with telegraphed attacks, trash talk and cinematic entrances (letterbox plus a name card).
+- **Three bosses that fight like rival ICs**, on the ground, with telegraphed attacks, trash talk and cinematic entrances (letterbox plus a name card).
   - When a boss arrives, every minion derezzes, leaving its XP behind, and nothing else spawns until the boss is down.
   - **The Overseer**:
     - runs and double-jumps onto rooftops;
     - fires arm-cannon bursts and dashes through you;
     - leaps and slams the ground (jump the shockwaves);
     - sweeps its eye laser, then overheats and kneels with its core exposed.
+  - **NULL** // the assassin who isn't there: glitch fragments converge into a cyber-ninja, which splits into holographic copies. Then it:
+    - fights among its copies: only the real one casts a shadow; hitting a copy pops it and reveals the real one;
+    - blinks out and reappears where a glyph glows, behind you (a slash) or above you (a plunge);
+    - throws fans of shuriken at different speeds;
+    - double-jumps onto a rooftop and fires a rail shot down a telegraphed aim line;
+    - vanishes in smoke and relocates.
+
+    Below 60% it makes more copies; below 25%, STACK OVERFLOW: chained blinks, then a core dump. Beating it gives a life back (or a big heal) and a **RARE CACHE**: every card of your next level-up is rare.
   - **The Demon GOAT** (final boss) crashes down from a burning sky. Then it:
     - charges (make it hit the wall and it's dazed);
     - leaps and quakes the ground;
@@ -98,7 +106,7 @@ Swap ICs from the pause menu at any time: levels, upgrades, lives and resource c
 - **Optional assists**: auto-fire with assisted aim, and auto special.
 - **Screens**: it scales to any screen size, portrait or landscape, with fullscreen where available.
 - **8 hidden easter eggs** (see below).
-- **44 automated browser tests** run before every deploy.
+- **45 automated browser tests** run before every deploy.
 
 ## Settings
 These are on the start and pause menus and remembered between visits.
@@ -144,16 +152,18 @@ These are on the start and pause menus and remembered between visits.
 3. Kill enemies to drop XP chips, and walk near the chips to pull them in. Each level-up pauses the game and offers three hardware upgrades; reroll if you don't like them. Weapons fire on their own once you have them, except your primary and special.
 4. Break crates for power-ups. Crates come back after a while.
 5. At **2:30 the Overseer** arrives. Beat it and you get a breather (and some HP back).
-6. 40 seconds later the **Demon GOAT**, the final boss, crashes down. Destroy it to win.
-7. If your HP hits zero you lose a life and drop back in with full HP. Lose all 3 and the run is over.
+6. 35 seconds later **NULL** materializes. Beat it for a life back and the RARE CACHE.
+7. 35 seconds after that the **Demon GOAT**, the final boss, crashes down. Destroy it to win.
+8. If your HP hits zero you lose a life and drop back in with full HP. Lose all 3 and the run is over.
 
 ## Difficulty
 The curve is tuned with bot runs that play full games for each IC, with auto-fire and auto special on and basic dodging.
-- **The pressure ramps up** until the Overseer, and again in the interlude before the GOAT: faster spawns, tougher enemies, new types and golden elites.
+- **The pressure ramps up** until the Overseer, and again in the interludes after each boss: faster spawns, tougher enemies, new types and golden elites.
 - **Bots** (perfect aim, clumsy dodging) always beat the Overseer and win about **5 runs in 6 with every IC**. They lose 1–2 of their 3 lives along the way, mostly to the bosses, so on a single life most of those runs would end at a boss.
 
 **Learn the tells:**
 - **The Overseer**: its cannon glow, the flash before a dash, and the red laser line.
+- **NULL**: the shadow (only the real one has one), the violet glyph where it will reappear, the glint before a shuriken fan, and the aim line turning white before the rail shot.
 - **The GOAT**: pawing the ground, crouching before a leap, a glowing mouth, and the red markers where meteors will land.
 - **Shockwaves**: jump them.
 
@@ -178,14 +188,14 @@ Cyber City hides 8 secrets, little homages to the cyberpunk classics: *Blade Run
 </details>
 
 ## Tests
-Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 44 tests:
+Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 45 tests:
 - controls, auto-fire and auto special;
 - the pre-drop loadout and hero landing;
 - skill weighting, rare cards, rerolls and the half-second install pause;
 - respec, 3 lives and the IC hot-swap;
 - every IC's kit, facing and fire-plus-flame;
 - the new enemies;
-- both bosses (entrances, no minions, vent, GOAT phases) through to a win;
+- all three bosses (entrances, no minions, the Overseer's vent, NULL's copies, blinks, shuriken, rail snipe and rewards, the GOAT's phases) through to a win;
 - the DATABASE;
 - the leaderboard (names, saving, persistence, keyboard safety);
 - the hacking terminal on keyboard and phone;
@@ -223,6 +233,7 @@ GitHub Actions runs the same tests on every push and only deploys if they pass.
 | `js/enemies.js` | The spawn director, enemy AI, status effects and enemy shots |
 | `js/bosses.js` | Shared boss machinery: cinematic entrances, minion derez, grounded movement, shockwaves, speech and the name card |
 | `js/overseer.js` | The Overseer, the first boss |
+| `js/null.js` | NULL, the second boss (with procedural fallback art until `img/null.png` lands) |
 | `js/goat.js` | The Demon GOAT, the final boss |
 | `js/upgrades.js` | XP, levels, hardware cards, rerolls, the pre-drop loadout, respec and THE LEGEND |
 | `js/secrets.js` | The easter eggs, the billboard hologram, the hacking terminal and the neon notes |

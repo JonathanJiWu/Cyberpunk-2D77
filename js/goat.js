@@ -26,7 +26,7 @@ const GOAT = {
 const meteors = []; // { x, t, delay } ground markers before a meteor drops
 
 function spawnGoat() {
-  director.stage = 3;
+  director.stage = STAGE.goat;
   const pc = centerOf(player);
   const side = pc.x < WORLD_W / 2 ? 1 : -1;
   const x = clamp(pc.x + side * 560 - GOAT.w / 2, 40, WORLD_W - GOAT.w - 40);

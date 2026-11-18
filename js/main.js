@@ -204,7 +204,7 @@ function showGameOver() {
   if (game.won) {
     showOverlay({
       title: "Cyber City Is Free!",
-      text: `${CH().name}: "${CH().quotes.win}" The Overseer and the Demon GOAT are scrap. Ship it.`,
+      text: `${CH().name}: "${CH().quotes.win}" The Overseer is scrap, NULL is freed and the Demon GOAT is lamb chops. Ship it.`,
       button: "Play Again",
       stats: lines,
     });
@@ -214,7 +214,7 @@ function showGameOver() {
     const rain = weather.amount > 0.5;
     const joke = HUMOR.gameOver[Math.floor(Math.random() * HUMOR.gameOver.length)];
     showOverlay({
-      title: rain ? "Like tears in rain..." : director.stage >= 3 ? "The GOAT Got Your Soul!" : "Process Terminated",
+      title: rain ? "Like tears in rain..." : director.stage >= STAGE.goat ? "The GOAT Got Your Soul!" : director.stage === STAGE.nullptr ? "NullPointerException!" : "Process Terminated",
       text: rain ? "Time to die. The rain washes the street clean." : `${CH().name}: "${CH().quotes.lose}" // ${joke}`,
       button: "Try Again",
       stats: lines,

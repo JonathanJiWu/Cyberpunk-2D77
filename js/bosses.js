@@ -7,7 +7,8 @@
 //   - grounded movement (the same platform physics as the player)
 //   - shockwaves that roll along the ground (jump them)
 //   - speech bubbles
-// The Overseer lives in overseer.js, the final boss (the GOAT) in goat.js.
+// The Overseer lives in overseer.js, NULL in null.js and the final boss (the
+// GOAT) in goat.js.
 // =============================================================================
 
 const shockwaves = [];
@@ -232,6 +233,7 @@ function drawBossSpeech(e, color) {
 function drawBossCard(VW, VH) {
   const c = game.cinematic;
   if (!c || !c.title) return;
+  if (c.style === "nullptr") return drawNullCard(VW, VH, c); // NULL has its own
   const k = cinematicAmount();
   const slide = (1 - Math.min(1, (c.max - c.time) / 0.5)) * -500;
   const y = VH * 0.62;
@@ -252,9 +254,11 @@ function drawBossCard(VW, VH) {
 // Boss-fight odds and ends that run every frame
 function updateBossFx(dt) {
   updateShockwaves(dt);
+  updateNullFx(dt);
   if (game.cinematic && (game.cinematic.time -= dt) <= 0) game.cinematic = null;
   if (game.goatSky) game.goatSky = Math.min(1, game.goatSky + dt * 0.5);
 }
 function resetBossFx() {
   shockwaves.length = 0;
+  resetNull();
 }

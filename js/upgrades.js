@@ -27,6 +27,7 @@ const HEAL_CARD = { id: "_heal", name: "Repair Kit", icon: 6, max: 99, desc: ["H
 if (!Array.isArray(settings.loadout)) settings.loadout = ["orbit", "armor"];
 
 function resetProgress() {
+  progress.rareCache = false;
   progress.level = 1;
   progress.xp = 0;
   progress.pending = 0;
@@ -59,9 +60,11 @@ function applyLoadout() {
 }
 
 // ------------------------------------------------------------- Choices ------
-// Weighted draw without replacement: loadout skills are 3x as likely
+// Weighted draw without replacement: loadout skills are 3x as likely.
+// NULL's RARE CACHE (progress.rareCache) makes every card rare.
 function rollChoices() {
-  const pool = UPGRADES.filter((u) => lv(u.id) < upgradeInfo(u).max).map((u) => ({ u, w: isPreferred(u.id) ? PREFERRED_WEIGHT : 1 }));
+  const cache = progress.rareCache && UPGRADES.some((u) => upgradeInfo(u).max - lv(u.id) >= 2);
+  const pool = UPGRADES.filter((u) => upgradeInfo(u).max - lv(u.id) >= (cache ? 2 : 1)).map((u) => ({ u, w: isPreferred(u.id) ? PREFERRED_WEIGHT : 1 }));
   const picks = [];
   while (picks.length < 3 && pool.length) {
     let r = Math.random() * pool.reduce((a, p) => a + p.w, 0);
@@ -69,7 +72,7 @@ function rollChoices() {
     while (k < pool.length - 1 && r >= pool[k].w) r -= pool[k++].w;
     const { u } = pool.splice(k, 1)[0];
     const room = upgradeInfo(u).max - lv(u.id);
-    const rare = room >= 2 && Math.random() < (isPreferred(u.id) ? RARE_CHANCE_PREFERRED : RARE_CHANCE);
+    const rare = room >= 2 && (cache || Math.random() < (isPreferred(u.id) ? RARE_CHANCE_PREFERRED : RARE_CHANCE));
     picks.push({ id: u.id, u, rare });
   }
   // Everything maxed out: offer a heal instead
@@ -182,6 +185,7 @@ function rerollChoices() {
 rerollBtn.addEventListener("click", rerollChoices);
 
 function applyChoice(c) {
+  progress.rareCache = false; // spent
   if (c.id === "_heal") {
     player.hp = Math.min(stats.maxHp, player.hp + 40);
   } else {
