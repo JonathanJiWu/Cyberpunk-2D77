@@ -190,7 +190,7 @@ function updateGoat(e, dt) {
           burst(e.facing > 0 ? e.x + e.w : e.x, ec.y, 26, "#ffe14d", 500);
           sfx.stomp.play({ rate: 0.5 });
           bossState(e, "dazed");
-          e.vulnT = 1.6;
+          e.vulnT = 1.3;
           e.vx = -e.facing * 300;
         } else if ((e.facing > 0 && ec.x > e.passX) || (e.facing < 0 && ec.x < e.passX)) {
           e.step = 2;
@@ -215,7 +215,7 @@ function updateGoat(e, dt) {
     case "dazed": {
       e.vx *= Math.exp(-6 * dt);
       contact = 0;
-      if (e.stateTime > 1.6) bossState(e, "stalk");
+      if (e.stateTime > 1.3) bossState(e, "stalk");
       break;
     }
     case "leap": {

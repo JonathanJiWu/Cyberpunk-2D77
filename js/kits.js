@@ -35,17 +35,17 @@ const glitchTime = () => Math.min(1.1, 0.55 + 0.02 * (playerLevel() - 1));
 // Called from computeStats(): z = primary level, f = special level
 function computeKitStats(z, f, cdMul, costMul) {
   stats.bow = {
-    damage: 16 + (z >= 2 ? 5 : 0) + (z >= 5 ? 6 : 0) + (z >= 8 ? 8 : 0),
+    damage: 15 + (z >= 2 ? 5 : 0) + (z >= 5 ? 6 : 0) + (z >= 8 ? 8 : 0),
     draw: 0.42 * (z >= 4 ? 0.8 : 1) * cdMul,
     arrows: 1 + (z >= 3 ? 1 : 0) + (z >= 6 ? 1 : 0),
-    knock: 480 * (z >= 7 ? 1.4 : 1),
+    knock: 400 * (z >= 7 ? 1.4 : 1),
     bleed: 6 + (z >= 5 ? 4 : 0),
     pierceBonus: z >= 8 ? 0.15 : 0,
   };
   stats.heatwave = {
     radius: 300 * (1 + 0.12 * (f - 1)),
     damage: 30 * (1 + 0.25 * (f - 1)),
-    cost: (f >= 3 ? 32 : 40) * costMul,
+    cost: (f >= 3 ? 36 : 44) * costMul,
     burn: f >= 4,
     echo: f >= 6,
   };

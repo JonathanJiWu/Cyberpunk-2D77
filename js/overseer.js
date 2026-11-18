@@ -25,7 +25,7 @@ const OVERSEER = {
   slamDamage: 24,
   beamDamage: 32,
   beamWidth: 30,
-  vent: [2.8, 2.2],
+  vent: [2.4, 1.9],
 };
 
 function spawnOverseer() {

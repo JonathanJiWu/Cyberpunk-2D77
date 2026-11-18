@@ -23,6 +23,8 @@ function resetEnemies() {
   director.stage = STAGE.start;
   director.nextBossAt = TUNING.boss.at;
   director.firstSpawn = 1.5; // (respawns push this back; a new run starts fresh)
+  director.squadAt = 55; // the first coordinated squad
+  director.lastSquad = null;
 }
 
 // ------------------------------------------------------------- Spawning -----
@@ -90,6 +92,50 @@ function spawnAtEdge(type) {
 
 const countAlive = (type) => enemies.reduce((n, e) => n + (!e.dead && e.type === type ? 1 : 0), 0);
 
+// ---------------------------------------------------------------- Squads ----
+// Every so often (from 0:55) a coordinated group arrives together, announced
+// on screen. Each has a readable shape and a counter, so positioning and
+// builds matter more than raw numbers.
+function spawnAt(type, side, offset = 0) {
+  const def = ENEMY_TYPES[type];
+  const x = clamp(side < 0 ? camera.x - def.w - 60 - offset : camera.x + W + 60 + offset, 0, WORLD_W - def.w);
+  const y = def.walker ? surfaceBelow(x + def.w / 2, player.y - 180) - def.h : camera.y + rand(160, 520);
+  return spawnEnemy(type, x, y);
+}
+const edgeSide = () => (camera.x < 200 ? 1 : camera.x > WORLD_W - W - 200 ? -1 : Math.random() < 0.5 ? -1 : 1);
+const SQUADS = [
+  // ninjas from both sides at once: jump the crossing dashes
+  { id: "pincer", name: "PINCER", from: 55, make: () => [-1, 1].forEach((side) => [0, 90].forEach((o) => spawnAt("ninja", side, o))) },
+  // a wyrm with a drone screen: kill the escorts or tank the crossfire
+  { id: "escort", name: "DRONE ESCORT", from: 70, make: () => {
+      const side = edgeSide();
+      spawnAt("dragon", side, 60);
+      [0, 70, 140].forEach((o) => spawnAt("drone", side, o));
+    } },
+  // bombers dive from the sky in a line: keep moving
+  { id: "bombing", name: "BOMBING RUN", from: 95, make: () => {
+      for (let i = 0; i < 4; i++) spawnEnemy("bomber", camera.x + W * (0.2 + i * 0.2), camera.y - 120 - i * 60);
+    } },
+  // an enforcer shields two snipers: flank it, stun it, or break the guard
+  { id: "wall", name: "SHIELD WALL", from: 120, make: () => {
+      const side = edgeSide();
+      spawnAt("enforcer", side);
+      spawnAt("sniper", side, 180);
+      spawnAt("sniper", side, 300);
+    } },
+];
+
+function updateSquads(t) {
+  if (t < director.squadAt || enemies.length > TUNING.spawn.maxAlive - 8) return;
+  const options = SQUADS.filter((q) => t >= q.from && q.id !== director.lastSquad);
+  if (!options.length) return;
+  const q = options[Math.floor(Math.random() * options.length)];
+  director.lastSquad = q.id;
+  q.make();
+  game.toast = { text: `INCOMING: ${q.name}`, time: 2.2 };
+  director.squadAt = t + Math.max(14, 30 - t / 25) + rand(-3, 3); // more often as the run goes on
+}
+
 // The difficulty curve: spawning speeds up over time, new enemy types join
 // as the run goes on (ENEMY_TYPES[].from), and three bosses punctuate it:
 // the Overseer at 2:30, NULL after an interlude, then after another one the
@@ -103,6 +149,7 @@ function updateDirector(dt) {
   // Boss fights are one-on-one: nothing else spawns
   if (bossFight()) return;
   if (t < director.firstSpawn) return;
+  updateSquads(t);
   let rate = Math.min(S.maxRate, S.startRate + t * S.ratePerSecond);
   if (director.stage !== STAGE.start) rate *= 1.15; // the calm before... no calm
   director.acc += rate * dt;
