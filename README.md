@@ -13,14 +13,18 @@ It's year 2D77 and you're a cyber badass running the neon streets of Cyber City.
 
 You have **3 lives**. The game plays on desktop (keyboard and mouse, or a game controller) and on phones and tablets (touch).
 
-## What's new in v3.0: The Individual Contributor Update
-- **Bosses**: both fight like rival characters, on the ground, with cinematic entrances. The **GOAT is the final boss**, with three phases.
-- **3 lives**, a **hero-landing drop** at the start of every run, and **hot-swapping** your IC from the pause menu.
-- **Hardware level-ups**: PC-part cards with an install animation, rare +2 cards, 3 rerolls, a **pre-drop loadout**, and **respec**.
-- **A real-feeling hacking minigame** when you jack in.
-- A **leaderboard** with custom names.
-- **Audio fixed in Chrome**, plus music and SFX volume sliders.
-- A giant **billboard hologram** that blows kisses, **THE LEGEND**, neon easter-egg notes, and plenty of dev humor.
+## What's new in v3.1: The Desktop & Signature Update
+- **Desktop app** (Electron) for Windows, Linux and Intel macOS, plus **fullscreen and resolution** options.
+- **Game controllers**: Xbox, PlayStation and generic pads, with dual-stick aiming that works with auto-fire.
+- **Signature kits**:
+  - **PAINE** is now the **Cyber Widow**, with a cyber bow and a Flame On heat wave.
+  - **TETSU** reflects damage back at his attackers.
+  - **SUDO** is now **Hackerman**, with an EM projector, System Glitch and Time Dilation bullet time.
+- **A third boss**, NULL, "the assassin who isn't there".
+- **Coordinated enemy squads**.
+- **Skill cards as 3:4 posters**, an unmissable reroll button, guidance on every starting skill, and XP that drops as **shiny RAM, NVMe and CPU parts**.
+- **Unique sounds** for every IC, boss and pickup, synthesized live.
+- **Performance mode** and **local 2-player co-op** (see below).
 
 Full details are in **[PATCH_NOTES.md](PATCH_NOTES.md)**.
 
@@ -28,9 +32,9 @@ Full details are in **[PATCH_NOTES.md](PATCH_NOTES.md)**.
 
 | IC | HP | Primary | Special (resource) | Style |
 |---|---|---|---|---|
-| **PAINE** // Pyro Runner | 110 | Energy Ball | Flame Aura (HEAT) | The all-rounder. Fire and keep the flame lit at the same time. The flame burns everything around you, melts incoming bullets, and keeps minions from touching you. Earns heat 20% faster. |
-| **TETSU** // Chrome Ronin | 150, blocks 25% of damage | Monoblade | Iaido Dash (FOCUS) | Melee. A three-hit combo whose last hit is a 360° finisher that breaks shields. Swings parry bullets. The dash slices through everything and leaves him guarded. |
-| **SUDO** // Netrunner | 80 | Glitch Orb | System Overload (RAM) | The crowd-control "wizard". Orbs explode in an area and slow enemies. The overload stuns and exposes a whole crowd and deletes their bullets. A firewall shrugs off one hit every 10 seconds. |
+| **PAINE** // Cyber Widow | 110 | Cyber Bow | Flame On (HEAT) | Precision archer. Draw and release heavy arrows that knock enemies back and have a chance to pierce (15%, +2% per level). They shoot flyers out of the sky, and enemies knocked off ledges take fall damage. Bosses can't be shoved but bleed. Flame On is a radial heat wave from her heat-proof suit: it shoves, burns and melts bullets, on a short cooldown. |
+| **TETSU** // Chrome Ronin | 150, blocks 25% of damage | Monoblade | Iaido Dash (FOCUS) | Melee. A three-hit combo with a 360° shield-breaking finisher; swings parry bullets. The dash slices through everything and leaves him guarded. **Mirror Steel** reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). From level 8 reflections stagger; from level 16 they splash to two more enemies. |
+| **SUDO** // Hackerman | 80 | EM Projector | Time Dilation (RAM) | Electronic warfare. A hacked EM wave projector, wired to his laptop and a backpack battery, fires waves that pass through everything and slow it. **System Glitch**: each hit has a 15%+ chance to make the whole area stutter. Time Dilation is bullet time: the world slows to a crawl while he moves at full speed and hits 40%+ harder, in a rain of green code. |
 
 Each IC has their own:
 - sprite, attack animations and hero landing;
@@ -186,7 +190,12 @@ Plug in a pad (USB or Bluetooth) and press any button. A toast confirms it (**CO
 ## How a run works
 1. Press **Start**, pick your two loadout skills, and **Drop In**. Your IC leaps off a rooftop and lands in the street.
 2. Enemies come from both sides, more of them and tougher as time goes on. New types join at 0:45 (ninjas), 1:20 (bombers), 1:50 (enforcers) and 2:20 (snipers), and elites get more common.
-3. Kill enemies to drop XP chips, and walk near the chips to pull them in. Each level-up pauses the game and offers three hardware upgrades; reroll if you don't like them. Weapons fire on their own once you have them, except your primary and special.
+   - From 0:55, **coordinated squads** arrive together, announced on screen:
+     - **PINCER**: ninjas from both sides;
+     - **DRONE ESCORT**: a wyrm behind a drone screen;
+     - **BOMBING RUN**: bombers diving from the sky;
+     - **SHIELD WALL**: an enforcer covering two snipers.
+3. Kill enemies to drop XP, which lands as shiny hardware: RAM sticks, NVMe SSDs and, from the biggest kills, CPUs. Walk near it to pull it in. Anything left lying around for a few seconds slowly drifts toward you. Each level-up pauses the game and offers three hardware upgrades; reroll if you don't like them. Weapons fire on their own once you have them, except your primary and special.
 4. Break crates for power-ups. Crates come back after a while.
 5. At **2:30 the Overseer** arrives. Beat it and you get a breather (and some HP back).
 6. 35 seconds later **NULL** materializes. Beat it for a life back and the RARE CACHE.
