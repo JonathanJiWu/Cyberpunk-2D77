@@ -382,10 +382,11 @@ const fastForward = (page, seconds, bot) =>
     const b0 = await btn();
     // a controller shows its button next to the R key
     const pad = await page.evaluate(() => {
+      const realPrompt = window.padPrompt; // gamepad.js's own (null with no pad in use)
       window.padPrompt = (b) => (b === "Y" ? "Y" : "");
       updateRerollBtn();
       const shown = { hidden: document.getElementById("reroll-pad").hidden, text: document.getElementById("reroll-pad").textContent };
-      delete window.padPrompt;
+      window.padPrompt = realPrompt;
       updateRerollBtn();
       return { shown, after: document.getElementById("reroll-pad").hidden };
     });
@@ -497,7 +498,7 @@ const fastForward = (page, seconds, bot) =>
       const spawned = gems.map((g) => XP_TYPES[g.type].id).join();
       // the art: 3 types x 4 frames, pre-rendered once
       const a = xpSprites();
-      const sprites = { types: a.frames.length, frames: a.frames.every((f) => f.length === 4 && f.every((c) => c instanceof HTMLCanvasElement && c.width > 0)), cached: xpSprites().frames === a.frames, image: a.image };
+      const sprites = { types: a.frames.length, frames: a.frames.every((f) => f.length === 4 && f.every((c) => c instanceof HTMLCanvasElement && c.width > 0)), cached: xpSprites().frames === a.frames, image: a.image, artReady: isReady(IMG.xpHardware) };
       // pull them in: each one zips to the player, faster and faster (RAM first, CPU last)
       const pc = centerOf(player);
       gems.forEach((g, i) => ((g.x = pc.x + 100 + 50 * i - 12), (g.y = pc.y - 12), (g.vx = g.vy = 0)));
@@ -517,7 +518,7 @@ const fastForward = (page, seconds, bot) =>
       return { kinds, spawned, sprites, zipping, left: gems.length, gained, sounds, pops: xpFx.pops.length, flash: popups.some((p) => /^\+\d+ XP$/.test(p.text)) };
     });
     assert(r.kinds === "ram,ram,ssd,ssd,cpu,cpu" && r.spawned === "ram,ssd,cpu", "wrong hardware for the value: " + JSON.stringify(r));
-    assert(r.sprites.types === 3 && r.sprites.frames && r.sprites.cached && !r.sprites.image, "sprites not pre-rendered: " + JSON.stringify(r.sprites));
+    assert(r.sprites.types === 3 && r.sprites.frames && r.sprites.cached && !!r.sprites.image === r.sprites.artReady, "sprites not pre-rendered: " + JSON.stringify(r.sprites));
     assert(r.zipping && r.left === 0 && r.gained === 18, "chips were not pulled in and collected: " + JSON.stringify(r));
     assert(r.pops > 0 && r.flash, "no sparkle pop / +XP flash: " + JSON.stringify(r));
     assert(["pickupRam", "pickupSsd", "pickupCpu"].every((n) => r.sounds.includes(n)), "missing pickup sounds: " + JSON.stringify(r.sounds));
@@ -2366,10 +2367,20 @@ const fastForward = (page, seconds, bot) =>
     const loadout = await page.evaluate(() => validLoadout());
     const want = await page.evaluate((i) => UPGRADES[i].id, card);
     // ...then down to Drop In
-    for (let i = 0; i < 8; i++) {
-      const id = (await padFocus(page)).id;
-      if (id === "drop-btn") break;
-      await padPress(page, id === "loadout-back" ? "RIGHT" : "DOWN");
+    // (steer toward wherever the Drop In button is laid out)
+    for (let i = 0; i < 14; i++) {
+      const dir = await page.evaluate(() => {
+        const a = document.activeElement;
+        const d = document.getElementById("drop-btn");
+        if (a === d) return null;
+        const ra = a.getBoundingClientRect();
+        const rd = d.getBoundingClientRect();
+        const dx = rd.x + rd.width / 2 - (ra.x + ra.width / 2);
+        const dy = rd.y + rd.height / 2 - (ra.y + ra.height / 2);
+        return Math.abs(dy) > Math.abs(dx) ? (dy > 0 ? "DOWN" : "UP") : dx > 0 ? "RIGHT" : "LEFT";
+      });
+      if (!dir) break;
+      await padPress(page, dir);
     }
     const toDrop = await padFocus(page);
     await padPress(page, "A");
