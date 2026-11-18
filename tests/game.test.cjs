@@ -1802,8 +1802,12 @@ const fastForward = (page, seconds, bot) =>
       // ---- Phases: more copies below 60%, STACK OVERFLOW below 25%
       until(() => !n.parked && n.state === "move", 300);
       n.hp = n.maxHp * 0.5;
-      step(60);
-      out.phase1 = { phase: n.phase, copies: figures().filter((e) => e.decoy).length };
+      let peak = 0; // copies can expire or blink out, so take the peak over the second
+      for (let i = 0; i < 60; i++) {
+        step(1);
+        peak = Math.max(peak, figures().filter((e) => e.decoy).length);
+      }
+      out.phase1 = { phase: n.phase, copies: peak };
       until(() => !n.parked, 300);
       n.hp = n.maxHp * 0.2;
       step(1);
