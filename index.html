@@ -84,6 +84,11 @@
               <button type="button" data-setting="autoFlame" data-value="true">On</button>
               <button type="button" data-setting="autoFlame" data-value="false">Off</button>
             </span>
+            <span class="setting-label pad-only">Rumble</span>
+            <span class="seg pad-only">
+              <button type="button" data-setting="rumble" data-value="true">On</button>
+              <button type="button" data-setting="rumble" data-value="false">Off</button>
+            </span>
             <span class="setting-label">Music</span>
             <span class="seg">
               <button type="button" data-music="synthwave" aria-pressed="true">Darksynth</button>
@@ -122,6 +127,17 @@
               <dd class="touch-only">Twin-stick: push to aim and fire. Tap mode: tap to fire there, hold to rapid-fire</dd>
               <dt class="touch-only">SPECIAL</dt>
               <dd class="touch-only">The corner button. Paine's flame toggles on and off; Tetsu dashes; Sudo hacks</dd>
+
+              <dt class="pad-only">Left stick / D-pad</dt>
+              <dd class="pad-only">Run. Down + <b data-pad="A">A</b> drops through a platform</dd>
+              <dt class="pad-only" data-pad="A">A</dt>
+              <dd class="pad-only">Jump. Press again in the air to double jump</dd>
+              <dt class="pad-only">Right stick</dt>
+              <dd class="pad-only">Aim and fire that way, even with auto-fire on</dd>
+              <dt class="pad-only"><span data-pad="RT">RT</span> / <span data-pad="LT">LT</span></dt>
+              <dd class="pad-only">Your primary attack / your special (Paine: hold for flame). <span data-pad="RB">RB</span> / <span data-pad="LB">LB</span> work too</dd>
+              <dt class="pad-only" data-pad="START">MENU</dt>
+              <dd class="pad-only">Pause. In menus <b data-pad="A">A</b> selects, <b data-pad="B">B</b> goes back, <b data-pad="Y">Y</b> rerolls and <b data-pad="BACK">VIEW</b> opens the DATABASE</dd>
 
               <dt>Auto-fire</dt>
               <dd>Shoots the nearest enemy for you (aiming yourself still works)</dd>
@@ -272,6 +288,7 @@
     <script src="js/database.js"></script>
     <script src="js/core.js"></script>
     <script src="js/input.js"></script>
+    <script src="js/gamepad.js"></script>
     <script src="js/world.js"></script>
     <script src="js/pickups.js"></script>
     <script src="js/player.js"></script>

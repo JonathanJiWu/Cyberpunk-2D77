@@ -11,7 +11,7 @@ It's year 2D77 and you're a cyber badass running the neon streets of Cyber City.
 3. Fight off hordes of enemies that drop XP chips. Every level-up lets you install one of three hardware upgrades.
 4. At **2:30** the **Overseer** arrives. Once it falls, the **Demon GOAT** comes for the final fight.
 
-You have **3 lives**. The game plays on desktop (keyboard and mouse) and on phones and tablets (touch).
+You have **3 lives**. The game plays on desktop (keyboard and mouse, or a game controller) and on phones and tablets (touch).
 
 ## What's new in v3.0: The Individual Contributor Update
 - **Bosses**: both fight like rival characters, on the ground, with cinematic entrances. The **GOAT is the final boss**, with three phases.
@@ -98,7 +98,7 @@ Swap ICs from the pause menu at any time: levels, upgrades, lives and resource c
 - **Optional assists**: auto-fire with assisted aim, and auto special.
 - **Screens**: it scales to any screen size, portrait or landscape, with fullscreen where available.
 - **8 hidden easter eggs** (see below).
-- **44 automated browser tests** run before every deploy.
+- **51 automated browser tests** run before every deploy.
 
 ## Settings
 These are on the start and pause menus and remembered between visits.
@@ -112,6 +112,7 @@ These are on the start and pause menus and remembered between visits.
 | Auto special | When you have enough of your resource: Paine's flame lights when enemies or bullets get close, Tetsu dashes into nearby enemies, and Sudo hacks crowds of 3+ (or a boss). |
 | Music | Darksynth (generated) or Original. |
 | Music / SFX volume | Sliders from 0 to 100. M or the speaker button still mutes everything. |
+| Rumble | Controller rumble on hits and hero landings. Shown while a pad is in use. |
 
 ## Controls
 
@@ -137,6 +138,39 @@ These are on the start and pause menus and remembered between visits.
 | Twin-stick (right half) | A second stick: push it in a direction to aim and fire that way. |
 | Tap (right half) | Tap to fire toward that exact spot. Keep your finger down to rapid-fire, and drag to aim. |
 | SPECIAL (bottom-right corner) | FLAME, DASH or HACK. Paine's flame toggles on and off with a tap. The ring shows your heat, focus or RAM. |
+
+## Controllers
+Plug in a pad (USB or Bluetooth) and press any button. A toast confirms it (**CONTROLLER CONNECTED: Xbox**) and every prompt switches to that pad's buttons. It uses the standard Gamepad API, so it works the same in Chrome, Edge and the Electron app.
+
+**Supported pads**
+- **Xbox** 360, One and Series pads (XInput), and any pad that reports itself as one.
+- **PlayStation** DualShock 4 and DualSense.
+- **Generic** USB and Bluetooth pads. A pad without the browser's "standard" mapping gets a fallback: axes 0/1 run, axes 2/3 aim (3/4 on six-axis pads, whose triggers sit on 2 and 5), and buttons 0-3 are the face buttons.
+
+| Action | Xbox | PlayStation | Generic |
+|---|---|---|---|
+| Run | Left stick or D-pad | Left stick or D-pad | Left stick or D-pad |
+| Jump (again in the air to double jump) | A | ✕ | 1 |
+| Drop through a platform | Down + A | Down + ✕ | Down + 1 |
+| Primary attack | RT (or RB, X) | R2 (or R1, □) | R2 (or R1, 3) |
+| Special (hold for Paine's flame) | LT (or LB, B) | L2 (or L1, ○) | L2 (or L1, 2) |
+| Aim and fire that way | Right stick | Right stick | Right stick |
+| Pause and resume | MENU | OPTIONS | START |
+| DATABASE (from menus) | VIEW | SHARE | SELECT |
+
+**Menus**: every screen works with a pad. The D-pad or left stick moves a neon focus ring, A selects, B goes back, Y rerolls the level-up cards, and LB / RB switch the DATABASE tabs. Start starts a run on the title screen, drops in from the loadout, and pauses or resumes. The right stick scrolls long panels. In the hacking terminal, A types (hold it to keep typing) and locks, and the D-pad picks. On the game-over screen, A on **Save score** saves the prefilled name (or an anonymous one), so there's no typing.
+
+**Auto-fire**: the two sticks stay independent. The left stick only moves. While you push the right stick, it aims and fires that way; once it's centred, auto-fire picks the target again. The touch twin-stick works the same way.
+
+**Rumble**: taking damage and hero landings rumble the pad. Turn it off with the Rumble setting, which shows while a pad is in use. Losing player 1's pad mid-run pauses the game.
+
+**More than one pad**: the first pad you use is player 1, alongside the keyboard and touch. Other pads stay unassigned, ready for local co-op.
+
+**For developers** (`js/gamepad.js`):
+- `padPrompt("A")` returns the label for the pad in use (`"A"`, `"✕"` or `"1"`), or `null` when the player isn't on a pad.
+- `<body>` gets `pad-xbox`, `pad-ps`, `pad-generic` or `pad-none`, following the last-used input device.
+- Elements with `data-pad="Y"` are relabelled automatically, and `window` gets a `padchange` event when the device changes.
+- `gamepads.slots`, `gamepads.read(slot)` and `gamepads.onJoinRequest = (padIndex) => {}` are the hooks for co-op.
 
 ## How a run works
 1. Press **Start**, pick your two loadout skills, and **Drop In**. Your IC leaps off a rooftop and lands in the street.
@@ -178,7 +212,7 @@ Cyber City hides 8 secrets, little homages to the cyberpunk classics: *Blade Run
 </details>
 
 ## Tests
-Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 44 tests:
+Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 51 tests:
 - controls, auto-fire and auto special;
 - the pre-drop loadout and hero landing;
 - skill weighting, rare cards, rerolls and the half-second install pause;
@@ -191,7 +225,8 @@ Run `npm install`, then `npm test`. This plays the game in headless Chromium, on
 - the hacking terminal on keyboard and phone;
 - real audio under Chrome's autoplay policy, and the volume sliders;
 - easter eggs, the billboard and the soundtrack;
-- the touch controls.
+- the touch controls, including the twin-stick with auto-fire on;
+- game controllers (mocked pads): connecting, play, auto-fire with two sticks, every menu, the hacking terminal and the button prompts.
 
 GitHub Actions runs the same tests on every push and only deploys if they pass.
 
@@ -215,6 +250,7 @@ GitHub Actions runs the same tests on every push and only deploys if they pass.
 | `js/sound.js` | Web Audio unlock (autoplay rules), music and SFX volume buses, sound effects, and the original mp3 soundtrack |
 | `js/music.js` | The generated darksynth soundtrack and the music setting |
 | `js/input.js` | Keyboard, mouse, joysticks, buttons, tap gestures and settings |
+| `js/gamepad.js` | Game controllers: pad types, deadzones, gameplay mapping, menu navigation, button prompts, rumble and player slots |
 | `js/world.js` | Platforms, crates, the street and the shared platformer physics |
 | `js/pickups.js` | XP chips and power-ups |
 | `js/player.js` | Movement, jumping, stats, Paine's energy ball and flame, auto weapons and drawing the hero |

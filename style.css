@@ -2343,3 +2343,118 @@ body.portrait .lb-opt {
 body:not(.touch) .touch-only {
   display: none !important;
 }
+
+/* ------------------------------------------------- Gamepads (gamepad.js) */
+/* Prompts that only make sense with a controller in hand */
+.pad-only {
+  display: none;
+}
+
+body:is(.pad-xbox, .pad-ps, .pad-generic) .pad-only {
+  display: revert;
+}
+
+body:is(.pad-xbox, .pad-ps, .pad-generic) .seg.pad-only {
+  display: inline-flex;
+}
+
+/* How to play lists the pad's buttons instead of keys or touch */
+body:is(.pad-xbox, .pad-ps, .pad-generic) .controls :is(.kb-only, .touch-only) {
+  display: none !important;
+}
+
+/* A neon focus ring that's easy to follow from the couch */
+body:is(.pad-xbox, .pad-ps, .pad-generic) :is(button, summary, input, [tabindex]:not([tabindex="-1"])):focus {
+  outline: 3px solid var(--neon-cyan) !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(255, 47, 214, 0.45), 0 0 22px rgba(25, 245, 255, 0.85);
+}
+
+body:is(.pad-xbox, .pad-ps, .pad-generic) .card:focus {
+  transform: translateY(-6px) scale(1.02);
+}
+
+/* Leave room for the button legend at the bottom of every menu */
+body:is(.pad-xbox, .pad-ps, .pad-generic) .overlay {
+  padding-bottom: 46px;
+}
+
+/* "CONTROLLER CONNECTED: Xbox" */
+.pad-toast {
+  position: fixed;
+  top: calc(var(--safe-top) + 12px);
+  left: 50%;
+  z-index: 60;
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border: 2px solid var(--neon-cyan);
+  border-radius: 6px;
+  background: rgba(11, 4, 22, 0.94);
+  box-shadow: 0 0 18px rgba(25, 245, 255, 0.55);
+  color: var(--neon-cyan);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: pad-toast 2.6s ease both;
+}
+
+.pad-toast.off {
+  border-color: var(--neon-pink);
+  box-shadow: 0 0 18px rgba(255, 47, 214, 0.55);
+  color: var(--neon-pink);
+}
+
+@keyframes pad-toast {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  10%, 85% { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 0); }
+}
+
+/* The button legend under menus while a pad is in use */
+.pad-legend {
+  position: fixed;
+  bottom: calc(var(--safe-bottom) + 8px);
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 12px;
+  border: 1px solid rgba(25, 245, 255, 0.45);
+  border-radius: 6px;
+  background: rgba(11, 4, 22, 0.85);
+  color: #e7dbff;
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.pad-sym {
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
+  font-size: 1.45em;
+  line-height: 1;
+}
+
+.pad-key {
+  display: inline-block;
+  min-width: 2em;
+  margin-right: 0.5em;
+  padding: 0.2em 0.45em;
+  border: 1px solid var(--neon-cyan);
+  border-radius: 999px;
+  color: var(--neon-cyan);
+  font-weight: 400;
+  text-align: center;
+}
+
+.pad-key.pad-sym {
+  padding: 0 0.3em;
+  font-size: 1.3em;
+  vertical-align: -0.12em;
+}

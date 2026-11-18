@@ -1461,6 +1461,521 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // -------------------------------------------------------- Gamepads ----
+  // navigator.getGamepads() is mocked: a test plugs pads in, holds buttons and
+  // moves sticks, and js/gamepad.js polls them every animation frame (or when
+  // a test calls gamepads.poll() itself, to step the game deterministically).
+  const PAD_MOCK = () => {
+    const slots = [null, null, null, null];
+    const NAMES = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, LS: 10, RS: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
+    window.__rumbles = [];
+    window.__padPlug = (i, spec) => {
+      slots[i] = {
+        id: spec.id,
+        index: i,
+        mapping: spec.mapping === undefined ? "standard" : spec.mapping,
+        connected: true,
+        timestamp: 0,
+        axes: (spec.axes || [0, 0, 0, 0]).slice(),
+        buttons: Array.from({ length: spec.buttons || 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+        vibrationActuator: {
+          type: "dual-rumble",
+          playEffect: (type, o) => {
+            window.__rumbles.push({ pad: i, type, ...o });
+            return Promise.resolve("complete");
+          },
+        },
+      };
+      dispatchEvent(Object.assign(new Event("gamepadconnected"), { gamepad: slots[i] }));
+    };
+    window.__padUnplug = (i) => {
+      const gp = slots[i];
+      slots[i] = null;
+      if (gp) gp.connected = false;
+      dispatchEvent(Object.assign(new Event("gamepaddisconnected"), { gamepad: gp }));
+    };
+    window.__padButton = (i, b, v) => {
+      const btn = slots[i].buttons[typeof b === "number" ? b : NAMES[b]];
+      btn.value = v;
+      btn.pressed = btn.touched = v > 0.5;
+    };
+    window.__padAxes = (i, axes) => (slots[i].axes = axes.slice());
+    // Like Chrome: a fresh snapshot on every call
+    Object.defineProperty(navigator, "getGamepads", {
+      configurable: true,
+      value: () => slots.map((p) => p && { ...p, axes: p.axes.slice(), buttons: p.buttons.map((b) => ({ ...b })) }),
+    });
+  };
+  const PAD_IDS = {
+    xbox: { id: "Xbox 360 Controller (XInput STANDARD GAMEPAD)" },
+    dualsense: { id: "054c-0ce6-DualSense Wireless Controller" },
+    generic: { id: "USB Gamepad (Vendor: 0079 Product: 0006)", mapping: "", axes: [0, 0, 0, 0, 0], buttons: 12 },
+  };
+  async function openPad(contextOptions = desktop) {
+    const context = await browser.newContext(contextOptions);
+    const page = await context.newPage();
+    const problems = [];
+    page.on("pageerror", (e) => problems.push("page error: " + e.message));
+    await page.addInitScript(PAD_MOCK);
+    await page.goto(url, { waitUntil: "load" });
+    await page.waitForTimeout(500);
+    return { context, page, problems };
+  }
+  // Press and release a button in real time (the pad is read once a frame)
+  async function padPress(page, button, pad = 0) {
+    await page.evaluate(([i, b]) => __padButton(i, b, 1), [pad, button]);
+    await page.waitForTimeout(50);
+    await page.evaluate(([i, b]) => __padButton(i, b, 0), [pad, button]);
+    await page.waitForTimeout(50);
+  }
+  const padFocus = (page) =>
+    page.evaluate(() => {
+      const el = document.activeElement;
+      return { id: el.id, cls: String(el.className), pressed: el.getAttribute("aria-pressed"), ring: getComputedStyle(el).outlineStyle };
+    });
+  const silence = (page) =>
+    page.evaluate(() => {
+      Object.values(sfx).forEach((s) => {
+        s.play = () => {};
+        s.startLoop = () => {};
+        s.stopLoop = () => {};
+      });
+      music.play = () => {};
+    });
+
+  await test("gamepad: plugging in toasts and plays padConnect, the first pad used is player 1, others ask to join, unplugging frees the slot and pauses", async () => {
+    const { context, page, problems } = await openPad();
+    await page.evaluate(() => {
+      window.__sounds = [];
+      window.__joins = [];
+      if (typeof synth === "undefined") window.synth = { play() {} }; // js/synthfx.js may not be there yet
+      const play = synth.play;
+      synth.play = function (name) {
+        __sounds.push(name);
+        return play.apply(this, arguments);
+      };
+      gamepads.onJoinRequest = (i) => __joins.push(i);
+    });
+    const toast = () => page.evaluate(() => ({ text: document.querySelector(".pad-toast").textContent, shown: !document.querySelector(".pad-toast").hidden }));
+    const none = await page.evaluate(() => ({ none: document.body.classList.contains("pad-none"), prompt: padPrompt("A"), slots: gamepads.slots.slice() }));
+    await page.evaluate((spec) => __padPlug(0, spec), PAD_IDS.xbox);
+    await page.waitForTimeout(80);
+    const t1 = await toast();
+    await page.evaluate((spec) => __padPlug(1, spec), PAD_IDS.dualsense);
+    await page.waitForTimeout(80);
+    const t2 = await toast();
+    // The DualSense is used first: it drives player 1. The Xbox pad asks to join.
+    await padPress(page, "X", 1);
+    await padPress(page, "START", 0);
+    const slots = await page.evaluate(() => ({ slots: gamepads.slots.slice(), joins: __joins.slice(), cls: document.body.classList.contains("pad-ps"), prompt: padPrompt("A"), state: game.state, read: gamepads.read(0) && gamepads.read(0).name }));
+    // Unplug player 1 mid-run: the game pauses and the prompts go back to the keyboard
+    await startRun(page);
+    await page.evaluate(() => __padUnplug(1));
+    await page.waitForTimeout(80);
+    const t3 = await toast();
+    const after = await page.evaluate(() => ({ slots: gamepads.slots.slice(), state: game.state, none: document.body.classList.contains("pad-none"), prompt: padPrompt("A"), sounds: __sounds.slice(), pads: gamepads.pads.size }));
+    assert(none.none && none.prompt === null && none.slots[0] === null, "pad state before any pad: " + JSON.stringify(none));
+    assert(t1.shown && t1.text === "CONTROLLER CONNECTED: Xbox", "no Xbox toast: " + JSON.stringify(t1));
+    assert(t2.shown && t2.text === "CONTROLLER CONNECTED: DualSense", "no DualSense toast: " + JSON.stringify(t2));
+    assert(slots.slots[0] === 1 && slots.read === "DualSense", "the first pad used is not player 1: " + JSON.stringify(slots));
+    assert(slots.joins.join() === "0" && slots.state === "menu", "the second pad's Start did not ask to join (or acted): " + JSON.stringify(slots));
+    assert(slots.cls && slots.prompt === "✕", "PlayStation prompts not shown: " + JSON.stringify(slots));
+    assert(t3.shown && t3.text === "CONTROLLER DISCONNECTED: DualSense", "no disconnect toast: " + JSON.stringify(t3));
+    assert(after.slots[0] === null && after.pads === 1, "player 1's slot not freed: " + JSON.stringify(after));
+    assert(after.state === "paused", "losing the controller mid-run did not pause: " + after.state);
+    assert(after.none && after.prompt === null, "prompts still show a pad: " + JSON.stringify(after));
+    assert(after.sounds.filter((s) => s === "padConnect").length === 2 && after.sounds.includes("padDisconnect"), "sounds: " + after.sounds.join());
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("gamepad: left stick runs, A jumps, Down + A drops through, RT fires, LT holds Paine's flame and taps Tetsu's dash, hits rumble, Start pauses", async () => {
+    const { context, page, problems } = await openPad();
+    await startRun(page, { settings: { character: "paine", autoFire: false, autoFlame: false } });
+    await page.evaluate((spec) => __padPlug(0, spec), PAD_IDS.xbox);
+    const r = await page.evaluate(() => {
+      const step = (n) => {
+        for (let i = 0; i < n; i++) {
+          gamepads.poll();
+          update(1 / 60);
+        }
+      };
+      const out = {};
+      window.__shots = 0;
+      const f = fireZap;
+      fireZap = function () {
+        __shots++;
+        return f.apply(this, arguments);
+      };
+      player.x = 2600;
+      __padAxes(0, [1, 0, 0, 0]); // run right
+      let x0 = player.x;
+      step(30);
+      out.ran = player.x - x0;
+      out.vx = player.vx;
+      __padAxes(0, [0, 0, 0, 0]);
+      step(30);
+      out.stopped = Math.abs(player.vx) < 1 && player.onGround;
+      // jump: A
+      __padButton(0, "A", 1);
+      step(3);
+      out.jumped = !player.onGround && player.vy < 0;
+      __padButton(0, "A", 0);
+      step(90);
+      out.landed = player.onGround;
+      // drop through: holding Down alone stays put, Down + A drops
+      const plat = platforms[0];
+      Object.assign(player, { x: plat.x + 40, y: plat.y - player.h - 1, vx: 0, vy: 0 });
+      step(20);
+      out.onPlat = player.standingOn === plat;
+      __padAxes(0, [0, 1, 0, 0]);
+      step(30);
+      out.stillOn = player.standingOn === plat;
+      __padButton(0, "A", 1);
+      step(2);
+      __padButton(0, "A", 0);
+      step(30);
+      out.dropped = player.y > plat.y;
+      __padAxes(0, [0, 0, 0, 0]);
+      step(90);
+      // fire: RT
+      __padButton(0, "RT", 1);
+      step(40);
+      __padButton(0, "RT", 0);
+      out.shots = __shots;
+      step(30);
+      out.idleShots = __shots - out.shots;
+      // Paine's flame burns while LT is held
+      player.heat = 100;
+      __padButton(0, "LT", 1);
+      step(10);
+      out.lit = player.flameOn;
+      __padButton(0, "LT", 0);
+      step(3);
+      out.out = !player.flameOn;
+      // taking a hit rumbles the pad
+      __rumbles.length = 0;
+      player.invuln = 0;
+      player.shield = 0;
+      hurtPlayer(10, player.x + 200, player.y);
+      step(1);
+      out.rumble = __rumbles.slice();
+      // Start pauses
+      __padButton(0, "START", 1);
+      gamepads.poll();
+      out.paused = game.state;
+      __padButton(0, "START", 0);
+      gamepads.poll();
+      return out;
+    });
+    // Tetsu's dash is a press special: one tap of LT
+    await startRun(page, { settings: { character: "tetsu", autoFire: false, autoFlame: false } });
+    const t = await page.evaluate(() => {
+      player.heat = 100;
+      __padButton(0, "LT", 1);
+      gamepads.poll();
+      update(1 / 60);
+      const dashing = !!player.dash;
+      __padButton(0, "LT", 0);
+      for (let i = 0; i < 40; i++) {
+        gamepads.poll();
+        update(1 / 60);
+      }
+      return { dashing, heat: player.heat, again: !!player.dash };
+    });
+    assert(r.ran > 120 && r.vx > 200, "the left stick did not run: " + JSON.stringify(r));
+    assert(r.stopped, "the player kept running with the stick centred");
+    assert(r.jumped && r.landed, "A did not jump: " + JSON.stringify(r));
+    assert(r.onPlat && r.stillOn, "holding Down alone should not drop: " + JSON.stringify(r));
+    assert(r.dropped, "Down + A did not drop through the platform");
+    assert(r.shots >= 2 && r.idleShots === 0, "RT did not fire (or kept firing): " + JSON.stringify(r));
+    assert(r.lit && r.out, "LT did not hold the flame: " + JSON.stringify(r));
+    assert(r.rumble.length === 1 && r.rumble[0].type === "dual-rumble" && r.rumble[0].strongMagnitude > 0, "no rumble on a hit: " + JSON.stringify(r.rumble));
+    assert(r.paused === "paused", "Start did not pause: " + r.paused);
+    assert(t.dashing && t.heat < 100 && !t.again, "LT did not dash once: " + JSON.stringify(t));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("gamepad: with auto-fire on, the left stick runs one way while the right stick aims the other; centred, auto-fire takes the target", async () => {
+    const { context, page, problems } = await openPad();
+    await startRun(page, { settings: { character: "paine", autoFire: true, autoFlame: false } });
+    await page.evaluate((spec) => __padPlug(0, spec), PAD_IDS.xbox);
+    const r = await page.evaluate(() => {
+      const step = (n) => {
+        for (let i = 0; i < n; i++) {
+          gamepads.poll();
+          update(1 / 60);
+        }
+      };
+      player.x = 3000;
+      camera.x = player.x - W / 2;
+      const e = spawnEnemy("drone", player.x - 500, player.y - 320, { elite: false });
+      Object.assign(e, { shotCd: 99, stun: 999, hp: 1e6, maxHp: 1e6 });
+      window.__angles = [];
+      const f = fireZap;
+      fireZap = function (ax, ay) {
+        __angles.push((Math.atan2(ay, ax) * 180) / Math.PI);
+        return f.apply(this, arguments);
+      };
+      const x0 = player.x;
+      __padAxes(0, [-1, 0, 1, 0]); // run left, aim right
+      step(30);
+      const right = { angles: __angles.splice(0), dx: player.x - x0, vx: player.vx, facing: player.facing };
+      __padAxes(0, [-1, 0, 0, -1]); // still running left, aim straight up
+      step(20);
+      const up = { angles: __angles.splice(0), vx: player.vx };
+      // centre the right stick: auto-fire aims at the enemy again (it's up-left)
+      Object.assign(e, { x: player.x - 500, y: player.y - 320 });
+      const x1 = player.x;
+      __padAxes(0, [-1, 0, 0, 0]);
+      step(30);
+      const auto = { angles: __angles.splice(0), dx: player.x - x1 };
+      __padAxes(0, [0, 0, 0, 0]);
+      return { right, up, auto };
+    });
+    const { right, up, auto } = r;
+    assert(right.angles.length >= 2 && right.angles.every((a) => Math.abs(a) < 15), "the right stick did not aim right: " + right.angles.map(Math.round).join(","));
+    assert(right.dx < -100 && right.vx < -200, "auto-fire stopped the run: " + JSON.stringify(right));
+    assert(right.facing === 1, "not facing the aim while running away: " + right.facing);
+    assert(up.angles.length >= 1 && up.angles.every((a) => a < -75 && a > -105) && up.vx < -200, "the aim did not follow the stick up: " + JSON.stringify(up));
+    assert(auto.angles.length >= 1 && auto.angles.every((a) => a < -110), "centred stick: auto-fire did not aim at the enemy: " + auto.angles.map(Math.round).join(","));
+    assert(auto.dx < -100, "movement stopped under auto-fire: " + auto.dx);
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("phone: with auto-fire on, the twin-stick still aims while the left stick runs the other way", async () => {
+    const { context, page, problems } = await open(browser, url, phone);
+    await startRun(page, { settings: { character: "paine", autoFire: true, autoFlame: false, touchAim: "twin" } });
+    await page.evaluate(() => {
+      player.x = 3000;
+      const e = spawnEnemy("drone", player.x - 500, player.y - 320, { elite: false });
+      Object.assign(e, { shotCd: 99, stun: 999, hp: 1e6, maxHp: 1e6 });
+      window.__angles = [];
+      const f = fireZap;
+      fireZap = function (ax, ay) {
+        __angles.push((Math.atan2(ay, ax) * 180) / Math.PI);
+        return f.apply(this, arguments);
+      };
+    });
+    const vp = page.viewportSize();
+    const cdp = await context.newCDPSession(page);
+    const L = { x: vp.width * 0.2, y: vp.height * 0.6, id: 41 };
+    const R = { x: vp.width * 0.75, y: vp.height * 0.6, id: 42 };
+    const x0 = await page.evaluate(() => player.x);
+    await touch(cdp, "touchStart", [L, R]);
+    for (let i = 1; i <= 5; i++) await touch(cdp, "touchMove", [{ ...L, x: L.x - i * 14 }, { ...R, x: R.x + i * 14 }]); // run left, aim right
+    await page.waitForTimeout(250);
+    await page.evaluate(() => (__angles.length = 0));
+    await page.waitForTimeout(500);
+    const r = await page.evaluate(() => ({ angles: __angles.slice(), x: player.x, vx: player.vx, facing: player.facing }));
+    await touch(cdp, "touchEnd", [L, R]);
+    assert(r.angles.length >= 2 && r.angles.every((a) => Math.abs(a) < 15), "the twin-stick did not aim right under auto-fire: " + r.angles.map(Math.round).join(","));
+    assert(r.x < x0 - 100 && r.vx < -200, "the left stick did not keep running left: " + JSON.stringify({ x0, ...r }));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("gamepad: menus by controller: start menu, loadout pick, Drop In, Y reroll and a level-up pick, pause and resume", async () => {
+    const { context, page, problems } = await openPad();
+    await silence(page);
+    await page.evaluate(() => {
+      settings.loadout = ["legs", "magnet"];
+      applySettings();
+    });
+    await page.evaluate((spec) => __padPlug(0, spec), PAD_IDS.xbox);
+    // Start menu: the focus starts on Start Game and moves with the D-pad
+    const start = await padFocus(page);
+    await padPress(page, "RIGHT");
+    const right = await padFocus(page);
+    await padPress(page, "LEFT");
+    const back = await padFocus(page);
+    const legend = await page.evaluate(() => document.querySelector(".pad-legend").textContent);
+    await padPress(page, "A");
+    await page.waitForSelector("#loadout:not([hidden])", { timeout: 2000 });
+    // Loadout: up into the grid, find a card that isn't picked yet, pick it
+    const onDrop = await padFocus(page);
+    await padPress(page, "UP");
+    let f = await padFocus(page);
+    for (let i = 0; i < 8 && f.pressed === "true"; i++) {
+      await padPress(page, "LEFT");
+      f = await padFocus(page);
+    }
+    const card = await page.evaluate(() => [...loadoutGrid.children].indexOf(document.activeElement));
+    await padPress(page, "A");
+    const loadout = await page.evaluate(() => validLoadout());
+    const want = await page.evaluate((i) => UPGRADES[i].id, card);
+    // ...then down to Drop In
+    for (let i = 0; i < 8; i++) {
+      const id = (await padFocus(page)).id;
+      if (id === "drop-btn") break;
+      await padPress(page, id === "loadout-back" ? "RIGHT" : "DOWN");
+    }
+    const toDrop = await padFocus(page);
+    await padPress(page, "A");
+    await page.waitForTimeout(100);
+    const dropped = await page.evaluate(() => ({ state: game.state, loadout: document.getElementById("loadout").hidden }));
+    await page.evaluate(() => {
+      skipIntro();
+      director.firstSpawn = 1e9;
+      gainXp(xpForLevel(progress.level));
+    });
+    // Level-up: Y rerolls (like R), RIGHT + A installs the second card
+    await page.waitForSelector("#levelup:not([hidden])", { timeout: 2000 });
+    await page.waitForTimeout(400); // the anti-mash guard
+    const rerolls = await page.evaluate(() => progress.rerolls);
+    await padPress(page, "Y");
+    const rerolled = await page.evaluate(() => progress.rerolls);
+    const first = await page.evaluate(() => [...cardsEl.children].indexOf(document.activeElement));
+    await padPress(page, "RIGHT");
+    const choice = await page.evaluate(() => {
+      const i = [...cardsEl.children].indexOf(document.activeElement);
+      const c = currentChoices[i];
+      return { i, id: c && c.id, lv: c ? lv(c.id) : -1 };
+    });
+    await padPress(page, "A");
+    await page.waitForTimeout(700); // the install animation
+    const installed = await page.evaluate((id) => ({ state: game.state, lv: lv(id) }), choice.id);
+    // Start pauses and resumes; B resumes too
+    await padPress(page, "START");
+    const paused = await page.evaluate(() => ({ state: game.state, focus: document.activeElement.id, legend: document.querySelector(".pad-legend").textContent }));
+    await padPress(page, "START");
+    const resumed = await page.evaluate(() => game.state);
+    await padPress(page, "START");
+    await padPress(page, "B");
+    const resumedB = await page.evaluate(() => game.state);
+    assert(start.id === "overlay-btn", "focus did not start on Start Game: " + JSON.stringify(start));
+    assert(right.id === "codex-btn" && right.ring === "solid", "RIGHT did not move a visible focus ring: " + JSON.stringify(right));
+    assert(back.id === "overlay-btn", "LEFT did not come back: " + JSON.stringify(back));
+    assert(legend.includes("SELECT") && legend.includes("DATABASE"), "no button legend: " + legend);
+    assert(onDrop.id === "drop-btn", "loadout focus not on Drop In: " + JSON.stringify(onDrop));
+    assert(card >= 0 && f.pressed === "false", "UP did not reach an unpicked loadout card: " + JSON.stringify(f));
+    assert(loadout.length === 2 && loadout.includes(want), `A did not pick ${want}: ` + loadout.join());
+    assert(toDrop.id === "drop-btn" && dropped.state === "playing" && dropped.loadout, "Drop In did not start the run: " + JSON.stringify(dropped));
+    assert(rerolled === rerolls - 1, `Y did not reroll: ${rerolls} -> ${rerolled}`);
+    assert(first === 0 && choice.i === 1, "RIGHT did not move to the second card: " + JSON.stringify({ first, choice }));
+    assert(installed.state === "playing" && installed.lv > choice.lv, "A did not install the card: " + JSON.stringify({ choice, installed }));
+    assert(paused.state === "paused" && paused.focus === "overlay-btn" && paused.legend.includes("RESUME"), "Start did not pause: " + JSON.stringify(paused));
+    assert(resumed === "playing" && resumedB === "playing", `Start / B did not resume: ${resumed}, ${resumedB}`);
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("gamepad: button prompts and body classes for Xbox, DualSense and a generic pad (and its non-standard mapping); the keyboard takes them back", async () => {
+    const { context, page, problems } = await openPad();
+    const read = () =>
+      page.evaluate(() => ({
+        cls: ["pad-xbox", "pad-ps", "pad-generic", "pad-none"].filter((c) => document.body.classList.contains(c)).join(),
+        labels: ["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "START", "BACK"].map((b) => padPrompt(b)),
+        help: document.querySelector('#controls-help dt.pad-only[data-pad="A"]').textContent,
+        helpShown: getComputedStyle(document.querySelector("#controls-help dt.pad-only")).display !== "none",
+        kbShown: getComputedStyle(document.querySelector("#controls-help dt.kb-only")).display !== "none",
+        hint: padHintRows() && padHintRows()[1][0],
+      }));
+    const before = await read();
+    const kinds = [
+      [{ id: "Xbox 360 Controller (XInput STANDARD GAMEPAD)" }, "pad-xbox", "A B X Y LB RB LT RT MENU VIEW"],
+      [{ id: "045e-02ea-Microsoft X-Box One S pad" }, "pad-xbox", "A B X Y LB RB LT RT MENU VIEW"],
+      [PAD_IDS.dualsense, "pad-ps", "✕ ○ □ △ L1 R1 L2 R2 OPTIONS SHARE"],
+      [{ id: "Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 09cc)" }, "pad-ps", "✕ ○ □ △ L1 R1 L2 R2 OPTIONS SHARE"],
+      [PAD_IDS.generic, "pad-generic", "1 2 3 4 L1 R1 L2 R2 START SELECT"],
+    ];
+    const seen = [];
+    for (const [spec, cls, labels] of kinds) {
+      await page.evaluate((spec) => {
+        __padUnplug(0);
+        __padPlug(0, spec);
+      }, spec);
+      await padPress(page, "X");
+      const r = await read();
+      seen.push(r);
+      assert(r.cls === cls && r.labels.join(" ") === labels, `${spec.id}: ` + JSON.stringify(r));
+      assert(r.helpShown && !r.kbShown && r.help === labels.split(" ")[0] && r.hint === labels.split(" ")[0], `${spec.id}: help text not switched: ` + JSON.stringify(r));
+    }
+    // A non-standard pad: axes 0/1 run, 3/4 aim on a 6+ axis pad whose triggers
+    // rest at -1 (axes 2 and 5), axes 6/7 are the D-pad
+    const odd = await page.evaluate(() => {
+      __padUnplug(0);
+      __padPlug(0, { id: "Generic USB Joystick (Vendor: 0810 Product: 0001)", mapping: "", axes: [0, 0, -1, 0, 0, -1, 0, 0], buttons: 13 });
+      gamepads.poll();
+      __padButton(0, "X", 1);
+      gamepads.poll();
+      const rest = gamepads.read(0);
+      __padAxes(0, [0.9, 0, -1, 0, -0.9, 1, 0, 0]);
+      gamepads.poll();
+      const moved = gamepads.read(0);
+      __padAxes(0, [0, 0, -1, 0, 0, -1, -1, 0]);
+      gamepads.poll();
+      const dpad = gamepads.read(0);
+      __padButton(0, "X", 0);
+      __padAxes(0, [0, 0, -1, 0, 0, -1, 0, 0]);
+      gamepads.poll();
+      return { rest, moved, dpad };
+    });
+    // The keyboard takes the prompts back
+    await page.keyboard.press("Shift");
+    const kb = await read();
+    assert(before.cls === "pad-none" && before.labels.every((l) => l === null) && before.hint === null, "prompts before any pad: " + JSON.stringify(before));
+    assert(!odd.rest.held.LT && !odd.rest.held.RT && !odd.rest.aim.x && !odd.rest.aim.y, "resting triggers read as input: " + JSON.stringify(odd.rest));
+    assert(odd.moved.move.x > 0.8 && odd.moved.aim.y < -0.8 && odd.moved.held.RT && !odd.moved.held.LT, "non-standard mapping: " + JSON.stringify(odd.moved));
+    assert(odd.dpad.held.LEFT && odd.dpad.move.x === -1, "non-standard D-pad axes: " + JSON.stringify(odd.dpad));
+    assert(kb.cls === "pad-none" && kb.kbShown && !kb.helpShown && kb.hint === null, "the keyboard did not take the prompts back: " + JSON.stringify(kb));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("gamepad: DATABASE tabs, respec, the hacking terminal and saving a leaderboard name all work with a controller", async () => {
+    const { context, page, problems } = await openPad();
+    await silence(page);
+    await page.evaluate((spec) => __padPlug(0, spec), PAD_IDS.dualsense);
+    // DATABASE: Back (SHARE) opens it, R1 / L1 switch tabs, ○ closes it
+    await padPress(page, "BACK");
+    await padPress(page, "RB");
+    await padPress(page, "RB");
+    await padPress(page, "LB");
+    const codex = await page.evaluate(() => ({ open: !document.getElementById("codex").hidden, tab: codexTab, focus: document.activeElement.dataset.tab }));
+    await padPress(page, "B");
+    const codexClosed = await page.evaluate(() => ({ hidden: document.getElementById("codex").hidden, focus: document.activeElement.id }));
+    // Respec from the pause menu, then cancel it
+    await startRun(page, { settings: { character: "paine" } });
+    await padPress(page, "START");
+    for (let i = 0; i < 6 && (await padFocus(page)).id !== "respec-btn"; i++) await padPress(page, "RIGHT");
+    await padPress(page, "A");
+    const respec = await page.evaluate(() => ({ open: !document.getElementById("respec").hidden, focus: document.activeElement.id }));
+    await padPress(page, "B");
+    const respecClosed = await page.evaluate(() => ({ hidden: document.getElementById("respec").hidden, state: game.state }));
+    await padPress(page, "START");
+    // The hacking terminal: ✕ types and locks, the D-pad picks
+    await page.evaluate(() => openBreach(terminals[0]));
+    const stages = await playBreach(page, async (v) => {
+      if (v.mode === "pick") {
+        const want = v.stage === "payload" ? 2 : v.flagged; // OVERCLOCK, or the service with the CVE
+        await padPress(page, v.cursor < want ? "DOWN" : v.cursor > want ? "UP" : "A");
+      } else await padPress(page, "A");
+    });
+    const hacked = await page.evaluate(() => ({ state: game.state, jackin: runSecrets.has("jackin"), overdrive: player.overdrive }));
+    // Game over: up to "Save score", ✕ saves the prefilled name, ○ closes the board
+    await finishRun(page, { time: 75, kills: 9, level: 3 });
+    await page.waitForTimeout(450);
+    for (let i = 0; i < 8 && (await padFocus(page)).id !== "lb-save"; i++) await padPress(page, "UP");
+    const onSave = await padFocus(page);
+    await padPress(page, "A");
+    const saved = await page.evaluate(() => ({ saved: lbRun && lbRun.saved, name: lbRun && lbRun.entry.name, board: !document.getElementById("leaderboard").hidden }));
+    await padPress(page, "B");
+    const boardClosed = await page.evaluate(() => ({ hidden: document.getElementById("leaderboard").hidden, state: game.state }));
+    assert(codex.open && codex.tab === "enemies" && codex.focus === "enemies", "DATABASE tabs by pad: " + JSON.stringify(codex));
+    assert(codexClosed.hidden && codexClosed.focus === "overlay-btn", "○ did not close the DATABASE (focus back where it was): " + JSON.stringify(codexClosed));
+    assert(respec.open && respecClosed.hidden && respecClosed.state === "paused", "respec by pad: " + JSON.stringify({ respec, respecClosed }));
+    for (const s of ["recon", "exploit", "crack", "root", "payload"]) assert(stages.has(s), `the hack never reached ${s}: ` + [...stages].join(","));
+    assert(hacked.state === "playing" && hacked.jackin && hacked.overdrive > 5, "the hack did not finish by pad: " + JSON.stringify(hacked));
+    assert(onSave.id === "lb-save", "could not reach Save score: " + JSON.stringify(onSave));
+    assert(saved.saved && saved.name === "ANON-PAINE" && saved.board, "✕ did not save the prefilled name: " + JSON.stringify(saved));
+    assert(boardClosed.hidden && boardClosed.state === "over", "○ did not close the leaderboard: " + JSON.stringify(boardClosed));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await browser.close();
   server.close();
   const failed = results.filter((r) => !r.ok);

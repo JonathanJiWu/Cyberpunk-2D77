@@ -336,28 +336,32 @@ function drawHints(VW, VH) {
   if (game.state !== "playing" || game.time > 10) return;
   const alpha = clamp((10 - game.time) / 1.5, 0, 1);
   ctx.globalAlpha = alpha;
-  if (touchMode) {
-    const right = settings.autoFire ? "AUTO-FIRE ON" : settings.touchAim === "tap" ? "TAP: FIRE   HOLD: RAPID FIRE" : "RIGHT STICK: AIM + FIRE";
+  const pad = typeof padHintRows === "function" ? padHintRows() : null; // gamepad.js: controller prompts while a pad is in use
+  if (touchMode && !pad) {
+    // with auto-fire on, the right stick still aims and fires (twin-stick)
+    const right = settings.touchAim === "tap" && !settings.autoFire ? "TAP: FIRE   HOLD: RAPID FIRE" : "RIGHT STICK: AIM + FIRE";
     hudText(`LEFT STICK: MOVE (FLICK UP: JUMP)   ${right}   CORNER: ${CH().special.label}`, VW / 2, VH - 150, 20, "#ffffff", "center");
   } else {
-    const box = { x: VW / 2 - 430, y: 250, w: 860, h: 200 };
+    const rows = pad || [
+      ["A D", "MOVE    W S  AIM"],
+      ["SPACE", "JUMP x2  (S+SPACE: DROP)"],
+      ["J", `${CH().primary.name.toUpperCase()} (L-CLICK)`],
+      ["K", `${CH().special.name.toUpperCase()} (R-CLICK)`],
+    ];
+    const box = { x: VW / 2 - 430, y: 250, w: 860, h: 40 + rows.length * 40 };
     ctx.fillStyle = "rgba(10,3,24,0.75)";
     ctx.fillRect(box.x, box.y, box.w, box.h);
     ctx.strokeStyle = "rgba(255,47,214,0.8)";
     ctx.lineWidth = 3;
     ctx.strokeRect(box.x, box.y, box.w, box.h);
-    if (isReady(IMG.wasd)) {
+    if (isReady(IMG.wasd) && !pad) {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(IMG.wasd, box.x + 24, box.y + 22, 145, 157);
     }
-    [
-      ["A D", "MOVE    W S  AIM"],
-      ["SPACE", "JUMP x2  (S+SPACE: DROP)"],
-      ["J", `${CH().primary.name.toUpperCase()} (L-CLICK)`],
-      ["K", `${CH().special.name.toUpperCase()} (R-CLICK)`],
-    ].forEach(([key, label], i) => {
-      hudText(key, box.x + 200, box.y + 26 + i * 40, 20, "#ff9b21");
-      hudText(label, box.x + 340, box.y + 26 + i * 40, 20, "#ffffff");
+    rows.forEach(([key, label], i) => {
+      const sym = pad && padIsSymbol(key); // ✕ ○ □ △ come from a fallback font: draw them bigger
+      hudText(key, box.x + (pad ? 40 : 200), box.y + 26 + i * 40 - (sym ? 7 : 0), sym ? 32 : 20, "#ff9b21");
+      hudText(label, box.x + (pad ? 240 : 340), box.y + 26 + i * 40, 20, "#ffffff");
     });
   }
   ctx.globalAlpha = 1;

@@ -8,6 +8,8 @@
 //             Right side, "twin-stick": a second stick, push it to aim + fire.
 //             Right side, "tap": tap to fire at that spot, hold to rapid-fire.
 //             SPECIAL: a button in the corner (Paine's flame toggles on/off).
+//   Gamepad:  js/gamepad.js writes player 1's pad into input.pad (run, fire,
+//             special, jump) and its right stick into input.aim (twin-stick).
 //   Settings: auto-fire (assisted aim) and auto flame, both optional.
 // =============================================================================
 
@@ -28,7 +30,8 @@ const KEYMAP = {
 const input = {
   keys: new Set(),
   stick: { id: null, ox: 0, oy: 0, x: 0, y: 0, upLatch: false }, // left: move / jump
-  aim: { id: null, ox: 0, oy: 0, x: 0, y: 0 }, // right: twin-stick aim + fire
+  aim: { id: null, ox: 0, oy: 0, x: 0, y: 0 }, // right: twin-stick aim + fire (id "pad": a gamepad's right stick)
+  pad: { x: 0, y: 0, zap: false, flame: false, jump: false }, // player 1's gamepad (gamepad.js)
   buttons: { flame: false },
   mouse: { x: W / 2, y: H / 2, zap: false, flame: false },
   fingers: new Map(), // tap mode: pointerId -> {x, y} (screen coords)
@@ -110,6 +113,8 @@ function keyHeld(action) {
 function moveAxis() {
   const s = input.stick;
   if (s.id !== null && (s.x || s.y)) return { x: s.x, y: s.y, analog: true };
+  // A pad's stick aims like the keys do (its A button jumps, not stick-up)
+  if (input.pad.x || input.pad.y) return { x: input.pad.x, y: input.pad.y, analog: false };
   return {
     x: (keyHeld("right") ? 1 : 0) - (keyHeld("left") ? 1 : 0),
     y: (keyHeld("down") ? 1 : 0) - (keyHeld("up") ? 1 : 0),
@@ -117,9 +122,9 @@ function moveAxis() {
   };
 }
 const aimStickActive = () => input.aim.id !== null && Math.hypot(input.aim.x, input.aim.y) > 0.35;
-const zapHeld = () => keyHeld("zap") || input.mouse.zap || input.fingers.size > 0 || aimStickActive();
-const flameHeld = () => keyHeld("flame") || input.buttons.flame || input.mouse.flame;
-const jumpHeld = () => keyHeld("jump") || (input.stick.id !== null && input.stick.y < -0.4);
+const zapHeld = () => keyHeld("zap") || input.mouse.zap || input.fingers.size > 0 || aimStickActive() || input.pad.zap;
+const flameHeld = () => keyHeld("flame") || input.buttons.flame || input.mouse.flame || input.pad.flame;
+const jumpHeld = () => keyHeld("jump") || (input.stick.id !== null && input.stick.y < -0.4) || input.pad.jump;
 
 // World position the firing finger is pointing at (tap mode)
 function fingerAim() {
@@ -136,6 +141,7 @@ function clearInput() {
   input.aimFinger = null;
   input.jumpQueued = false;
   input.shots.length = 0;
+  Object.assign(input.pad, { x: 0, y: 0, zap: false, flame: false, jump: false }); // re-read next frame if still held
   leftStick.release();
   rightStick.release();
   document.querySelectorAll(".action-btn.pressed").forEach((b) => b.classList.remove("pressed"));
