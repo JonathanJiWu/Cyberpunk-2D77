@@ -13,9 +13,10 @@
 // Enemy side: downed flyers, fall damage, bleeding/burning, glitch stutter.
 // =============================================================================
 
-const heatWaves = []; // expanding Flame On rings
-const codeRain = []; // Time Dilation glyph streams
-const kitFx = []; // short one-off effects (reflect lines, glitch fields)
+// (per player in co-op: coop.js points these at the player being updated)
+let heatWaves = []; // expanding Flame On rings
+let codeRain = []; // Time Dilation glyph streams
+let kitFx = []; // short one-off effects (reflect lines, glitch fields)
 
 function resetKits() {
   heatWaves.length = 0;
@@ -458,10 +459,10 @@ function updateDowned(e, dt) {
 }
 
 // ============================================================ Effects =======
+// Runs per player (main.js); the screen flash fades in update()
 function updateKits(dt) {
   updateHeatWaves(dt);
   for (let i = kitFx.length - 1; i >= 0; i--) if ((kitFx[i].life -= dt) <= 0) kitFx.splice(i, 1);
-  game.dilationFlash = Math.max(0, (game.dilationFlash || 0) - dt);
   // Time Dilation: green code streams fall around Hackerman
   const p = player;
   if (p.dilation > 0) {
@@ -560,8 +561,7 @@ function drawKitFx(time) {
 
 // Screen-space: the bullet-time tint and the in/out flash
 function drawDilationOverlay(time) {
-  const p = player;
-  if (p.dilation > 0 && game.state !== "over") {
+  if (somePlayer(() => player.dilation > 0) && game.state !== "over") {
     const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.9);
     g.addColorStop(0, "rgba(40,255,120,0.04)");
     g.addColorStop(1, "rgba(10,60,20,0.45)");

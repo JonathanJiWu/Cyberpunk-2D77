@@ -382,7 +382,7 @@ function nullGlyph(e, above) {
 function nullSlash(e, x, y, r, damage) {
   nullFx.slashes.push({ x, y, r, facing: e.facing, life: 0.22, max: 0.22 });
   nullSound("nullSlash");
-  if (!bossLocked() && player.camo <= 0 && circleHitsBox(x, y, r, player)) hurtPlayer(damage, e.x + e.w / 2, e.y + e.h / 2, e);
+  if (!bossLocked()) eachTarget(() => player.camo <= 0 && circleHitsBox(x, y, r, player) && hurtPlayer(damage, e.x + e.w / 2, e.y + e.h / 2, e));
 }
 
 function nullShuriken(owner, x, y, a, speed, damage, holo) {
@@ -407,7 +407,7 @@ function nullRail(e, m, angle) {
   const ux = Math.cos(angle);
   const uy = Math.sin(angle);
   const len = uy > 0.01 ? Math.min(2800, (GROUND_Y - m.y) / uy) : 2800;
-  nullFx.rails.push({ x: m.x, y: m.y, ux, uy, len, head: 0, t: 0, hit: false, owner: e });
+  nullFx.rails.push({ x: m.x, y: m.y, ux, uy, len, head: 0, t: 0, hit: new Set(), owner: e });
   nullSound("nullShot");
   burst(m.x, m.y, 14, "#ffffff", 420);
   camera.shake = Math.max(camera.shake, 12);
@@ -461,10 +461,12 @@ function nullWallHop(e) {
 }
 
 function nullContact(e, damage) {
-  if (bossLocked() || e.contactCd > 0 || player.camo > 0 || e.parked) return;
-  if (!overlaps(e, player)) return;
-  const c = centerOf(e);
-  if (hurtPlayer(damage, c.x, c.y, nullSrc(e))) e.contactCd = 0.6;
+  eachTarget(() => {
+    if (bossLocked() || e.contactCd > 0 || player.camo > 0 || e.parked) return;
+    if (!overlaps(e, player)) return;
+    const c = centerOf(e);
+    if (hurtPlayer(damage, c.x, c.y, nullSrc(e))) e.contactCd = 0.6;
+  });
 }
 
 function updateNullReal(e, dt) {
@@ -893,7 +895,7 @@ function nullDefeated(e) {
   nullFx.death = { x: e.x, y: e.y, w: e.w, h: e.h, facing: e.facing, t: 0, rewarded: false };
   nullFx.tear = 0.5;
   nullSound("nullDeath");
-  player.invuln = Math.max(player.invuln, 2);
+  forEachPlayer(() => (player.invuln = Math.max(player.invuln, 2)));
   popup("free(me);", e.x + e.w / 2, e.y - 30, "#d9c2ff", 24, 1.4);
 }
 
@@ -908,7 +910,7 @@ function nullReward() {
     what = "+1 LIFE";
   } else {
     const heal = Math.round(stats.maxHp * 0.6);
-    p.hp = Math.min(stats.maxHp, p.hp + heal);
+    eachTarget(() => (player.hp = Math.min(stats.maxHp, player.hp + heal))); // (the whole team)
     what = `+${heal} HP`;
   }
   progress.rareCache = true;
@@ -958,16 +960,18 @@ function updateNullFx(dt) {
     const from = r.head;
     r.head = Math.min(r.len, r.head + NULLB.railSpeed * dt);
     r.t += dt;
-    if (!r.hit && !bossLocked() && player.camo <= 0) {
+    // it pierces: each player can be hit once (r.hit: the players it got)
+    eachTarget(() => {
+      if (r.hit.has(player) || bossLocked() || player.camo > 0) return;
       const pc = centerOf(player);
       const along = clamp((pc.x - r.x) * r.ux + (pc.y - r.y) * r.uy, from, r.head);
       const nx = r.x + r.ux * along;
       const ny = r.y + r.uy * along;
       if (circleHitsBox(nx, ny, 16, player)) {
-        r.hit = true;
+        r.hit.add(player);
         hurtPlayer(NULLB.railDamage, r.x, r.y, r.owner);
       }
-    }
+    });
     if (r.head >= r.len && !r.sparked) {
       r.sparked = true;
       burst(r.x + r.ux * r.len, Math.min(GROUND_Y, r.y + r.uy * r.len), 10, "#d9c2ff", 320);

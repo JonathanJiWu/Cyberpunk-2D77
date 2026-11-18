@@ -66,12 +66,22 @@ const XP_DRIFT_AFTER = 5; // seconds before an uncollected chip starts drifting 
 
 function updatePickups(dt) {
   xpFx.clock += dt;
-  const pcx = player.x + player.w / 2;
-  const pcy = player.y + player.h / 2;
-  const reach = TUNING.pickupRadius * stats.magnetMul;
+  // Who can pick things up: player 1, or in co-op every player in the fight.
+  // XP goes to the team; a chip just flies to whoever is nearest.
+  const takers = [];
+  eachTarget(() => takers.push({ x: player.x + player.w / 2, y: player.y + player.h / 2, reach: TUNING.pickupRadius * stats.magnetMul, ctx: coop.active }));
+  if (!takers.length) return;
 
   for (let i = gems.length - 1; i >= 0; i--) {
     const g = gems[i];
+    let t = takers[0];
+    if (takers.length > 1) {
+      const dist = (k) => Math.hypot(k.x - (g.x + g.w / 2), k.y - (g.y + g.h / 2));
+      t = takers.reduce((a, b) => (dist(b) < dist(a) ? b : a));
+    }
+    const pcx = t.x;
+    const pcy = t.y;
+    const reach = t.reach;
     const dx = pcx - (g.x + g.w / 2);
     const dy = pcy - (g.y + g.h / 2);
     const d = Math.hypot(dx, dy);
@@ -96,7 +106,7 @@ function updatePickups(dt) {
     }
     if (d < 40) {
       gems.splice(i, 1);
-      collectGem(g);
+      withPlayer(t.ctx, () => collectGem(g));
     }
   }
 
@@ -110,8 +120,9 @@ function updatePickups(dt) {
     moveBody(p, dt, 1600, 900);
     if (p.onGround) p.vx = 0;
     p.life -= dt;
-    if (overlaps(p, player)) {
-      applyPowerup(p.type);
+    const taker = takers.find((k) => overlaps(p, k.ctx.player));
+    if (taker) {
+      withPlayer(taker.ctx, () => applyPowerup(p.type)); // for whoever touched it
       powerups.splice(i, 1);
     } else if (p.life <= 0) {
       powerups.splice(i, 1);

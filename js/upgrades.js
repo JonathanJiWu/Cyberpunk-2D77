@@ -55,8 +55,10 @@ function applyLoadout() {
     const u = UPGRADES.find((x) => x.id === id);
     upg[id] = Math.min(upgradeInfo(u).max, lv(id) + 1);
   });
-  computeStats();
-  player.hp = player.ghostHp = stats.maxHp;
+  forEachPlayer(() => {
+    computeStats();
+    player.hp = player.ghostHp = stats.maxHp;
+  });
 }
 
 // ------------------------------------------------------------- Choices ------
@@ -219,7 +221,8 @@ function renderCards() {
   currentChoices.forEach((c, i) => {
     const owned = lv(c.id);
     const steps = c.rare ? 2 : 1;
-    const tag = c.rare ? "RARE // +2 LEVELS" : isPreferred(c.id) ? "LOADOUT PICK" : null;
+    // (co-op: the primary / special card upgrades both players' own ICs)
+    const tag = c.rare ? "RARE // +2 LEVELS" : isPreferred(c.id) ? "LOADOUT PICK" : coopActive() && (c.id === "zap" || c.id === "flame") ? "BOTH ICs" : null;
     const card = hardwareCard(c.u, { rare: c.rare, key: i + 1, tag });
     card.querySelector(".card-level").textContent = owned ? `LV ${owned} > ${owned + steps}` : c.id === "_heal" ? "" : c.rare ? `NEW! LV ${steps}` : "NEW!";
     card.querySelector(".card-desc").textContent = c.id === "_heal" ? HEAL_CARD.desc[0] : describe(c.u, steps);
@@ -272,17 +275,18 @@ function rerollChoices() {
 }
 rerollBtn.addEventListener("click", rerollChoices);
 
+// The upgrades are the team's: in co-op every player gets the new stats and the heal
 function applyChoice(c) {
   progress.rareCache = false; // spent
-  if (c.id === "_heal") {
-    player.hp = Math.min(stats.maxHp, player.hp + 40);
-  } else {
-    const steps = c.rare ? 2 : 1;
-    upg[c.id] = Math.min(upgradeInfo(c.u).max, lv(c.id) + steps);
+  const steps = c.rare ? 2 : 1;
+  if (c.id !== "_heal") upg[c.id] = Math.min(upgradeInfo(c.u).max, lv(c.id) + steps);
+  forEachPlayer(() => {
     computeStats();
-    if (c.id === "heart") player.hp = Math.min(stats.maxHp, player.hp + 20 * steps);
-  }
-  player.hp = Math.min(stats.maxHp, player.hp + LEVEL_UP_HEAL);
+    if (coop.active.out) return; // (waiting for a life: nothing to heal)
+    if (c.id === "_heal") player.hp = Math.min(stats.maxHp, player.hp + 40);
+    else if (c.id === "heart") player.hp = Math.min(stats.maxHp, player.hp + 20 * steps);
+    player.hp = Math.min(stats.maxHp, player.hp + LEVEL_UP_HEAL);
+  });
 }
 
 // Pick a card. The upgrade applies at once; the "install" animation then
@@ -556,8 +560,10 @@ function applyRespec() {
   if (respec.total - spent(respec.draft) !== 0) return;
   Object.keys(upg).forEach((k) => delete upg[k]);
   Object.entries(respec.draft).forEach(([id, n]) => n && (upg[id] = n));
-  computeStats();
-  player.hp = Math.min(player.hp, stats.maxHp);
+  forEachPlayer(() => {
+    computeStats();
+    player.hp = Math.min(player.hp, stats.maxHp);
+  });
   closeRespec();
   overlayText.textContent = pick(HUMOR.respec);
   sfx.levelUp.play({ rate: 1.1 });

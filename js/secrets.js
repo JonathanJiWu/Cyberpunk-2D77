@@ -55,7 +55,10 @@ function slowMo(duration, scale) {
 function enemyTimeScale() {
   let s = 1;
   if (player.sandyTime > 0) s = Math.min(s, 0.25);
-  if (player.dilation > 0) s = Math.min(s, stats.dilation.scale); // Hackerman's Time Dilation
+  // Hackerman's Time Dilation (either player's, in co-op)
+  forEachPlayer(() => {
+    if (player.dilation > 0) s = Math.min(s, stats.dilation.scale);
+  });
   if (game.slowmo && game.slowmo.time > 0) s = Math.min(s, game.slowmo.scale);
   return s;
 }
@@ -82,7 +85,12 @@ function resetSecretsRun() {
   Object.assign(moonState, { done: false, glow: 0 });
   doves.length = 0;
   slashes.length = 0;
-  Object.assign(player, {
+  resetChrome(player);
+}
+
+// The chrome a player can pick up (co-op's player 2 starts without any too)
+function resetChrome(p) {
+  Object.assign(p, {
     mantis: false,
     mantisCd: 0,
     katana: false,

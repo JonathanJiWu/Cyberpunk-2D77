@@ -53,6 +53,7 @@ const gamepads = {
   slots: [null], // slot -> pad index. Slot 0 is player 1 (with the keyboard and touch)
   device: null, // the last-used input device: "xbox" | "ps" | "generic" | "none"
   onJoinRequest: null, // (padIndex) => {}: an unassigned pad pressed Start or A
+  onSlotPoll: null, // (screen, dt) => {}: every poll, after player 1's pad (co-op drives slot 1's)
   poll: (now) => padPoll(now === undefined ? performance.now() : now), // the rAF loop calls this; tests can too
   read: (slot = 0) => padRead(slot), // the latest processed input of the pad in a slot, or null
   assign: (padIndex, slot = 0) => padAssign(padIndex, slot),
@@ -346,6 +347,7 @@ function padPoll(now) {
     padReleaseGameplay();
     if (p1) padMenus(p1, screen, dt);
   }
+  if (typeof gamepads.onSlotPoll === "function") gamepads.onSlotPoll(screen, dt); // the other players' pads (js/coop.js)
   padLegend(screen);
   padHaptics();
 }

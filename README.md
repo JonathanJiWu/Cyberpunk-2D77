@@ -175,13 +175,46 @@ Plug in a pad (USB or Bluetooth) and press any button. A toast confirms it (**CO
 
 **Rumble**: taking damage and hero landings rumble the pad. Turn it off with the Rumble setting, which shows while a pad is in use. Losing player 1's pad mid-run pauses the game.
 
-**More than one pad**: the first pad you use is player 1, alongside the keyboard and touch. Other pads stay unassigned, ready for local co-op.
+**More than one pad**: the first pad you use is player 1, alongside the keyboard and touch. Another pad pressing Start or A joins as player 2 (see [Local co-op](#local-co-op-2-players)).
 
 **For developers** (`js/gamepad.js`):
 - `padPrompt("A")` returns the label for the pad in use (`"A"`, `"✕"` or `"1"`), or `null` when the player isn't on a pad.
 - `<body>` gets `pad-xbox`, `pad-ps`, `pad-generic` or `pad-none`, following the last-used input device.
 - Elements with `data-pad="Y"` are relabelled automatically, and `window` gets a `padchange` event when the device changes.
-- `gamepads.slots`, `gamepads.read(slot)` and `gamepads.onJoinRequest = (padIndex) => {}` are the hooks for co-op.
+- `gamepads.slots`, `gamepads.read(slot)`, `gamepads.onJoinRequest = (padIndex) => {}` and `gamepads.onSlotPoll = (screen, dt) => {}` are the hooks `js/coop.js` uses.
+
+## Local co-op (2 players)
+Optional: with one player nothing changes. A second player joins with a controller and you fight side by side on one screen.
+
+**Joining**
+- Press **Start** or **A** on a second controller (MENU / OPTIONS, A / ✕).
+  - On a menu, player 2 is ready: a toast confirms it, a **P2** tag marks their IC on the cards, and they drop in with player 1 when the run starts.
+  - Mid-run, a join panel opens at the top right. Left / right picks an IC, A or Start drops in (after 12 seconds it drops in by itself) and B backs out. Player 2 falls in next to player 1 with the hero landing.
+- Player 2 starts as a different IC from player 1. To change it later, pause and pick an IC card **with player 2's pad**: a hot-swap applies to the player whose controller clicked it.
+- Keyboard plus one controller? Pause and pick **Pad to P2**. Player 1 keeps the keyboard, mouse and touch, and the pad becomes player 2's.
+- **P2: Leave** (pause menu, game-over screen or title menu) takes player 2 out. Their pad can join again at any time.
+
+**Controls**: player 1 keeps the keyboard, mouse, touch and pad 1. Player 2 uses only their own pad, with the same layout: left stick run, right stick aim and fire, A jump, RT / LT primary and special, Start pause. Either pad can drive the menus, including the level-up cards.
+
+**Rules**
+- **Shared by the team**: XP, levels and upgrades (one level-up screen; the primary and special cards upgrade each player's own IC), the rerolls, respec and the 3 lives.
+- **Per player**: IC, HP, resource, stats, power-ups and specials.
+- **Lives**: a downed player drops back in after 3 seconds, spending a life from the team's pool. With no life left to spend they're out until the team gets one back (NULL's reward), while the other fights on. The run ends only when both are down with no life left.
+- **Enemies** go after the nearest player (a boss commits to its target for a few seconds). Contact, shots, bomber blasts, shockwaves, the Overseer's laser and NULL's slashes and rail shot hit whichever player they reach. Ronin's reflection, the Widow's Flame On and Hackerman's specials work per player. Time Dilation slows the enemies for both players, but only Hackerman gets its damage bonus.
+- **Pickups**: XP chips fly to the nearest player, and a power-up goes to whoever touches it. Beating a boss heals both players.
+- **Difficulty**: enemies spawn 1.5x as fast, up to 1.25x as many at once, with 1.25x HP. Bosses have 1.4x HP, rescaled if player 2 joins or leaves mid-fight. These were tuned with bot runs: each player takes about the damage a solo player does, the team loses about as many lives, and boss fights take about as long.
+- **Camera**: it frames both players. Neither can walk out of view: whoever walks away is held at the edge. Climbing far above the other player is capped, and a player stranded high above their partner for 1.5 seconds is pulled down next to them.
+- **HUD**: player 2's panel at the top right (portrait, HP, resource and passive), P1 / P2 tags over the heroes, and cyan / amber outlines.
+- **Leaderboard**: co-op runs are marked **2P**.
+
+**Limitations**
+- Two players at most, and player 2 needs a controller: there is no second keyboard or touch player.
+- The easter eggs, jacking in, and the chrome they give (Mantis Blades, the katana, Sandevistan, camo) are player 1's. Jacking in pauses the run for both.
+- The assists (auto-fire, auto special) and the rumble setting are shared.
+- On the title menu the first pad used is always player 1's, so joining there needs two pads. With one, use **Pad to P2** from the pause menu.
+- One shared screen, no split screen.
+
+**For developers** (`js/coop.js`): the game was written around one global `player`, with `stats`, `input`, `intro` and the hero effect arrays (`playerShots`, `missiles`, `slashFx`, `heatWaves`, `kitFx`...) next to it. Those are now `let` bindings, and each player has a context with its own copies. `withPlayer(ctx, fn)` points the globals at a player while a per-player system runs. `forEachPlayer(fn)` loops over every player, and `eachTarget(fn)` over the players an attack can reach. Enemies think with their target bound (`coopTargetFor`). Outside those calls the globals are player 1's, so single player runs the same code paths as before. `upg` and `progress` stay global: they are the team's.
 
 ## How a run works
 1. Press **Start**, pick your two loadout skills, and **Drop In**. Your IC leaps off a rooftop and lands in the street.
@@ -240,6 +273,7 @@ Run `npm install`, then `npm test`. This plays the game in headless Chromium, on
 - easter eggs, the billboard and the soundtrack;
 - the touch controls, including the twin-stick with auto-fire on;
 - game controllers (mocked pads): connecting, play, auto-fire with two sticks, every menu, the hacking terminal and the button prompts;
+- local co-op (mocked pads): joining mid-run and on the menus, independent movement and kits, the camera, nearest-player targeting, hits on the right player, shared lives and respawns, a shared level-up, all three bosses, leaving, and single player unchanged;
 - the bundled font (no internet, canvas text waits for it) and the display settings: fullscreen in sync with the HUD button, a refused fullscreen request, resolution, persistence and the phone layout.
 
 GitHub Actions runs the same tests on every push and only deploys if they pass. The desktop app has its own tests, see [Desktop app](#desktop-app).
@@ -334,6 +368,7 @@ To sign, add the certificates as repository secrets (`CSC_LINK` and `CSC_KEY_PAS
 | `js/player.js` | Movement, jumping, stats, Paine's energy ball and flame, auto weapons and drawing the hero |
 | `js/heroes.js` | Tetsu's and Sudo's kits, plus facing, animation, effects and speech bubbles for all three |
 | `js/lives.js` | The rooftop drop and hero landing, the 3 lives and the IC hot-swap |
+| `js/coop.js` | Local co-op: player contexts and binding, joining and leaving, targets, shared lives, the camera leash and player 2's HUD |
 | `js/enemies.js` | The spawn director, enemy AI, status effects and enemy shots |
 | `js/bosses.js` | Shared boss machinery: cinematic entrances, minion derez, grounded movement, shockwaves, speech and the name card |
 | `js/overseer.js` | The Overseer, the first boss |

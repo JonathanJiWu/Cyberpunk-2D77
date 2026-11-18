@@ -24,10 +24,13 @@ function render(time) {
   drawGoatDeath(time);
   drawNullFx(time);
   drawShockwaves(time);
-  drawPlayer(time);
-  drawPlayerProjectiles();
-  drawHeroFx(time);
-  drawKitFx(time);
+  forEachPlayer(() => {
+    // (each player in co-op, with its own projectiles and effects)
+    drawPlayer(time);
+    drawPlayerProjectiles();
+    drawHeroFx(time);
+    drawKitFx(time);
+  });
   drawEnemyShots();
   drawEffects();
   drawSecretsFront(time);
@@ -208,9 +211,11 @@ function drawHUD(time) {
   const lowHp = p.hp / stats.maxHp < 0.3;
   const hpColor = lowHp && Math.sin(time * 12) > 0 ? "#ff2f6d" : "#19f5ff";
   drawIcon(isReady(IMG.portraits2) ? "portraits2" : "portraits", 48, CH().portrait, 44, 22, 40);
-  hudText(`${CH().name}  LV ${progress.level}`, 94, 32, 24, "#ffe14d");
-  drawBar(44, 70, 440, 34, p.hp / stats.maxHp, p.ghostHp / stats.maxHp, hpColor);
-  hudText(`${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
+  const team = coopActive(); // co-op: tag player 1's panel, show when they're down
+  hudText(`${team ? "P1 " : ""}${CH().name}  LV ${progress.level}`, 94, 32, 24, team ? coop.players[0].color : "#ffe14d");
+  const down = coopStatus(coop.players[0]);
+  drawBar(44, 70, 440, 34, down ? 0 : p.hp / stats.maxHp, down ? 0 : p.ghostHp / stats.maxHp, hpColor);
+  hudText(down || `${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
   // Lives: one chip per backup
   for (let i = 0; i < MAX_LIVES; i++) {
     const on = i < game.lives;
@@ -290,6 +295,7 @@ function drawHUD(time) {
 
   // Kills (just under the pause / mute / fullscreen buttons)
   hudText(`KILLS ${game.kills}`, VW - 44, hudLayout.killsY / k, 22, "#ffffff", "right");
+  drawCoopHud(VW, time); // co-op: player 2's panel (or their join panel)
 
   drawHints(VW, H / k);
 

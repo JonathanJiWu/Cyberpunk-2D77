@@ -72,8 +72,11 @@ function renderCharSelect() {
     info.append(statBar("HP", ch.hp / 160, "#ff2f6d"), statBar("ARMOR", ch.armor / 0.25, "#19f5ff"));
     info.append(el("span", "char-kit", `${ch.primary.name} + ${ch.special.name}`));
     card.append(info);
+    if (coop.seat && coop.seat.char === id) card.append(el("span", "char-p2", "P2")); // co-op: player 2's pick
     card.addEventListener("click", () => {
-      if (game.state === "paused") switchCharacter(id); // hot-swap mid-run
+      if (coopPickChar(id)) {
+        // clicked with player 2's pad: their IC (hot-swapped if they're in a run)
+      } else if (game.state === "paused") switchCharacter(id); // hot-swap mid-run
       else {
         settings.character = id;
         applySettings();

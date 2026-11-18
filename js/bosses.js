@@ -14,9 +14,10 @@
 const shockwaves = [];
 
 function makeBoss(type, w, h, x, y) {
-  const hp = BOSSES[type].hp;
+  const hp = BOSSES[type].hp * coopMul("bossHp"); // tougher against two players (coop.js)
   return {
     boss: true,
+    coopHp: coopMul("bossHp"),
     type,
     x,
     y,
@@ -142,18 +143,20 @@ function bossState(e, state) {
   e.timer = 0;
 }
 
-// Touching a boss hurts (bosses don't care about Paine's flame)
+// Touching a boss hurts (bosses don't care about Paine's flame), whichever player
 function bossContact(e, damage) {
-  if (bossLocked() || e.contactCd > 0 || player.camo > 0) return;
-  if (!overlaps(e, player)) return;
-  const c = centerOf(e);
-  if (hurtPlayer(damage, c.x, c.y, e)) e.contactCd = 0.6;
+  eachTarget(() => {
+    if (bossLocked() || e.contactCd > 0 || player.camo > 0) return;
+    if (!overlaps(e, player)) return;
+    const c = centerOf(e);
+    if (hurtPlayer(damage, c.x, c.y, e)) e.contactCd = 0.6;
+  });
 }
 
 // ------------------------------------------------------------ Shockwaves ----
 // A wall of energy rolling along the ground (or a platform). Jump over it.
 function spawnShockwave(x, y, dir, opts = {}) {
-  shockwaves.push({ owner: opts.owner || game.boss, x, y, dir, speed: opts.speed || 760, life: opts.life || 1.1, h: opts.h || 64, damage: opts.damage || 14, color: opts.color || "#19f5ff", hit: false, t: 0 });
+  shockwaves.push({ owner: opts.owner || game.boss, x, y, dir, speed: opts.speed || 760, life: opts.life || 1.1, h: opts.h || 64, damage: opts.damage || 14, color: opts.color || "#19f5ff", hit: new Set(), t: 0 });
 }
 
 function updateShockwaves(dt) {
@@ -166,12 +169,15 @@ function updateShockwaves(dt) {
       continue;
     }
     if (Math.random() < 0.5) dust(s.x, s.y, 1, 0.8);
-    const p = player;
-    const pc = centerOf(p);
-    const feet = p.y + p.h;
-    if (!s.hit && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
-      if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y, s.owner)) s.hit = true;
-    }
+    // it hits each player once (s.hit: the players it got)
+    eachTarget(() => {
+      const p = player;
+      const pc = centerOf(p);
+      const feet = p.y + p.h;
+      if (!s.hit.has(p) && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
+        if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y, s.owner)) s.hit.add(p);
+      }
+    });
   }
 }
 

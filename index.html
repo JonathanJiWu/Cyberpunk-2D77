@@ -67,6 +67,8 @@
             <button id="codex-btn" class="secondary-btn" type="button">Database</button>
             <button id="lb-btn" class="secondary-btn" type="button">Leaderboard</button>
             <button id="quit-btn" class="secondary-btn" type="button" hidden>Quit</button>
+            <button id="coop-join-btn" class="secondary-btn" type="button" hidden>Pad to P2</button>
+            <button id="coop-leave-btn" class="secondary-btn" type="button" hidden>P2: Leave</button>
           </div>
           <p id="overlay-tip" class="overlay-tip"></p>
           <div id="settings" class="settings">
@@ -164,6 +166,8 @@
               <dd>Specials cost your Individual Contributor's resource. It doesn't refill by itself: earn it by dealing and taking damage</dd>
               <dt>XP</dt>
               <dd>Grab the chips enemies drop to level up and install an upgrade (R rerolls, 3 per run). Pause to respec or hot-swap your Individual Contributor</dd>
+              <dt>2P co-op</dt>
+              <dd>A second controller joins as player 2: press its <b data-pad="START">MENU</b> or <b data-pad="A">A</b>, on a menu or mid-run. Playing on the keyboard with one pad? Pause and pick "Pad to P2". XP, levels, upgrades and lives are shared</dd>
               <dt>Lives &amp; bosses</dt>
               <dd>You get 3 lives. The Overseer shows up at 2:30; beat it and the Demon GOAT, the final boss, comes for you</dd>
             </dl>
@@ -326,6 +330,7 @@
     <script src="js/heroes.js"></script>
     <script src="js/kits.js"></script>
     <script src="js/lives.js"></script>
+    <script src="js/coop.js"></script>
     <script src="js/enemies.js"></script>
     <script src="js/bosses.js"></script>
     <script src="js/overseer.js"></script>

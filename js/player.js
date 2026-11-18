@@ -7,58 +7,64 @@
 
 // The player object IS its hitbox (x, y, w, h). The 32x48 sprite frame is
 // drawn 2.5x (80x120) around it.
-const player = {
-  char: "paine",
-  x: 200,
-  y: GROUND_Y - 104,
-  w: 44,
-  h: 104,
-  vx: 0,
-  vy: 0,
-  kbX: 0,
-  onGround: true,
-  standingOn: GROUND,
-  facing: 1,
-  frameX: 0,
-  frameY: 2,
-  animTime: 0,
-  moving: false,
-  jumps: 0,
-  jumped: false,
-  jumpCut: false,
-  coyote: 0,
-  jumpBuffer: 0,
-  dropTimer: 0,
-  hp: TUNING.player.maxHp,
-  ghostHp: TUNING.player.maxHp,
-  heat: TUNING.heat.start,
-  heatLocked: false,
-  flameOn: false,
-  invuln: 0,
-  shield: 0,
-  overdrive: 0,
-  zapCd: 0,
-  missileCd: 1,
-  chainCd: 1,
-  orbitAngle: 0,
-  // feel / animation
-  sx: 1,
-  sy: 1,
-  faceLock: 0,
-  fireAnim: 0,
-  fireAnimMax: 1,
-  speech: null,
-  speechCd: 0,
-  trail: [],
-};
+// `player`, `stats`, `playerShots` and `missiles` are `let`: in local co-op
+// (coop.js) they point at whichever player a per-player system runs for.
+function makePlayerBody() {
+  return {
+    char: "paine",
+    x: 200,
+    y: GROUND_Y - 104,
+    w: 44,
+    h: 104,
+    vx: 0,
+    vy: 0,
+    kbX: 0,
+    onGround: true,
+    standingOn: GROUND,
+    facing: 1,
+    frameX: 0,
+    frameY: 2,
+    animTime: 0,
+    moving: false,
+    jumps: 0,
+    jumped: false,
+    jumpCut: false,
+    coyote: 0,
+    jumpBuffer: 0,
+    dropTimer: 0,
+    hp: TUNING.player.maxHp,
+    ghostHp: TUNING.player.maxHp,
+    heat: TUNING.heat.start,
+    heatLocked: false,
+    flameOn: false,
+    invuln: 0,
+    shield: 0,
+    overdrive: 0,
+    zapCd: 0,
+    missileCd: 1,
+    chainCd: 1,
+    orbitAngle: 0,
+    // feel / animation
+    sx: 1,
+    sy: 1,
+    faceLock: 0,
+    fireAnim: 0,
+    fireAnimMax: 1,
+    speech: null,
+    speechCd: 0,
+    trail: [],
+  };
+}
+let player = makePlayerBody();
 
-const playerShots = []; // energy balls
-const missiles = [];
+let playerShots = []; // energy balls
+let missiles = [];
 
 // --------------------------------------------------------------- Stats ------
 // Everything upgrades can change is derived from the upgrade levels here.
+// The upgrades belong to the team (shared in co-op); stats are per player.
 const upg = {}; // upgrade id -> level
-const stats = {};
+let stats = {};
 const lv = (id) => upg[id] || 0;
 const byLevel = (table, level) => table[Math.min(level, table.length - 1)];
 
@@ -115,10 +121,16 @@ function computeStats() {
 }
 
 function resetPlayer() {
-  player.char = CHARACTERS[settings.character] ? settings.character : "paine";
   Object.keys(upg).forEach((k) => delete upg[k]);
   upg.zap = 1;
   upg.flame = 1;
+  freshPlayer(CHARACTERS[settings.character] ? settings.character : "paine");
+}
+
+// The current player's body and kit, fresh and at full HP, as IC `char`.
+// The team's upgrades are kept (co-op's player 2 joins with them).
+function freshPlayer(char) {
+  player.char = char;
   computeStats();
   Object.assign(player, {
     x: 200,
@@ -560,11 +572,12 @@ function hurtPlayer(damage, fromX, fromY, src) {
   p.kbX = dir * TUNING.player.knockback;
   if (p.vy > -300) p.vy = -320;
   camera.shake = Math.max(camera.shake, 14);
-  game.hurtFlash = 0.35;
+  if (coop.active.id) gamepads.rumble(coop.active.slot, 0.45, 0.9, 180); // co-op player 2: their own pad (the red flash rumbles player 1's)
+  else game.hurtFlash = 0.35;
   burst(pc.x, pc.y, 12, "#ff2f6d", 360);
   damageNumber(damage, pc.x, p.y - 10, "#ff4b6e");
   sfx.damage.play();
-  vibrate(60);
+  if (!coop.active.id) vibrate(60); // (player 1's phone)
   onPlayerHurt(); // Sandevistan (easter egg)
   squash(1.15, 0.88);
   if (p.hp > 0 && p.hp / stats.maxHp < 0.3 && !p.lowHpSaid) {
@@ -607,6 +620,7 @@ function drawPlayer(time) {
   let alpha = blink ? 0.3 : 1;
   if (p.camo > 0) alpha = 0.18 + 0.08 * Math.sin(time * 20); // thermoptic camo
   ctx.globalAlpha = alpha;
+  if (!(p.camo > 0)) coopOutline(cx, bottom, time); // co-op: P1 / P2 outline colours
   if (!drawHeroSprite(cx, bottom, time)) {
     ctx.fillStyle = CH().color;
     ctx.fillRect(p.x, p.y, p.w, p.h);
@@ -631,6 +645,7 @@ function drawPlayer(time) {
   }
 
   drawSpeech();
+  coopTag(cx, p.y);
 
   // Orbit shards
   if (stats.orbit.count) {
