@@ -75,6 +75,15 @@ loadImage("legend", "img/legend.png"); // 5 frames of 64x64
 loadImage("hardware", "img/hardware.png"); // 8 cells of 64x40
 loadImage("overseerAvatar", "img/overseer-avatar.png"); // 14 frames of 64x96
 loadImage("goatFinal", "img/goat-final.png"); // 14 frames of 96x96
+// v3.1: the Cyber Widow, Hackerman, new landings/portraits, kit effects,
+// hardware XP pickups and the NULL boss
+loadImage("widow", "img/widow.png"); // 6 rows x 4 frames of 32x48 (rows 4/5: bow shot)
+loadImage("hackerman", "img/hackerman.png"); // same layout (rows 4/5: EM projector)
+loadImage("heroLanding2", "img/hero-landing2.png"); // rows: widow, tetsu, hackerman
+loadImage("portraits2", "img/portraits2.png"); // 3 portraits of 48x48
+loadImage("fx2", "img/fx2.png"); // 8 cells of 32x32: arrows, EM, glitch, bleed, heat, reflect
+loadImage("xpHardware", "img/xp-hardware.png"); // rows RAM / NVMe / CPU x 4 shine frames
+loadImage("nullBoss", "img/null.png"); // 14 frames of 64x96
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64

@@ -33,6 +33,7 @@ function resetGame() {
   intro.active = false;
   resetSecretsRun();
   resetBossFx();
+  resetKits();
   resetGoat();
   breachEl.hidden = true;
   camera.x = 0;
@@ -77,6 +78,7 @@ function update(dt) {
   sweepDead();
   updateEffects(dt);
   updateHeroFx(dt);
+  updateKits(dt);
   updateCamera(dt);
   game.hurtFlash = Math.max(0, game.hurtFlash - dt);
   game.hackFlash = Math.max(0, (game.hackFlash || 0) - dt);

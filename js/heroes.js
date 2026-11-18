@@ -1,9 +1,9 @@
 "use strict";
 // =============================================================================
 // The three heroes' kits and the "feel" layer shared by all of them:
-//   PAINE  energy ball + flame aura          (in player.js)
+//   PAINE  cyber bow + Flame On              (kits.js)
 //   TETSU  monoblade combo + Iaido Dash      (here)
-//   SUDO   glitch orb + System Overload      (here)
+//   SUDO   EM projector + Time Dilation      (kits.js)
 // plus facing, squash & stretch, dust, muzzle flashes and speech bubbles.
 // =============================================================================
 
@@ -119,12 +119,14 @@ function bladeSwing(a) {
     enemyShots.splice(i, 1);
     burst(s.x, s.y, 6, "#9ffcff", 220);
     popup("PARRY", s.x, s.y - 16, "#9ffcff", 18, 0.5);
+    synth.play("parry");
     if (B.reflect) reflectShot(s, 2.5);
   }
   slashFx.push({ x: pc.x, y: cy, a, r: R, arc, life: finisher ? 0.26 : 0.16, max: finisher ? 0.26 : 0.16, heavy: finisher });
   p.vx += Math.cos(a) * (finisher ? 260 : 140); // a little step into the swing
   camera.shake = Math.max(camera.shake, finisher ? 7 : 2);
   sfx.zapHit.play({ rate: finisher ? 0.55 : 0.85 });
+  synth.play(finisher ? "bladeHeavy" : "bladeSwing");
 }
 
 // A parried/reflected shot flies back at the nearest enemy
@@ -173,6 +175,7 @@ function updateDash(dt) {
       squash(1.35, 0.75);
       dust(p.x + p.w / 2, p.y + p.h, 8, 1.5);
       sfx.stomp.play({ rate: 1.4 });
+      synth.play("dash");
       if (Math.random() < 0.5) say("special");
     }
   }
@@ -204,173 +207,7 @@ function updateDash(dt) {
   }
 }
 
-// ====================================================================== SUDO ==
-function updateDaemon(dt) {
-  const p = player;
-  const O = stats.daemon;
-  p.zapCd -= dt;
-  if (p.zapCd > 0) return;
-  const aim = primaryAim(1000, O.speed);
-  if (!aim) return;
-  castOrb(aim.x, aim.y, aim.assist, aim.cone);
-  p.zapCd = O.cooldown * (p.overdrive > 0 ? 0.5 : 1);
-}
-
-function castOrb(ax, ay, assist, cone) {
-  const p = player;
-  const O = stats.daemon;
-  const pc = centerOf(p);
-  const sy = pc.y - 10;
-  const len = Math.hypot(ax, ay) || 1;
-  let a = Math.atan2(ay / len, ax / len);
-  if (assist) {
-    const t = nearestEnemy(pc.x, sy, 1100, (e) => onScreen(e) && Math.abs(angleDiff(Math.atan2(centerOf(e).y - sy, centerOf(e).x - pc.x), a)) < (cone || 0.4));
-    if (t) a = Math.atan2(centerOf(t).y - sy, centerOf(t).x - pc.x);
-  }
-  faceToward(Math.cos(a), a);
-  startAttackAnim(0.26);
-  playerShots.push({
-    x: pc.x + Math.cos(a) * 36,
-    y: sy + Math.sin(a) * 36,
-    vx: Math.cos(a) * O.speed,
-    vy: Math.sin(a) * O.speed,
-    r: 18,
-    angle: a,
-    life: 1.1,
-    damage: O.damage,
-    pierce: 0,
-    hit: new Set(),
-    orb: true,
-    radius: O.radius,
-    split: O.split,
-  });
-  sfx.energy.play({ rate: 0.7 });
-}
-
-function explodeOrb(s) {
-  const O = stats.daemon;
-  ring(s.x, s.y, s.radius, "#5aff7a");
-  burst(s.x, s.y, 12, "#5aff7a", 300);
-  glyphBurst(s.x, s.y, 6);
-  const hit = [];
-  enemies.forEach((e) => {
-    if (e.dead || !circleHitsBox(s.x, s.y, s.radius, e)) return;
-    damageEnemy(e, s.damage, { source: "orb", fromX: s.x - s.vx });
-    slowEnemy(e, O.slowMul, O.slowTime);
-    hit.push(e);
-  });
-  crates.forEach((c) => c.alive && circleHitsBox(s.x, s.y, s.radius, c) && damageCrate(c, s.damage));
-  if (s.split) {
-    for (let i = 0; i < 3; i++) {
-      const a = -Math.PI / 2 + (i - 1) * 0.9 + rand(-0.2, 0.2);
-      playerShots.push({ x: s.x, y: s.y, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, r: 12, angle: a, life: 0.45, damage: s.damage * 0.45, pierce: 0, hit: new Set(), orb: true, radius: s.radius * 0.55, split: false });
-    }
-  }
-  if (O.chain && hit.length) {
-    let from = { x: s.x, y: s.y };
-    const done = new Set(hit);
-    for (let j = 0; j < 2; j++) {
-      const next = nearestEnemy(from.x, from.y, 300, (e) => !done.has(e));
-      if (!next) break;
-      done.add(next);
-      const c = centerOf(next);
-      arc([from, c], "#5aff7a");
-      damageEnemy(next, s.damage * 0.6, { source: "orb" });
-      slowEnemy(next, O.slowMul, O.slowTime);
-      from = c;
-    }
-  }
-  sfx.zapHit.play({ rate: 0.7 });
-}
-
-function updateOverload(dt) {
-  const p = player;
-  const V = stats.overload;
-  p.specialCd -= dt;
-  p.firewallCd = Math.max(0, p.firewallCd - dt);
-  if (p.heatLocked && p.heat >= V.cost) p.heatLocked = false;
-  const pressed = specialPressed();
-  const pc = centerOf(p);
-  let target = null;
-  if (pressed) {
-    if (input.mouse.flame || input.mouse.zap) target = { x: input.mouse.x, y: input.mouse.y };
-    else {
-      const e = bestCluster(pc, 750, V.radius);
-      const a = p.fireAngle !== undefined ? p.fireAngle : p.facing > 0 ? 0 : Math.PI;
-      target = e || { x: pc.x + Math.cos(a) * 320, y: pc.y + Math.sin(a) * 320 };
-    }
-  } else if (settings.autoFlame && p.heat >= V.cost + 10 && p.specialCd <= 0) {
-    // Auto: hack a crowd of 3+, or a boss in range
-    const c = bestCluster(pc, 700, V.radius);
-    if (c && (c.count >= 3 || c.boss)) target = c;
-  }
-  if (target && p.specialCd <= 0 && !hackFx.some((h) => h.t > 0)) {
-    if (p.heat < V.cost) {
-      if (pressed) popup(`NEED ${CH().resource.name}`, pc.x, p.y - 20, "#b06cff", 20);
-    } else {
-      p.heat -= V.cost;
-      p.specialCd = 1;
-      hackFx.push({ x: target.x, y: target.y, r: V.radius, t: 0.35, life: 1.2, max: 1.2 });
-      faceToward(target.x - pc.x, Math.atan2(target.y - pc.y, target.x - pc.x));
-      startAttackAnim(0.4);
-      arc([{ x: pc.x, y: pc.y - 20 }, target], "#5aff7a");
-      sfx.chain.play({ rate: 0.6 });
-      if (Math.random() < 0.6) say("special");
-    }
-  }
-  hackFx.forEach((h) => {
-    const wasArmed = h.t > 0;
-    h.t -= dt;
-    h.life -= dt;
-    if (wasArmed && h.t <= 0) detonateHack(h);
-  });
-  for (let i = hackFx.length - 1; i >= 0; i--) if (hackFx[i].life <= 0) hackFx.splice(i, 1);
-}
-
-// The densest group of enemies near the player (for aiming the overload)
-function bestCluster(pc, range, radius) {
-  let best = null;
-  enemies.forEach((e) => {
-    if (e.dead || !onScreen(e)) return;
-    const c = centerOf(e);
-    if (Math.hypot(c.x - pc.x, c.y - pc.y) > range) return;
-    let count = 0;
-    let boss = false;
-    enemies.forEach((o) => {
-      if (!o.dead && circleHitsBox(c.x, c.y, radius, o)) {
-        count++;
-        boss = boss || !!o.boss;
-      }
-    });
-    if (!best || count > best.count) best = { x: c.x, y: c.y, count, boss };
-  });
-  return best;
-}
-
-function detonateHack(h) {
-  const V = stats.overload;
-  ring(h.x, h.y, h.r, "#5aff7a");
-  ring(h.x, h.y, h.r * 0.6, "#19f5ff");
-  glyphBurst(h.x, h.y, 18);
-  camera.shake = Math.max(camera.shake, 8);
-  game.hackFlash = 0.25;
-  enemies.forEach((e) => {
-    if (e.dead || !circleHitsBox(h.x, h.y, h.r, e)) return;
-    const stun = e.boss ? V.stun * 0.25 : V.stun;
-    e.stun = Math.max(e.stun || 0, stun);
-    e.vulnT = Math.max(e.vulnT || 0, stun + 1);
-    damageEnemy(e, V.damage, { source: "hack" });
-  });
-  for (let i = enemyShots.length - 1; i >= 0; i--) {
-    const s = enemyShots[i];
-    if (Math.hypot(s.x - h.x, s.y - h.y) < h.r) {
-      glyphBurst(s.x, s.y, 2);
-      enemyShots.splice(i, 1);
-    }
-  }
-  sfx.stomp.play({ rate: 0.5 });
-}
-
+// ====================================================== Shared helpers ==
 function slowEnemy(e, mul, time) {
   e.slowMul = Math.min(e.slowMul || 1, mul);
   e.slowT = Math.max(e.slowT || 0, time);
@@ -408,43 +245,15 @@ function drawHeroFx(time) {
     });
     ctx.restore();
   });
-  // Overload: telegraph, then a field of glitching glyph rings
-  hackFx.forEach((h) => {
-    const armed = h.t > 0;
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.strokeStyle = armed ? "rgba(90,255,122,0.8)" : `rgba(90,255,122,${0.6 * (h.life / h.max)})`;
-    ctx.lineWidth = armed ? 3 : 6;
-    ctx.setLineDash(armed ? [12, 10] : []);
-    ctx.beginPath();
-    ctx.arc(h.x, h.y, armed ? h.r * (1 - h.t / 0.35) : h.r, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
-    const spin = time * 2;
-    for (let ring2 = 0; ring2 < 2; ring2++) {
-      const rr = h.r * (ring2 ? 0.55 : 0.85);
-      for (let i = 0; i < 12; i++) {
-        const a = spin * (ring2 ? -1 : 1) + (i / 12) * Math.PI * 2;
-        ctx.globalAlpha = armed ? 0.5 : 0.8 * (h.life / h.max);
-        hudText(GLYPHS[(i + ring2 * 5) % GLYPHS.length], h.x + Math.cos(a) * rr, h.y + Math.sin(a) * rr, 18, ring2 ? "#19f5ff" : "#5aff7a", "center", "middle");
-      }
-    }
-    ctx.globalAlpha = 1;
-    if (!armed) glow(h.x, h.y, h.r, "rgba(90,255,122,0.25)", h.life / h.max);
-  });
 }
 
-// Bubbles for status: Tetsu's guard stance and Sudo's firewall
+// Bubbles for status: Tetsu's guard stance
 function drawHeroAura(cx, cy, time) {
   const p = player;
   if (p.char === "tetsu" && p.guard > 0) {
     const a = 0.45 + 0.25 * Math.sin(time * 14);
     hexagon(cx, cy, 78, `rgba(255,36,87,${a})`, 4);
     glow(cx, cy, 90, "rgba(255,36,87,0.25)");
-  }
-  if (p.char === "sudo" && p.firewallCd <= 0) {
-    hexagon(cx, cy, 70, `rgba(90,255,122,${0.25 + 0.1 * Math.sin(time * 4)})`, 2);
   }
 }
 

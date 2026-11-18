@@ -118,7 +118,7 @@ function updateMeteors(dt) {
     m.t += dt;
     if (m.t >= m.delay) {
       meteors.splice(i, 1);
-      enemyShots.push({ x: m.x + rand(-40, 40), y: camera.y - 60, vx: rand(-60, 60), vy: 1500, r: 22, damage: GOAT.meteorDamage, kind: "meteor", angle: Math.PI / 2, life: 2 });
+      enemyShots.push({ owner: game.boss, x: m.x + rand(-40, 40), y: camera.y - 60, vx: rand(-60, 60), vy: 1500, r: 22, damage: GOAT.meteorDamage, kind: "meteor", angle: Math.PI / 2, life: 2 });
     }
   }
 }
@@ -263,7 +263,7 @@ function updateGoat(e, dt) {
           const m = mouthOf(e);
           const sweep = -0.35 + 0.85 * (0.5 - 0.5 * Math.cos((t / dur) * Math.PI * 2));
           const a = e.facing > 0 ? sweep : Math.PI - sweep;
-          enemyShots.push({ x: m.x, y: m.y, vx: Math.cos(a) * 580, vy: Math.sin(a) * 580, r: 18, damage: GOAT.breathDamage, kind: "fire", angle: a, life: 0.85 });
+          enemyShots.push({ owner: game.boss, x: m.x, y: m.y, vx: Math.cos(a) * 580, vy: Math.sin(a) * 580, r: 18, damage: GOAT.breathDamage, kind: "fire", angle: a, life: 0.85 });
         }
         if (Math.random() < 0.3) sfx.burn.play({ rate: 0.6 });
         if (t > dur) bossState(e, "stalk");

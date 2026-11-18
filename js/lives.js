@@ -127,12 +127,13 @@ function heroLanding() {
 
 // What the hero sheet should show during the drop (or null)
 function introFrame() {
-  if (!intro.active || !isReady(IMG.heroLanding)) return null;
+  const sheet = isReady(IMG.heroLanding2) ? IMG.heroLanding2 : IMG.heroLanding;
+  if (!intro.active || !isReady(sheet)) return null;
   let fx;
   if (intro.phase === "leap") fx = 0;
   else if (intro.phase === "land") fx = intro.t < 0.12 ? 1 : intro.t < 0.75 ? 2 : 3;
   else return null;
-  return { sheet: IMG.heroLanding, row: LANDING_ROWS[player.char] || 0, fx, tint: null, flip: player.facing < 0 };
+  return { sheet, row: LANDING_ROWS[player.char] || 0, fx, tint: null, flip: player.facing < 0 };
 }
 
 // ------------------------------------------------------------------ Lives ---

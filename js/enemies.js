@@ -115,9 +115,12 @@ function updateDirector(dt) {
 }
 
 // --------------------------------------------------------------- Update -----
-function updateEnemies(dt) {
+function updateEnemies(dtAll) {
   const pc = centerOf(player);
   for (const e of enemies) {
+    if (e.dead) continue;
+    // bleeding / burning tick here; a glitched enemy only gets every third frame
+    const dt = enemyStatus(e, dtAll);
     if (e.dead) continue;
     // New faces go into the database the first time they're on screen
     if (onScreen(e) && discover(e.type)) {
@@ -131,6 +134,11 @@ function updateEnemies(dt) {
       continue;
     }
     const def = e.def;
+    if (!def.walker && e.downed) {
+      e.hurt -= dtAll;
+      updateDowned(e, dtAll);
+      continue;
+    }
     e.hurt -= dt;
     e.orbitCd -= dt;
     e.hitCd -= dt;
@@ -171,7 +179,9 @@ function updateEnemies(dt) {
         e.vy += e.kbY;
         e.kbY = 0;
       }
-      moveBody(e, dt, 2700, 1500);
+      if (e.onGround) e.airFrom = e.y;
+      const landed = moveBody(e, dt, 2700, 1500);
+      if (landed && e.knockT > 0 && e.airFrom !== undefined) fallDamage(e, e.y - e.airFrom);
       if (e.type === "enforcer") e.facing = dx > 0 ? 1 : -1; // the shield always faces you
       else if (Math.abs(e.vx) > 20) e.facing = e.vx > 0 ? 1 : -1;
     } else if (def.kind === "melee") {
@@ -207,7 +217,7 @@ function updateEnemies(dt) {
         if (e.charge > 0) {
           e.charge -= dt;
           if (e.charge <= 0 && !stunned) {
-            fireEnemyShot(ec.x + e.facing * 20, ec.y, def.shot, undefined, e.dmgMul);
+            fireEnemyShot(ec.x + e.facing * 20, ec.y, def.shot, undefined, e.dmgMul, e);
             e.shotCd = rand(def.shot.cooldown[0], def.shot.cooldown[1]);
           }
         } else if (e.shotCd <= 0 && !stunned && !blind) {
@@ -224,7 +234,7 @@ function updateEnemies(dt) {
 
     // Body contact
     if (!stunned && !blind && e.hitCd <= 0 && !player.flameOn && overlaps(e, player)) {
-      if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y)) {
+      if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
         e.hitCd = 0.9;
         e.kbX = -Math.sign(dx) * 300;
       }
@@ -241,7 +251,7 @@ function updateEnemies(dt) {
     for (let j = i + 1; j < enemies.length; j++) {
       const b = enemies[j];
       if (b.dead || b.boss || !overlaps(a, b)) continue;
-      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 40 * dt * 4;
+      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 40 * dtAll * 4;
       a.x += push;
       b.x -= push;
     }
@@ -333,7 +343,7 @@ function explodeBomber(e) {
   burst(c.x, c.y, 10, "#ffe14d", 300);
   camera.shake = Math.max(camera.shake, 10);
   sfx.stomp.play({ rate: 0.8 });
-  if (circleHitsBox(c.x, c.y, B.radius, player)) hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y);
+  if (circleHitsBox(c.x, c.y, B.radius, player)) hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y, e);
   // the blast hurts other enemies too
   enemies.forEach((o) => {
     if (o !== e && !o.dead && circleHitsBox(c.x, c.y, B.radius, o)) damageEnemy(o, 30, { source: "blast" });
@@ -378,22 +388,25 @@ function wanderTarget(e, ec, dt) {
   return e.wander;
 }
 
-function fireEnemyShot(x, y, shot, angle, dmgMul = 1) {
+function fireEnemyShot(x, y, shot, angle, dmgMul = 1, owner = null) {
   const pc = centerOf(player);
   const a = angle !== undefined ? angle : Math.atan2(pc.y - y, pc.x - x);
-  enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4 });
+  enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4, owner });
   sfx.enemyShot.play({ rate: shot.kind === "laser" ? 1.6 : shot.kind === "snipe" ? 2.2 : 0.55 });
 }
 
 function updateEnemyShots(dt) {
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
-    s.x += s.vx * dt;
-    s.y += s.vy * dt;
+    const frozen = player.dilation > 0 && stats.dilation.freezeShots && Math.hypot(s.x - player.x - player.w / 2, s.y - player.y - player.h / 2) < 220;
+    if (!frozen) {
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+    }
     s.life -= dt;
     let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 300 || s.x < camera.x - 300 || s.x > camera.x + W + 300;
     if (!gone && circleHitsBox(s.x, s.y, s.r, player) && player.invuln <= 0) {
-      hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy);
+      hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy, s.owner);
       gone = true;
     }
     if (gone) {
@@ -405,7 +418,9 @@ function updateEnemyShots(dt) {
 }
 
 // ------------------------------------------------------- Damage & death -----
-const SHIELD_BLOCKS = new Set(["zap", "orb", "blade", "missile", "chain"]);
+const SHIELD_BLOCKS = new Set(["zap", "orb", "arrow", "em", "blade", "missile", "chain"]);
+// Damage that doesn't come from the player's attacks (no Time Dilation bonus)
+const NOT_PLAYER_DAMAGE = new Set(["fall", "bleed", "reflect", "blast", "test"]);
 
 function damageEnemy(e, amount, opts = {}) {
   if (e.dead || amount <= 0) return;
@@ -425,17 +440,17 @@ function damageEnemy(e, amount, opts = {}) {
   // Bosses are huge melee targets: Tetsu's blade and dash do less to them
   if (e.boss && (opts.source === "blade" || opts.source === "blade-heavy" || opts.source === "dash")) amount *= 0.55;
   if (e.vulnT > 0) amount *= 1.5; // hacked: takes extra damage
+  if (player.dilation > 0 && player.char === "sudo" && !NOT_PLAYER_DAMAGE.has(opts.source)) amount *= stats.dilation.dmgMul;
+  if (opts.knock || Math.abs(opts.kbX || 0) >= 250) e.knockT = 1.5; // knocked off a ledge? fall damage
   e.hp -= amount;
   e.hurt = 0.08;
   // Heat is earned by dealing damage - but not with the flame itself
-  if (opts.source !== "flame") gainHeat(amount * TUNING.heat.perDamageDealt);
+  if (opts.source !== "flame" && opts.source !== "heat") gainHeat(amount * TUNING.heat.perDamageDealt);
   const resist = e.boss ? 0.1 : e.def && e.def.shielded ? 0.4 : 1;
   if (opts.kbX) e.kbX += opts.kbX * resist;
   if (opts.kbY) e.kbY += opts.kbY * resist;
   const c = centerOf(e);
   if (!opts.quiet) damageNumber(amount, c.x, e.y - 6, opts.source === "chain" ? "#9ffcff" : e.vulnT > 0 ? "#5aff7a" : "#ffffff");
-  // Sudo's overload, fully upgraded: hacked enemies leak XP when hit
-  if (e.stun > 0 && player.char === "sudo" && stats.overload.leak && Math.random() < 0.12) spawnGem(c.x, c.y, 1);
   if (e.hp <= 0) killEnemy(e);
 }
 
@@ -515,10 +530,27 @@ function drawEnemies(time) {
     const img = isReady(IMG[s.img]) ? IMG[s.img] : IMG[s.fallback];
     const sy = s.flip ? 0 : (e.facing < 0 ? s.rowLeft : s.rowRight) * s.fh;
     const flip = s.flip && e.facing < 0;
-    const glitching = drawGlitch(img, frame * s.fw, sy, s.fw, s.fh, dx, dy, dw, dh, flip, e.bob);
+    // shot down by an arrow: tumbling out of the sky
+    const tumbling = e.downed && !e.downed.landed;
+    if (e.downed) {
+      ctx.save();
+      ctx.translate(cx, e.y + e.h / 2);
+      ctx.rotate(tumbling ? e.downed.spin : 0.6);
+      ctx.translate(-cx, -(e.y + e.h / 2));
+    }
+    let glitching = drawGlitch(img, frame * s.fw, sy, s.fw, s.fh, dx, dy, dw, dh, flip, e.bob);
+    if (e.glitchT > 0) {
+      // System Glitch: RGB-split ghosts and a jittering body
+      glitching += rand(-9, 9);
+      ctx.globalAlpha = 0.45;
+      drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx - 8, dy, dw, dh, "rgba(255,0,80,0.9)", flip);
+      drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + 8, dy, dw, dh, "rgba(0,255,220,0.9)", flip);
+    }
     ctx.globalAlpha = e.def.alpha || 1;
     const ok = drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + glitching, dy, dw, dh, tint, flip);
     ctx.globalAlpha = 1;
+    if (e.downed) ctx.restore();
+    if (e.bleedT > 0 && Math.random() < 0.3) drawCell("fx2", 5, 32, cx + rand(-e.w / 3, e.w / 3), e.y + rand(0, e.h), 26, 26, 0);
     if (!ok) {
       ctx.fillStyle = e.def.kind === "melee" ? "#ff2fd6" : e.def.kind === "bomber" ? "#ff9b21" : "#19f5ff";
       ctx.fillRect(e.x, e.y, e.w, e.h);

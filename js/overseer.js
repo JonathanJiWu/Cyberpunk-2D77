@@ -140,7 +140,7 @@ function updateOverseer(e, dt) {
         e.timer -= dt;
         if (e.timer <= 0 && e.step < shots) {
           const c = cannonOf(e);
-          if (!blind) fireEnemyShot(c.x, c.y, { kind: "laser", damage: OVERSEER.burstDamage, speed: OVERSEER.burstSpeed, radius: 13 });
+          if (!blind) fireEnemyShot(c.x, c.y, { kind: "laser", damage: OVERSEER.burstDamage, speed: OVERSEER.burstSpeed, radius: 13 }, undefined, 1, e);
           burst(c.x, c.y, 4, "#19f5ff", 200);
           e.vx -= e.facing * 60; // recoil
           e.step++;
@@ -252,7 +252,7 @@ function updateOverseer(e, dt) {
         }
         const k = Math.min(1, (e.stateTime - charge) / sweep);
         e.beam.angle = e.beam.from + (e.beam.to - e.beam.from) * k;
-        if (!blind && !bossLocked() && beamHitsFrom(eye, e.beam.angle, OVERSEER.beamWidth)) hurtPlayer(OVERSEER.beamDamage, eye.x, eye.y);
+        if (!blind && !bossLocked() && beamHitsFrom(eye, e.beam.angle, OVERSEER.beamWidth)) hurtPlayer(OVERSEER.beamDamage, eye.x, eye.y, e);
         if (Math.random() < 0.5) {
           const gx = eye.x + Math.cos(e.beam.angle) * 900;
           const gy = Math.min(GROUND_Y, eye.y + Math.sin(e.beam.angle) * 900);

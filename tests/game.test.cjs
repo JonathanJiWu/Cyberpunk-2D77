@@ -186,20 +186,23 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
-  await test("auto flame lights up when an enemy is close and there is heat", async () => {
+  await test("auto special: the Widow's Flame On fires a heat wave when enemies close in", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
-    await startRun(page, { settings: { autoFlame: true } });
+    await startRun(page, { settings: { character: "paine", autoFlame: true } });
     const r = await page.evaluate(() => {
       player.heat = 100;
-      const before = { on: player.flameOn };
-      for (let i = 0; i < 10; i++) update(1 / 60);
-      const idle = player.flameOn;
-      spawnEnemy("crawler", player.x + 40, GROUND_Y - 48);
-      for (let i = 0; i < 10; i++) update(1 / 60);
-      return { idle, on: player.flameOn, heat: player.heat, before };
+      for (let i = 0; i < 20; i++) update(1 / 60);
+      const idle = heatWaves.length;
+      [-60, 50, 90].forEach((dx) => spawnEnemy("crawler", player.x + dx, GROUND_Y - 48));
+      let waves = 0;
+      for (let i = 0; i < 30; i++) {
+        update(1 / 60);
+        waves = Math.max(waves, heatWaves.length);
+      }
+      return { idle, waves, heat: player.heat };
     });
-    assert(!r.idle, "flame lit with no enemies around");
-    assert(r.on && r.heat < 100, "auto flame did not light: " + JSON.stringify(r));
+    assert(r.idle === 0, "a wave fired with no enemies around");
+    assert(r.waves > 0 && r.heat < 100, "auto Flame On did not fire: " + JSON.stringify(r));
     await context.close();
   });
 
@@ -422,7 +425,8 @@ const fastForward = (page, seconds, bot) =>
   await test("a fast-forwarded run survives 3 minutes of simulation and the boss arrives", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { quiet: false, settings: { autoFire: true, autoFlame: true } });
-    const bot = "player.hp = Math.max(player.hp, 60);"; // keep the run alive
+    // keep the run alive, and walk over to XP chips like a player would
+    const bot = "player.hp = Math.max(player.hp, 60); input.keys.clear(); const g = gems.reduce((a, b) => (!a || Math.abs(b.x - player.x) < Math.abs(a.x - player.x) ? b : a), null); if (g && Math.abs(g.x - player.x) > 40) input.keys.add(g.x > player.x ? 'KeyD' : 'KeyA');";
     await fastForward(page, 175, bot);
     const r = await page.evaluate(() => ({ state: game.state, kills: game.kills, level: progress.level, boss: director.stage >= 1, t: game.time }));
     // (an idle bot sometimes stops at level 4, so the bar is "clearly levelled up")
@@ -700,7 +704,7 @@ const fastForward = (page, seconds, bot) =>
     const quiet = await masterRms(page, 300);
     const shot = await masterRms(page, 400, async () => {
       await page.keyboard.down("KeyJ");
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(600); // draw + release
       await page.keyboard.up("KeyJ");
     });
     assert(quiet < 0.005, "still loud with the music off: " + quiet);
@@ -861,30 +865,97 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
-  await test("Paine can fire and keep the flame lit at the same time", async () => {
+  await test("Cyber Widow: drawn arrows knock back, pierce, shoot down flyers (fall damage), bosses bleed; Flame On shoves and burns bullets", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
-    await startRun(page, { settings: { character: "paine", autoFire: false } });
+    await startRun(page, { settings: { character: "paine", autoFire: false, autoFlame: false } });
     const r = await page.evaluate(() => {
-      player.heat = 100;
-      let fired = 0;
-      const f = fireZap;
-      fireZap = function () {
-        fired++;
-        return f.apply(this, arguments);
-      };
+      const out = {};
+      // draw + release: a drawing pose first, then the arrow
+      const e = spawnEnemy("crawler", player.x + 420, GROUND_Y - 48);
+      e.hp = e.maxHp = 9999;
       input.keys.add("KeyJ");
-      input.keys.add("KeyK");
-      let litAll = true;
-      for (let i = 0; i < 40; i++) {
+      update(1 / 60);
+      out.drawing = !!player.draw && heroFrame().fx <= 1;
+      let t = 0;
+      while (!playerShots.some((s) => s.kind === "arrow") && t < 2) {
         update(1 / 60);
-        if (i > 3) litAll = litAll && player.flameOn;
+        t += 1 / 60;
       }
-      fireZap = f;
+      out.drawTime = Math.round(t * 100) / 100;
       input.keys.clear();
-      return { fired, litAll, heat: player.heat };
+      let kb = 0;
+      for (let i = 0; i < 40 && e.hp >= 9999; i++) {
+        update(1 / 60);
+        kb = e.kbX;
+      }
+      out.knockedBack = e.hp < 9999 && kb > 150;
+      // pierce chance grows with level
+      progress.level = 1;
+      const p1 = pierceChance();
+      progress.level = 11;
+      out.pierce = [p1, pierceChance()];
+      // a flyer hit by an arrow drops out of the sky and takes fall damage
+      const d = spawnEnemy("drone", player.x + 300, GROUND_Y - 520);
+      d.hp = d.maxHp = 500;
+      arrowHit({ vx: 1, x: d.x, y: d.y, damage: 10, piercing: false }, d);
+      out.downed = !!d.downed;
+      const hp = d.hp;
+      for (let i = 0; i < 120; i++) update(1 / 60);
+      out.fell = { landed: !!(d.downed && d.downed.landed), fallDamage: Math.round(hp - d.hp) };
+      // bosses don't budge but bleed
+      spawnOverseer();
+      game.cinematic = null;
+      const o = game.boss;
+      const ox = o.x;
+      arrowHit({ vx: 1, x: o.x, y: o.y, damage: 10, piercing: false }, o);
+      const bh = o.hp;
+      for (let i = 0; i < 60; i++) update(1 / 60);
+      out.boss = { bleeding: o.bleedT > 0, bled: bh - o.hp > 0, moved: Math.abs((o.kbX || 0)) };
+      // Flame On: a heat wave that burns bullets out of the air
+      enemyShots.length = 0;
+      const pc = centerOf(player);
+      enemyShots.push({ x: pc.x + 120, y: pc.y, vx: -50, vy: 0, r: 10, damage: 10, kind: "laser", angle: 0, life: 4 });
+      player.heat = 100;
+      input.specialQueued = true;
+      for (let i = 0; i < 20; i++) update(1 / 60);
+      out.wave = { fired: player.heat < 100, shotGone: !enemyShots.some((s) => s.kind === "laser" && s.damage === 10) };
+      return out;
     });
-    assert(r.fired >= 2, "did not fire while flaming: " + JSON.stringify(r));
-    assert(r.litAll && r.heat < 100, "flame went out while firing: " + JSON.stringify(r));
+    assert(r.drawing && r.drawTime > 0.3, "no bow draw before the shot: " + JSON.stringify(r));
+    assert(r.knockedBack, "the arrow did not hit and knock back: " + JSON.stringify(r));
+    assert(r.pierce[0] === 0.15 && r.pierce[1] > 0.3, "pierce chance does not grow: " + r.pierce);
+    assert(r.downed && r.fell.landed && r.fell.fallDamage > 20, "flyer was not shot down with fall damage: " + JSON.stringify(r));
+    assert(r.boss.bleeding && r.boss.bled && r.boss.moved === 0, "boss bleed / knockback immunity: " + JSON.stringify(r.boss));
+    assert(r.wave.fired && r.wave.shotGone, "Flame On did not fire or burn the bullet: " + JSON.stringify(r.wave));
+    await context.close();
+  });
+
+  await test("Ronin: Mirror Steel reflects 15% of incoming damage, scaling with level, without loops", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "tetsu" } });
+    const r = await page.evaluate(() => {
+      const e = spawnEnemy("enforcer", player.x + 300, GROUND_Y - 116);
+      e.hp = e.maxHp = 9999;
+      const hit = () => {
+        player.invuln = 0;
+        const h = e.hp;
+        hurtPlayer(40, e.x, e.y, e);
+        return Math.round((h - e.hp) * 10) / 10;
+      };
+      progress.level = 1;
+      const l1 = hit();
+      progress.level = 11;
+      const l11 = hit();
+      progress.level = 30;
+      const l30 = hit();
+      // reflected damage never comes back: enemies don't reflect
+      const hp = player.hp;
+      player.invuln = 0;
+      damageEnemy(e, 50, { source: "reflect" });
+      return { l1, l11, l30, line: passiveLine(), playerUnhurt: player.hp === hp };
+    });
+    assert(r.l1 === 6 && r.l11 === 10 && r.l30 === 16, "reflection does not scale 15% -> 25% -> 40% cap: " + JSON.stringify(r));
+    assert(/REFLECT 40%/.test(r.line) && r.playerUnhurt, "HUD line / loop: " + JSON.stringify(r));
     await context.close();
   });
 
@@ -920,32 +991,57 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
-  await test("Sudo: orbs explode in an area and the overload stuns a crowd", async () => {
+  await test("Hackerman: EM waves pierce and slow, System Glitch stutters an area, Time Dilation slows the world", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { settings: { character: "sudo", autoFire: true, autoFlame: false } });
     const r = await page.evaluate(() => {
       const pack = [0, 1, 2].map((i) => {
-        const e = spawnEnemy("enforcer", player.x + 420 + i * 40, GROUND_Y - 116);
+        const e = spawnEnemy("enforcer", player.x + 300 + i * 90, GROUND_Y - 116);
         e.hp = e.maxHp = 9999;
+        e.facing = 1;
         return e;
       });
-      const hold = () => pack.forEach((e, i) => ((e.x = player.x + 420 + i * 30), (e.vx = 0))); // keep them bunched up
-      for (let i = 0; i < 70; i++) {
+      const hold = () => pack.forEach((e, i) => ((e.x = player.x + 300 + i * 90), (e.vx = 0)));
+      for (let i = 0; i < 40; i++) {
         hold();
         update(1 / 60);
       }
-      const hurt = pack.filter((e) => e.hp < 9999).length;
-      const slowed = pack.filter((e) => e.slowT > 0).length;
+      const out = { hurt: pack.filter((e) => e.hp < 9999).length, slowed: pack.filter((e) => e.slowT > 0).length };
+      // System Glitch: force a proc and check the area stutters
+      glitchCd = 0;
+      systemGlitch(centerOf(pack[1]).x, centerOf(pack[1]).y);
+      out.glitched = pack.filter((e) => e.glitchT > 0).length;
+      const steps = [];
+      const probe = { glitchT: 1 };
+      for (let i = 0; i < 6; i++) {
+        game.time += 1 / 60;
+        steps.push(enemyStatus(probe, 1 / 60) > 0);
+      }
+      out.stutters = steps.includes(true) && steps.includes(false);
+      // Time Dilation
       settings.autoFire = false;
       player.heat = 100;
       input.specialQueued = true;
-      for (let i = 0; i < 40; i++) update(1 / 60);
-      return { hurt, slowed, stunned: pack.filter((e) => e.stun > 0).length, vuln: pack.filter((e) => e.vulnT > 0).length, ram: player.heat };
+      update(1 / 60);
+      out.dilation = { on: player.dilation > 0, scale: enemyTimeScale(), ram: player.heat };
+      const before = player.x;
+      input.keys.add("KeyD");
+      for (let i = 0; i < 30; i++) update(1 / 60);
+      input.keys.clear();
+      out.dilation.playerMoved = player.x - before;
+      const h = pack[0].hp;
+      damageEnemy(pack[0], 10, { source: "em" });
+      out.dilation.bonus = Math.round((h - pack[0].hp) * 10) / 10;
+      for (let i = 0; i < 60 * 5; i++) update(1 / 60);
+      out.ended = player.dilation <= 0 && enemyTimeScale() === 1;
+      return out;
     });
-    assert(r.hurt >= 2, "orb explosion did not hit a group: " + JSON.stringify(r));
-    assert(r.slowed >= 1, "orbs did not slow: " + JSON.stringify(r));
-    assert(r.stunned === 3 && r.vuln === 3, "overload did not stun the crowd: " + JSON.stringify(r));
-    assert(r.ram < 100, "overload did not cost RAM");
+    assert(r.hurt >= 2 && r.slowed >= 2, "EM waves did not pierce and slow: " + JSON.stringify(r));
+    assert(r.glitched === 3 && r.stutters, "System Glitch: " + JSON.stringify(r));
+    assert(r.dilation.on && r.dilation.scale <= 0.25 && r.dilation.ram < 100, "Time Dilation did not start: " + JSON.stringify(r.dilation));
+    assert(r.dilation.playerMoved > 150, "Hackerman should keep full speed: " + JSON.stringify(r.dilation));
+    assert(r.dilation.bonus >= 14, "no damage bonus during dilation: " + JSON.stringify(r.dilation));
+    assert(r.ended, "Time Dilation never ended");
     await context.close();
   });
 
@@ -1338,7 +1434,7 @@ const fastForward = (page, seconds, bot) =>
     const start = { x: vp.width * 0.75, y: vp.height * 0.6, id: 1 };
     await touch(cdp, "touchStart", [start]);
     for (let i = 1; i <= 5; i++) await touch(cdp, "touchMove", [{ ...start, x: start.x - i * 14, y: start.y - i * 14 }]); // up-left
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(1300); // two full bow draws
     await touch(cdp, "touchEnd", [{ ...start, x: start.x - 70, y: start.y - 70 }]);
     const angles = await page.evaluate(() => window.__angles);
     assert(angles.length >= 2, "right stick did not fire: " + angles.length);
@@ -1404,42 +1500,35 @@ const fastForward = (page, seconds, bot) =>
       await touch(cdp, "touchEnd", [pt]);
       await page.waitForTimeout(110);
     }
-    await page.waitForTimeout(300);
-    const r = await page.evaluate(() => ({ zaps: window.__zaps, air: !player.onGround, flame: player.flameOn }));
+    await page.waitForTimeout(1700); // the bow draws for ~0.4 s per arrow
+    const r = await page.evaluate(() => ({ zaps: window.__zaps, air: !player.onGround, flame: heatWaves.length > 0 }));
     assert(r.zaps >= 3, "taps did not fire: " + r.zaps);
     assert(!r.air && !r.flame, "tap caused a jump or flame: " + JSON.stringify(r));
     await context.close();
   });
 
-  await test("phone: the SPECIAL button toggles Paine's flame; there is no JUMP button", async () => {
+  await test("phone: the FLAME ON button fires the Widow's heat wave; there is no JUMP button", async () => {
     const { context, page } = await open(browser, url, phone);
     await startRun(page, { settings: { character: "paine", autoFlame: false } });
     await page.evaluate(() => (player.heat = 100));
     const btn = await page.$(".btn-flame");
     const box = await btn.boundingBox();
     const cdp = await context.newCDPSession(page);
-    const tap = async (id) => {
-      const pt = { x: box.x + box.width / 2, y: box.y + box.height / 2, id };
-      await touch(cdp, "touchStart", [pt]);
-      await page.waitForTimeout(40);
-      await touch(cdp, "touchEnd", [pt]);
-    };
-    await tap(20);
-    await page.waitForTimeout(400);
-    const on = await page.evaluate(() => ({ on: player.flameOn, heat: player.heat, label: document.querySelector(".btn-flame").textContent, lit: document.querySelector(".btn-flame").classList.contains("on"), jumpBtn: !!document.querySelector(".btn-jump") }));
-    await tap(21);
-    await page.waitForTimeout(200);
-    const off = await page.evaluate(() => player.flameOn);
-    assert(on.on && on.heat < 100 && on.lit, "a tap did not light the flame: " + JSON.stringify(on));
-    assert(!off, "a second tap did not put the flame out");
-    assert(on.label === "FLAME", "wrong button label: " + on.label);
-    assert(!on.jumpBtn, "a JUMP button still exists");
+    const pt = { x: box.x + box.width / 2, y: box.y + box.height / 2, id: 20 };
+    await touch(cdp, "touchStart", [pt]);
+    await page.waitForTimeout(40);
+    await touch(cdp, "touchEnd", [pt]);
+    await page.waitForTimeout(250);
+    const r = await page.evaluate(() => ({ heat: player.heat, waves: heatWaves.length, label: document.querySelector(".btn-flame").textContent, jumpBtn: !!document.querySelector(".btn-jump") }));
+    assert(r.heat < 100 && r.waves > 0, "the button did not fire Flame On: " + JSON.stringify(r));
+    assert(r.label === "FLAME ON", "wrong button label: " + r.label);
+    assert(!r.jumpBtn, "a JUMP button still exists");
     await context.close();
   });
 
-  await test("phone: Tetsu's SPECIAL button dashes and Sudo's hacks", async () => {
+  await test("phone: Tetsu's SPECIAL button dashes and Hackerman's slows time", async () => {
     const { context, page } = await open(browser, url, phone);
-    for (const [ch, label] of [["tetsu", "DASH"], ["sudo", "HACK"]]) {
+    for (const [ch, label] of [["tetsu", "DASH"], ["sudo", "SLOW-MO"]]) {
       await startRun(page, { settings: { character: ch, autoFlame: false, autoFire: false } });
       await page.waitForTimeout(100);
       await page.evaluate(() => {

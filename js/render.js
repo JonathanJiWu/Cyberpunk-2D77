@@ -26,6 +26,7 @@ function render(time) {
   drawPlayer(time);
   drawPlayerProjectiles();
   drawHeroFx(time);
+  drawKitFx(time);
   drawEnemyShots();
   drawEffects();
   drawSecretsFront(time);
@@ -34,6 +35,7 @@ function render(time) {
   ctx.restore();
   drawRain();
 
+  drawDilationOverlay(time); // Hackerman's bullet time
   // Sandevistan: the world turns green and slow
   if (player.sandyTime > 0 && game.state !== "over") {
     ctx.fillStyle = `rgba(60,255,120,${0.1 + 0.04 * Math.sin(time * 20)})`;
@@ -138,13 +140,6 @@ function drawDebug() {
   crates.forEach((c) => c.alive && box(c, "#ffe14d"));
   platforms.forEach((p) => box(p, "#5aff7a"));
   gems.forEach((g) => box(g, "#ffffff"));
-  if (player.flameOn) {
-    const c = centerOf(player);
-    ctx.strokeStyle = "#ff9b21";
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, stats.flame.radius, 0, Math.PI * 2);
-    ctx.stroke();
-  }
   ctx.strokeStyle = "#ffffff";
   [...playerShots, ...enemyShots].forEach((s) => {
     ctx.beginPath();
@@ -211,7 +206,7 @@ function drawHUD(time) {
   // Health + heat
   const lowHp = p.hp / stats.maxHp < 0.3;
   const hpColor = lowHp && Math.sin(time * 12) > 0 ? "#ff2f6d" : "#19f5ff";
-  drawIcon("portraits", 48, CH().portrait, 44, 22, 40);
+  drawIcon(isReady(IMG.portraits2) ? "portraits2" : "portraits", 48, CH().portrait, 44, 22, 40);
   hudText(`${CH().name}  LV ${progress.level}`, 94, 32, 24, "#ffe14d");
   drawBar(44, 70, 440, 34, p.hp / stats.maxHp, p.ghostHp / stats.maxHp, hpColor);
   hudText(`${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
@@ -233,6 +228,7 @@ function drawHUD(time) {
   const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : res.color;
   drawBar(44, 120, 300, 18, p.heat / TUNING.heat.max, 0, heatColor);
   hudText(p.heatLocked ? `NO ${res.name}` : res.name, 360, 120, 18, heatColor);
+  hudText(passiveLine(), 460, 120, 16, "#c9b6ff"); // the IC's passive, as it grows with level
 
   // Active power-ups
   let ix = 44;

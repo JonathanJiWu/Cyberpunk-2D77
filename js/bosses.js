@@ -146,13 +146,13 @@ function bossContact(e, damage) {
   if (bossLocked() || e.contactCd > 0 || player.camo > 0) return;
   if (!overlaps(e, player)) return;
   const c = centerOf(e);
-  if (hurtPlayer(damage, c.x, c.y)) e.contactCd = 0.6;
+  if (hurtPlayer(damage, c.x, c.y, e)) e.contactCd = 0.6;
 }
 
 // ------------------------------------------------------------ Shockwaves ----
 // A wall of energy rolling along the ground (or a platform). Jump over it.
 function spawnShockwave(x, y, dir, opts = {}) {
-  shockwaves.push({ x, y, dir, speed: opts.speed || 760, life: opts.life || 1.1, h: opts.h || 64, damage: opts.damage || 14, color: opts.color || "#19f5ff", hit: false, t: 0 });
+  shockwaves.push({ owner: opts.owner || game.boss, x, y, dir, speed: opts.speed || 760, life: opts.life || 1.1, h: opts.h || 64, damage: opts.damage || 14, color: opts.color || "#19f5ff", hit: false, t: 0 });
 }
 
 function updateShockwaves(dt) {
@@ -169,7 +169,7 @@ function updateShockwaves(dt) {
     const pc = centerOf(p);
     const feet = p.y + p.h;
     if (!s.hit && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
-      if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y)) s.hit = true;
+      if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y, s.owner)) s.hit = true;
     }
   }
 }

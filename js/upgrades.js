@@ -97,7 +97,7 @@ function describe(u, steps = 1) {
 }
 
 // CSS for showing one cell of a horizontal icon strip
-const SHEET_CELLS = { icons: 12, secrets: 8, fx: 8, pickups: 8, hardware: 8 };
+const SHEET_CELLS = { icons: 12, secrets: 8, fx: 8, fx2: 8, pickups: 8, hardware: 8 };
 function iconStyle(icon) {
   const n = SHEET_CELLS[icon.sheet] || 12;
   return `background-image:url(img/${icon.sheet}.png);background-size:${n * 100}% 100%;background-position:${(icon.cell * 100) / (n - 1)}% 0`;

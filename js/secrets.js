@@ -55,6 +55,7 @@ function slowMo(duration, scale) {
 function enemyTimeScale() {
   let s = 1;
   if (player.sandyTime > 0) s = Math.min(s, 0.25);
+  if (player.dilation > 0) s = Math.min(s, stats.dilation.scale); // Hackerman's Time Dilation
   if (game.slowmo && game.slowmo.time > 0) s = Math.min(s, game.slowmo.scale);
   return s;
 }
