@@ -872,7 +872,10 @@ const fastForward = (page, seconds, bot) =>
     await page.goto(url + "?sounds", { waitUntil: "load" });
     const buttons = await page.$$eval("#sound-lab [data-sound]", (bs) => bs.map((b) => b.dataset.sound));
     assert(buttons.length === SYNTH_SOUNDS.length && SYNTH_SOUNDS.every((n) => buttons.includes(n)), "panel buttons: " + buttons.join());
-    await page.click('#sound-lab [data-sound="reflect"]'); // the first click also unlocks audio
+    await page.click('#sound-lab [data-sound="uiMove"]'); // the first click unlocks audio
+    await page.waitForFunction(() => SoundSystem.ctx && SoundSystem.ctx.state === "running", null, { timeout: 3000 });
+    await page.waitForTimeout(100);
+    await page.click('#sound-lab [data-sound="reflect"]');
     await page.click('#sound-lab [data-sound="dilationLoop"]');
     await page.waitForTimeout(100);
     const on = await page.evaluate(() => ({ reflect: synth.voices("reflect"), loop: synth.voices("dilationLoop"), state: game.state }));
