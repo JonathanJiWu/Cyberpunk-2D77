@@ -2918,6 +2918,594 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ---------------------------------------------------- Local co-op ----
+  // Two mocked pads: pad 0 is player 1's (who also has the keyboard), pad 1
+  // presses Start mid-run to join as player 2. step(n) polls the pads and runs
+  // n frames in one go, so nothing depends on real time.
+  const COOP_HELPERS = () => {
+    window.__t = 20000;
+    window.step = (n = 1) => {
+      for (let i = 0; i < n && game.state !== "over"; i++) {
+        gamepads.poll((__t += 1000 / 60));
+        if (game.state === "playing") update(1 / 60);
+      }
+    };
+    window.press = (pad, b) => {
+      __padButton(pad, b, 1);
+      step(1);
+      __padButton(pad, b, 0);
+      step(1);
+    };
+    window.P = (i) => coop.players[i] && coop.players[i].player;
+    // the HUD's text, for one frame
+    window.hudTexts = () => {
+      const texts = [];
+      const h = hudText;
+      hudText = function (t) {
+        texts.push(String(t));
+        return h.apply(this, arguments);
+      };
+      try {
+        render(performance.now() / 1000);
+      } finally {
+        hudText = h;
+      }
+      return texts;
+    };
+  };
+  async function coopRun(opts = {}) {
+    const { context, page, problems } = await openPad();
+    await startRun(page, { settings: { character: opts.p1 || "paine", autoFire: false, autoFlame: false } });
+    await page.evaluate(COOP_HELPERS);
+    const joined = await page.evaluate(
+      ([xbox, ds, p2]) => {
+        __padPlug(0, xbox);
+        __padPlug(1, ds);
+        press(0, "X"); // pad 0 becomes player 1's
+        press(1, "START"); // pad 1 asks to join: player 2's join panel
+        const ctx = coop.players[1];
+        const panel = { n: coop.players.length, joining: !!(ctx && ctx.joining), char: ctx && ctx.joining && ctx.joining.char, hidden: !!(ctx && ctx.player.hidden), texts: hudTexts().filter((t) => /PLAYER 2|DROP IN/.test(t)) };
+        for (let i = 0; i < 3 && p2 && ctx.joining.char !== p2; i++) press(1, "RIGHT"); // pick an IC
+        press(1, "A"); // drop in
+        step(150); // the drop and the hero landing
+        return panel;
+      },
+      [PAD_IDS.xbox, PAD_IDS.dualsense, opts.p2 || null]
+    );
+    return { context, page, problems, joined };
+  }
+
+  await test("co-op: a second pad joins mid-run (join panel, its own IC, the drop next to player 1), or on the menu to drop in with player 1; Pad to P2 hands a lone pad over", async () => {
+    const { context, page, problems, joined } = await coopRun({ p2: "sudo" });
+    const r = await page.evaluate(() => {
+      const [a, b] = [P(0), P(1)];
+      const texts = hudTexts();
+      return {
+        n: coop.players.length,
+        slots: gamepads.slots.slice(),
+        read: gamepads.read(1) && gamepads.read(1).name,
+        p1: a.char,
+        p2: b.char,
+        seat: coop.seat && coop.seat.char,
+        landed: !b.hidden && b.onGround && !coop.players[1].intro.active,
+        dx: Math.abs(b.x - a.x),
+        full: b.hp === coop.players[1].stats.maxHp,
+        bound: player === a && input === mainInput && stats === coop.players[0].stats,
+        coopRun: game.coopRun,
+        hud: texts.filter((t) => /^P[12]\b/.test(t)),
+        p1name: CHARACTERS.paine.name,
+        p2name: CHARACTERS.sudo.name,
+      };
+    });
+    assert(joined.n === 2 && joined.joining && joined.hidden && joined.char && joined.char !== "paine", "no join panel (with an IC other than player 1's): " + JSON.stringify(joined));
+    assert(joined.texts.length >= 2, "the join panel is not drawn: " + JSON.stringify(joined.texts));
+    assert(r.n === 2 && r.slots[0] === 0 && r.slots[1] === 1 && r.read === "DualSense", "player 2 is not on pad 1: " + JSON.stringify(r));
+    assert(r.p1 === "paine" && r.p2 === "sudo" && r.seat === "sudo", "player 2's IC pick: " + JSON.stringify(r));
+    assert(r.landed && r.full && r.dx < 400, "player 2 did not drop in next to player 1: " + JSON.stringify(r));
+    assert(r.bound && r.coopRun, "the globals are not player 1's outside the per-player systems: " + JSON.stringify(r));
+    assert(r.hud.includes("P1") && r.hud.includes("P2") && r.hud.includes(`P2 ${r.p2name}`) && r.hud.some((t) => t.startsWith(`P1 ${r.p1name}`)), "HUD tags / P2 panel missing: " + JSON.stringify(r.hud));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+
+    // On the menu: player 2 is ready, then drops in with player 1
+    const m = await openPad();
+    await m.page.evaluate(COOP_HELPERS);
+    const menu = await m.page.evaluate(
+      ([xbox, ds]) => {
+        __padPlug(0, xbox);
+        __padPlug(1, ds);
+        press(0, "X");
+        press(1, "START");
+        return { state: game.state, n: coop.players.length, seat: coop.seat && coop.seat.char, toast: document.querySelector(".pad-toast").textContent, badge: document.querySelectorAll(".char-card .char-p2").length, leave: !document.getElementById("coop-leave-btn").hidden };
+      },
+      [PAD_IDS.xbox, PAD_IDS.dualsense]
+    );
+    await startRun(m.page);
+    const start = await m.page.evaluate(() => {
+      const c = coop.players[1];
+      const out = { n: coop.players.length, kind: c && c.intro.kind, active: c && c.intro.active, p1: P(0).char, p2: c && c.player.char };
+      step(200);
+      out.landed = c.player.onGround && !c.intro.active && !c.player.hidden;
+      out.dx = Math.abs(c.player.x - P(0).x);
+      out.leash = COOP.leashX;
+      return out;
+    });
+    assert(menu.state === "menu" && menu.n === 1 && menu.seat === "tetsu" && /PLAYER 2 READY/.test(menu.toast), "joining on the menu: " + JSON.stringify(menu));
+    assert(menu.badge === 1 && menu.leave, "no P2 badge / Leave button on the menu: " + JSON.stringify(menu));
+    assert(start.n === 2 && start.kind === "drop" && start.active && start.p1 === "paine" && start.p2 === "tetsu", "player 2 did not drop in with player 1: " + JSON.stringify(start));
+    assert(start.landed && start.dx < start.leash, "player 2's drop: " + JSON.stringify(start));
+    assert(!m.problems.length, m.problems.join("; "));
+    await m.context.close();
+
+    // Keyboard player 1 with one pad: Pad to P2 (pause menu) gives it to player 2
+    const k = await openPad();
+    await startRun(k.page);
+    await k.page.evaluate(COOP_HELPERS);
+    const hand = await k.page.evaluate((xbox) => {
+      __padPlug(0, xbox);
+      press(0, "X"); // the lone pad: player 1's at first
+      pauseGame();
+      step(1);
+      const btn = document.getElementById("coop-join-btn");
+      const out = { shown: !btn.hidden };
+      btn.click();
+      resumeGame();
+      step(2);
+      out.slots = gamepads.slots.slice();
+      out.joining = !!(coop.players[1] && coop.players[1].joining);
+      out.device = gamepads.device;
+      press(0, "A");
+      step(150);
+      out.landed = !!coop.players[1] && !coop.players[1].player.hidden && coop.players[1].player.onGround;
+      return out;
+    }, PAD_IDS.xbox);
+    assert(hand.shown && hand.slots[0] === null && hand.slots[1] === 0 && hand.joining && hand.device === "none" && hand.landed, "Pad to P2: " + JSON.stringify(hand));
+    assert(!k.problems.length, k.problems.join("; "));
+    await k.context.close();
+  });
+
+  await test("co-op: both players move, aim and fight independently (keyboard vs pad 2), each with their own IC, projectiles and resource; the camera keeps both on screen", async () => {
+    const { context, page, problems } = await coopRun({ p2: "tetsu" });
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      const swings = [];
+      const arrows = [];
+      const bs = bladeSwing;
+      bladeSwing = function () {
+        swings.push(coop.active.id);
+        return bs.apply(this, arguments);
+      };
+      const fz = fireZap;
+      fireZap = function () {
+        const n = [c1.shots.length, c2.shots.length];
+        const ret = fz.apply(this, arguments);
+        arrows.push({ by: coop.active.id, into1: c1.shots.length - n[0], into2: c2.shots.length - n[1] }); // whose projectile list got them
+        return ret;
+      };
+      Object.assign(a, { x: 2000, y: GROUND_Y - a.h, vx: 0 });
+      Object.assign(b, { x: 2600, y: GROUND_Y - b.h, vx: 0 });
+      step(2);
+      const x1 = a.x;
+      const x2 = b.x;
+      input.keys.add("KeyA"); // player 1 runs left on the keyboard
+      __padAxes(1, [1, 0, 0, 0]); // player 2 runs right on pad 2
+      step(40);
+      const out = { ran1: a.x - x1, ran2: b.x - x2, f1: a.facing, f2: b.facing, pad1: input.pad.x };
+      // keep running apart: the leash holds them a screen apart and the camera frames both
+      step(240);
+      out.leash = { gap: Math.abs(centerOf(b).x - centerOf(a).x), max: COOP.leashX, seen: onScreen(a) && onScreen(b) };
+      input.keys.delete("KeyA");
+      __padAxes(1, [0, 0, 0, 0]);
+      step(30);
+      // player 2's blade (RT) cuts an enemy next to them; player 1's bow (J) fires
+      const e = spawnEnemy("crawler", b.x + 70, GROUND_Y - ENEMY_TYPES.crawler.h, { elite: false });
+      Object.assign(e, { hp: 1e6, maxHp: 1e6, stun: 999 });
+      input.keys.add("KeyJ");
+      __padButton(1, "RT", 1);
+      step(45);
+      input.keys.delete("KeyJ");
+      __padButton(1, "RT", 0);
+      out.cut = 1e6 - e.hp;
+      out.swings = swings.slice();
+      out.arrows = arrows.slice();
+      // player 2's dash (LT) spends player 2's focus only
+      a.heat = b.heat = 100;
+      press(1, "LT");
+      out.heat = { p1: a.heat, p2: b.heat, dash: !!b.dash || b.guard > 0 };
+      return out;
+    });
+    assert(r.ran1 < -100 && r.ran2 > 100 && r.f1 === -1 && r.f2 === 1, "the players did not run their own ways: " + JSON.stringify(r));
+    assert(r.pad1 === 0, "pad 2 moved player 1: " + JSON.stringify(r));
+    assert(r.leash.gap <= r.leash.max + 1 && r.leash.gap > r.leash.max - 100 && r.leash.seen, "the leash / camera did not keep both on screen: " + JSON.stringify(r.leash));
+    assert(r.swings.length > 0 && r.swings.every((id) => id === 1) && r.cut > 0, "player 2's blade: " + JSON.stringify(r));
+    assert(r.arrows.length > 0 && r.arrows.every((s) => s.by === 0 && s.into1 > 0 && s.into2 === 0), "player 1's arrows (into player 1's projectiles only): " + JSON.stringify(r));
+    assert(r.heat.p1 === 100 && r.heat.p2 < 100 && r.heat.dash, "player 2's dash / resource: " + JSON.stringify(r.heat));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: enemies go after the nearest player (minions, their shots, and a downed player is ignored)", async () => {
+    const { context, page, problems } = await coopRun({ p2: "tetsu" });
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      Object.assign(a, { x: 1000, y: GROUND_Y - a.h, vx: 0 });
+      Object.assign(b, { x: 2500, y: GROUND_Y - b.h, vx: 0 });
+      a.invuln = b.invuln = 99;
+      step(1);
+      const walker = (x) => Object.assign(spawnEnemy("crawler", x, GROUND_Y - ENEMY_TYPES.crawler.h, { elite: false }), { hp: 1e6, maxHp: 1e6 });
+      const near2 = walker(2200);
+      const near1 = walker(1300);
+      const drone = Object.assign(spawnEnemy("drone", 2350, GROUND_Y - 600, { elite: false }), { hp: 1e6, maxHp: 1e6, shotCd: 99 });
+      const x2 = near2.x;
+      const x1 = near1.x;
+      step(30);
+      const out = { t2: near2.coopTarget === c2, t1: near1.coopTarget === c1, td: drone.coopTarget === c2, m2: near2.x - x2, m1: near1.x - x1 };
+      // the drone fires at its own target
+      enemyShots.length = 0;
+      drone.shotCd = 0;
+      for (let i = 0; i < 90 && !enemyShots.length; i++) step(1);
+      const s = enemyShots[0];
+      const aimAt = (p) => Math.abs(angleDiff(Math.atan2(centerOf(p).y - s.y, centerOf(p).x - s.x), s.angle));
+      out.shot = s ? { atP2: aimAt(b), atP1: aimAt(a) } : null;
+      // player 2 goes down: everything turns on player 1 while they respawn
+      b.invuln = 0;
+      b.hp = 0;
+      step(5);
+      out.down = { hidden: b.hidden, near2: near2.coopTarget === c1, drone: drone.coopTarget === c1 };
+      return out;
+    });
+    assert(r.t2 && r.t1 && r.td, "targets are not the nearest players: " + JSON.stringify(r));
+    assert(r.m2 > 20 && r.m1 < -20, "walkers did not head for their targets: " + JSON.stringify(r));
+    assert(r.shot && r.shot.atP2 < 0.25 && r.shot.atP1 > 0.5, "the drone's shot did not aim at player 2: " + JSON.stringify(r.shot));
+    assert(r.down.hidden && r.down.near2 && r.down.drone, "enemies kept chasing a downed player: " + JSON.stringify(r.down));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: shots, contact and bomber blasts hit the right player; Ronin reflects, Hackerman's Time Dilation and Widow's Flame On work per player", async () => {
+    const { context, page, problems } = await coopRun({ p1: "paine", p2: "tetsu" });
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      Object.assign(a, { x: 1000, y: GROUND_Y - a.h, vx: 0 });
+      Object.assign(b, { x: 2000, y: GROUND_Y - b.h, vx: 0 });
+      step(1);
+      const shooter = () => Object.assign(spawnEnemy("drone", 3200, GROUND_Y - 700, { elite: false }), { hp: 1000, maxHp: 1000, stun: 999, shotCd: 99 });
+      const shootAt = (p, src) => {
+        const c = centerOf(p);
+        enemyShots.push({ x: c.x, y: c.y, vx: 0, vy: 0, r: 14, damage: 20, kind: "laser", angle: 0, life: 4, owner: src });
+      };
+      const out = {};
+      // a shot at player 2 (Ronin): player 2 takes it and reflects part of it
+      let src = shooter();
+      a.invuln = b.invuln = 0;
+      let h1 = a.hp;
+      let h2 = b.hp;
+      shootAt(b, src);
+      step(1);
+      out.atP2 = { d1: h1 - a.hp, d2: h2 - b.hp, left: enemyShots.length, reflected: 1000 - src.hp, fx2: c2.kitFx.some((f) => f.type === "reflect"), fx1: c1.kitFx.length };
+      // a shot at player 1 (Widow): no reflection
+      src = shooter();
+      a.invuln = b.invuln = 0;
+      h1 = a.hp;
+      h2 = b.hp;
+      shootAt(a, src);
+      step(1);
+      out.atP1 = { d1: h1 - a.hp, d2: h2 - b.hp, reflected: 1000 - src.hp };
+      // a crawler touching only player 2
+      a.invuln = b.invuln = 0;
+      h1 = a.hp;
+      h2 = b.hp;
+      const brute = Object.assign(spawnEnemy("crawler", b.x, GROUND_Y - ENEMY_TYPES.crawler.h, { elite: false }), { hp: 1e6, maxHp: 1e6 });
+      step(2);
+      out.contact = { d1: h1 - a.hp, d2: h2 - b.hp };
+      brute.dead = true;
+      // a bomber going off next to player 1 only
+      a.invuln = b.invuln = 0;
+      h1 = a.hp;
+      h2 = b.hp;
+      const bomb = spawnEnemy("bomber", a.x, a.y + 20, { elite: false });
+      explodeBomber(bomb);
+      out.blast = { d1: h1 - a.hp, d2: h2 - b.hp };
+      // Widow's Flame On (player 1's K) rolls out from player 1
+      a.heat = 100;
+      input.keys.add("KeyK");
+      step(2);
+      input.keys.delete("KeyK");
+      out.flame = { p1: c1.heatWaves.length, p2: c2.heatWaves.length };
+      return out;
+    });
+    assert(r.atP2.d1 === 0 && r.atP2.d2 > 0 && r.atP2.left === 0, "the shot at player 2 hit the wrong player: " + JSON.stringify(r.atP2));
+    assert(r.atP2.reflected > 0 && r.atP2.fx2 && r.atP2.fx1 === 0, "Ronin (player 2) did not reflect: " + JSON.stringify(r.atP2));
+    assert(r.atP1.d1 > 0 && r.atP1.d2 === 0 && r.atP1.reflected === 0, "the shot at player 1: " + JSON.stringify(r.atP1));
+    assert(r.contact.d1 === 0 && r.contact.d2 > 0, "contact damage: " + JSON.stringify(r.contact));
+    assert(r.blast.d1 > 0 && r.blast.d2 === 0, "bomber blast: " + JSON.stringify(r.blast));
+    assert(r.flame.p1 > 0 && r.flame.p2 === 0, "Flame On is not player 1's: " + JSON.stringify(r.flame));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+
+    // Hackerman as player 2: Time Dilation slows the enemies for both, but only his hits get the bonus
+    const h = await coopRun({ p1: "paine", p2: "sudo" });
+    const d = await h.page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      const before = enemyTimeScale();
+      b.heat = 100;
+      press(1, "LT");
+      const out = { before, after: enemyTimeScale(), p2: b.dilation > 0, p1: !(a.dilation > 0) };
+      const dummy = () => Object.assign(spawnEnemy("crawler", 3000, GROUND_Y - ENEMY_TYPES.crawler.h, { elite: false }), { hp: 1000, maxHp: 1000, stun: 999 });
+      const t1 = dummy();
+      const t2 = dummy();
+      withPlayer(c1, () => damageEnemy(t1, 10, { source: "zap" }));
+      withPlayer(c2, () => damageEnemy(t2, 10, { source: "zap" }));
+      out.hits = { p1: 1000 - t1.hp, p2: 1000 - t2.hp, mul: c2.stats.dilation.dmgMul };
+      return out;
+    });
+    assert(d.before === 1 && d.after < 0.5 && d.p2 && d.p1, "Time Dilation by player 2: " + JSON.stringify(d));
+    assert(d.hits.p1 === 10 && Math.abs(d.hits.p2 - 10 * d.hits.mul) < 1e-6, "the dilation damage bonus is not player 2's alone: " + JSON.stringify(d.hits));
+    assert(!h.problems.length, h.problems.join("; "));
+    await h.context.close();
+  });
+
+  await test("co-op: damage, deaths and respawns spend the shared lives; a player with no life left is out until one comes back; game over only when both are down", async () => {
+    const { context, page, problems } = await coopRun({ p2: "tetsu" });
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      const wait = () => step(Math.round(COOP.respawnDelay * 60) + 150);
+      const out = { lives0: game.lives };
+      b.invuln = 0;
+      b.hp = 0;
+      step(2);
+      out.p2down = { lives: game.lives, lost: game.livesLost, intro: c2.intro.active, hidden: b.hidden, p1ok: !a.hidden && a.hp > 0, state: game.state, status: coopStatus(c2), banner: game.banner && game.banner.text };
+      wait();
+      out.p2back = { hidden: b.hidden, intro: c2.intro.active, full: b.hp === c2.stats.maxHp, ground: b.onGround, dx: Math.abs(b.x - a.x) };
+      a.invuln = 0;
+      a.hp = 0;
+      step(1);
+      out.p1down = { lives: game.lives, intro: c1.intro.active, p2ok: !b.hidden };
+      wait();
+      // no spare life left: player 2 is out, player 1 fights on
+      b.invuln = 0;
+      b.hp = 0;
+      step(2);
+      out.out = { out: c2.out, hidden: b.hidden, state: game.state, lives: game.lives, status: coopStatus(c2) };
+      const e = Object.assign(spawnEnemy("crawler", b.x + 10, GROUND_Y - ENEMY_TYPES.crawler.h, { elite: false }), { hp: 1e6, maxHp: 1e6 });
+      step(5);
+      out.ignored = e.coopTarget === c1;
+      e.dead = true;
+      // a life comes back (NULL's reward): player 2 drops back in on it
+      game.lives++;
+      step(2);
+      out.revived = { out: c2.out, intro: c2.intro.active, lives: game.lives };
+      wait();
+      // both down with no spare life: game over
+      a.invuln = b.invuln = 0;
+      b.hp = 0;
+      step(1);
+      out.lastOut = { out: c2.out, state: game.state };
+      a.hp = 0;
+      step(1);
+      out.over = { state: game.state, lives: game.lives, coop: !!(lbRun && lbRun.entry.coop) };
+      return out;
+    });
+    assert(r.lives0 === 3, "lives: " + JSON.stringify(r));
+    assert(r.p2down.lives === 2 && r.p2down.lost === 1 && r.p2down.intro && r.p2down.hidden && r.p2down.p1ok && r.p2down.state === "playing", "player 2 down: " + JSON.stringify(r.p2down));
+    assert(/^RESPAWN/.test(r.p2down.status) && /P2 DOWN/.test(r.p2down.banner), "respawn status / banner: " + JSON.stringify(r.p2down));
+    assert(!r.p2back.hidden && !r.p2back.intro && r.p2back.full && r.p2back.ground && r.p2back.dx < 400, "player 2 did not drop back in: " + JSON.stringify(r.p2back));
+    assert(r.p1down.lives === 1 && r.p1down.intro && r.p1down.p2ok, "player 1 down: " + JSON.stringify(r.p1down));
+    assert(r.out.out && r.out.hidden && r.out.state === "playing" && r.out.lives === 1 && /OUT/.test(r.out.status), "player 2 is not out (or the run ended): " + JSON.stringify(r.out));
+    assert(r.ignored, "an enemy went after the out player");
+    assert(!r.revived.out && r.revived.intro && r.revived.lives === 1, "player 2 did not come back on the new life: " + JSON.stringify(r.revived));
+    assert(r.lastOut.out && r.lastOut.state === "playing", "player 2's last life: " + JSON.stringify(r.lastOut));
+    assert(r.over.state === "over" && r.over.lives === 0 && r.over.coop, "game over (marked 2P) when both are down: " + JSON.stringify(r.over));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: one shared level-up; player 2's pad rerolls and picks, and the upgrade (and its heal) applies to both", async () => {
+    const { context, page, problems } = await coopRun({ p2: "tetsu" });
+    const before = await page.evaluate(() => {
+      forEachPlayer(() => (player.hp = 40));
+      gainXp(xpForLevel(progress.level));
+      step(1);
+      const out = { state: game.state, level: progress.level, max: coop.players.map((c) => c.stats.maxHp), rerolls: progress.rerolls };
+      press(1, "Y"); // reroll with player 2's pad
+      out.rerolled = progress.rerolls;
+      currentChoices = ["heart", "orbit", "chain"].map((id) => ({ id, u: UPGRADES.find((u) => u.id === id), rare: false }));
+      renderCards();
+      levelUpShownAt = -1e9;
+      cardsEl.firstElementChild.focus();
+      press(1, "A"); // install the first card (Cyber Heart) with player 2's pad
+      return out;
+    });
+    await page.waitForFunction(() => game.state === "playing", null, { timeout: 3000 });
+    const after = await page.evaluate(() => ({ heart: upg.heart || 0, max: coop.players.map((c) => c.stats.maxHp), hp: coop.players.map((c) => c.player.hp), heal: LEVEL_UP_HEAL, level: progress.level }));
+    assert(before.state === "levelup" && before.level === 2, "no level-up: " + JSON.stringify(before));
+    assert(before.rerolled === before.rerolls - 1, "player 2's pad did not reroll: " + JSON.stringify(before));
+    assert(after.heart === 1 && after.max[0] === before.max[0] + 20 && after.max[1] === before.max[1] + 20, "the upgrade did not apply to both: " + JSON.stringify({ before, after }));
+    assert(after.hp.every((hp) => hp === 40 + 20 + after.heal), "both players were not healed: " + JSON.stringify(after));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: boss fights with two players: tougher bosses, both can hurt them, either can be hit, and the run goes Overseer > NULL > GOAT to a win", async () => {
+    const { context, page, problems } = await coopRun({ p2: "tetsu" });
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      settings.autoFire = true;
+      settings.autoFlame = true;
+      const keepAlive = () => forEachPlayer(() => (player.hp = Math.max(player.hp, 90)));
+      const fight = (seconds) => {
+        for (let i = 0; i < seconds * 60 && game.state !== "over"; i++) {
+          keepAlive();
+          if (game.state === "levelup") chooseUpgrade(0, true);
+          step(1);
+        }
+      };
+      Object.assign(a, { x: 1400, y: GROUND_Y - a.h });
+      Object.assign(b, { x: 2200, y: GROUND_Y - b.h });
+      step(1);
+      spawnOverseer();
+      const boss = game.boss;
+      const out = { mul: COOP.bossHp, overseer: { max: boss.maxHp, base: BOSSES.overseer.hp } };
+      game.cinematic = null; // skip the entrance
+      const dealt = { 0: 0, 1: 0 };
+      const de = damageEnemy;
+      damageEnemy = function (e, amount) {
+        if (e === boss && !e.dead && amount > 0) dealt[coop.active.id] += amount;
+        return de.apply(this, arguments);
+      };
+      fight(10);
+      damageEnemy = de;
+      out.overseer.dealt = dealt;
+      out.overseer.targets = [boss.coopTarget === c1, boss.coopTarget === c2];
+      // a shockwave rolling under player 2 hits player 2 only
+      boss.stun = 999;
+      Object.assign(boss, { x: 4200, vx: 0 });
+      Object.assign(a, { x: 1400, y: GROUND_Y - a.h, vx: 0, vy: 0 });
+      Object.assign(b, { x: 2200, y: GROUND_Y - b.h, vx: 0, vy: 0 });
+      step(1);
+      shockwaves.length = 0;
+      enemyShots.length = 0;
+      a.invuln = b.invuln = 0;
+      let h1 = a.hp;
+      let h2 = b.hp;
+      spawnShockwave(b.x + b.w / 2 + 20, GROUND_Y, -1, { damage: 14 });
+      step(3);
+      out.wave = { d1: h1 - a.hp, d2: h2 - b.hp };
+      // touching it hurts player 1 when it's player 1 touching it
+      Object.assign(boss, { x: a.x - 20, y: a.y + a.h - boss.h });
+      a.invuln = b.invuln = 0;
+      h1 = a.hp;
+      h2 = b.hp;
+      boss.contactCd = 0;
+      bossContact(boss, 26);
+      out.contact = { d1: h1 - a.hp, d2: h2 - b.hp };
+      // down it: both get the +30 HP
+      a.hp = b.hp = 50;
+      boss.stun = 0;
+      damageEnemy(boss, boss.hp + 1, { source: "test" });
+      out.heal = [a.hp, b.hp];
+      // NULL, then the GOAT, with two players
+      director.nextBossAt = game.time;
+      step(2);
+      const n = game.boss;
+      out.null = { type: n && n.type, max: n && n.maxHp, base: BOSSES.nullptr.hp };
+      game.cinematic = null;
+      fight(8);
+      killEnemy(n);
+      fight(2.5);
+      director.nextBossAt = game.time;
+      step(2);
+      const g = game.boss;
+      out.goat = { type: g && g.type, max: g && g.maxHp, base: BOSSES.goat.hp };
+      game.cinematic = null;
+      const g0 = g.hp;
+      fight(8);
+      out.goat.dealt = g0 - g.hp;
+      g.hp = 1;
+      damageEnemy(g, 10, { source: "test" });
+      fight(3);
+      out.end = { state: game.state, won: game.won, bosses: game.bossesDefeated };
+      return out;
+    });
+    assert(r.mul > 1 && Math.abs(r.overseer.max - r.overseer.base * r.mul) < 1e-6, "the Overseer's HP is not scaled for two: " + JSON.stringify(r));
+    assert(r.overseer.dealt[0] > 0 && r.overseer.dealt[1] > 0, "both players did not damage the Overseer: " + JSON.stringify(r.overseer));
+    assert(r.overseer.targets.some(Boolean), "the boss has no player target: " + JSON.stringify(r.overseer));
+    assert(r.wave.d1 === 0 && r.wave.d2 > 0, "the shockwave: " + JSON.stringify(r.wave));
+    assert(r.contact.d1 > 0 && r.contact.d2 === 0, "boss contact: " + JSON.stringify(r.contact));
+    assert(r.heal[0] === 80 && r.heal[1] === 80, "the Overseer's +30 HP did not go to both: " + JSON.stringify(r.heal));
+    assert(r.null.type === "nullptr" && Math.abs(r.null.max - r.null.base * r.mul) < 1e-6, "NULL in co-op: " + JSON.stringify(r.null));
+    assert(r.goat.type === "goat" && Math.abs(r.goat.max - r.goat.base * r.mul) < 1e-6 && r.goat.dealt > 0, "the GOAT in co-op: " + JSON.stringify(r.goat));
+    assert(r.end.state === "over" && r.end.won && r.end.bosses === 3, "the co-op run did not end in a win: " + JSON.stringify(r.end));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: player 2 pauses, hot-swaps their own IC and leaves from the pause menu (the boss scales back); their pad can join again", async () => {
+    const { context, page, problems } = await coopRun({ p2: "sudo" });
+    const r = await page.evaluate(() => {
+      spawnOverseer();
+      game.cinematic = null;
+      step(2);
+      const boss = game.boss;
+      const out = { max: boss.maxHp, base: BOSSES.overseer.hp, mul: COOP.bossHp };
+      press(1, "START"); // player 2 pauses
+      const leave = document.getElementById("coop-leave-btn");
+      out.paused = { state: game.state, leave: !leave.hidden, join: document.getElementById("coop-join-btn").hidden };
+      // player 2's pad clicks Ronin: player 2's IC, not player 1's
+      const card = [...document.querySelectorAll(".char-card")][CHARACTER_ORDER.indexOf("tetsu")];
+      card.focus();
+      press(1, "A");
+      out.swap = { p2: P(1).char, p1: P(0).char, setting: settings.character, seat: coop.seat.char, badge: document.querySelectorAll(".char-card .char-p2").length };
+      leave.click();
+      out.left = { n: coop.players.length, slot: gamepads.slots[1] === undefined ? null : gamepads.slots[1], seat: coop.seat, leave: leave.hidden, max: boss.maxHp, base: BOSSES.overseer.hp, bound: player === coop.players[0].player && input === mainInput, toast: document.querySelector(".pad-toast").textContent };
+      resumeGame();
+      settings.autoFire = true;
+      for (let i = 0; i < 120; i++) {
+        player.hp = Math.max(player.hp, 60);
+        step(1);
+      }
+      out.after = { state: game.state, n: coop.players.length, active: coopActive() };
+      // the same pad can join again
+      press(1, "START");
+      out.again = { n: coop.players.length, joining: !!(coop.players[1] && coop.players[1].joining) };
+      return out;
+    });
+    assert(r.mul > 1 && Math.abs(r.max - r.base * r.mul) < 1e-6, "boss HP: " + JSON.stringify(r));
+    assert(r.paused.state === "paused" && r.paused.leave && r.paused.join, "player 2's pause menu: " + JSON.stringify(r.paused));
+    assert(r.swap.p2 === "tetsu" && r.swap.p1 === "paine" && r.swap.setting === "paine" && r.swap.seat === "tetsu" && r.swap.badge === 1, "player 2's hot-swap: " + JSON.stringify(r.swap));
+    assert(r.left.n === 1 && r.left.slot === null && r.left.seat === null && r.left.leave && r.left.bound && /PLAYER 2 LEFT/.test(r.left.toast), "player 2 did not leave: " + JSON.stringify(r.left));
+    assert(Math.abs(r.left.max - r.left.base) < 1e-6, "the boss did not scale back to one player: " + JSON.stringify(r.left));
+    assert(r.after.state === "playing" && r.after.n === 1 && !r.after.active, "the run after player 2 left: " + JSON.stringify(r.after));
+    assert(r.again.n === 2 && r.again.joining, "the pad could not join again: " + JSON.stringify(r.again));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: single player is unchanged without a second pad (one player, no scaling, no P2 HUD; a lone pad's Start pauses)", async () => {
+    const { context, page, problems } = await openPad();
+    await startRun(page, { settings: { character: "paine" } });
+    await page.evaluate(COOP_HELPERS);
+    const r = await page.evaluate((xbox) => {
+      const out = { n: coop.players.length, active: coopActive(), bound: player === coop.players[0].player && input === mainInput && stats === coop.players[0].stats && playerShots === coop.players[0].shots };
+      const e = spawnEnemy("crawler", 3000, GROUND_Y - ENEMY_TYPES.crawler.h, { elite: false });
+      out.enemyHp = e.maxHp / (ENEMY_TYPES.crawler.hp * (1 + game.time * TUNING.spawn.hpGrowth));
+      e.dead = true;
+      __padPlug(0, xbox);
+      press(0, "X"); // the one pad is player 1's...
+      press(0, "START"); // ...and its Start pauses: nobody joins
+      out.pad = { slots: gamepads.slots.slice(), state: game.state, seat: coop.seat, n: coop.players.length, leave: document.getElementById("coop-leave-btn").hidden, join: !document.getElementById("coop-join-btn").hidden };
+      resumeGame();
+      director.firstSpawn = 0;
+      settings.autoFire = true;
+      for (let i = 0; i < 60 * 20; i++) {
+        player.hp = Math.max(player.hp, 50);
+        if (game.state === "levelup") chooseUpgrade(0, true);
+        step(1);
+      }
+      out.run = { n: coop.players.length, kills: game.kills, state: game.state, maxAlive: enemies.length <= TUNING.spawn.maxAlive + 1 };
+      spawnOverseer();
+      out.boss = game.boss.maxHp === BOSSES.overseer.hp;
+      out.tags = hudTexts().filter((t) => /^P[12]\b|PLAYER 2/.test(t));
+      lose();
+      out.entry = lbRun && Object.prototype.hasOwnProperty.call(lbRun.entry, "coop");
+      return out;
+    }, PAD_IDS.xbox);
+    assert(r.n === 1 && !r.active && r.bound, "single player has a second player: " + JSON.stringify(r));
+    assert(Math.abs(r.enemyHp - 1) < 1e-9 && r.boss, "single-player enemies / bosses were scaled: " + JSON.stringify(r));
+    assert(r.pad.slots[0] === 0 && r.pad.state === "paused" && r.pad.seat === null && r.pad.n === 1 && r.pad.leave && r.pad.join, "a lone pad: " + JSON.stringify(r.pad));
+    assert(r.run.state === "playing" && r.run.n === 1 && r.run.kills > 0 && r.run.maxAlive, "the single-player run: " + JSON.stringify(r.run));
+    assert(!r.tags.length, "co-op HUD in single player: " + JSON.stringify(r.tags));
+    assert(r.entry === false, "the leaderboard marked a single-player run as co-op");
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await browser.close();
   server.close();
   const failed = results.filter((r) => !r.ok);

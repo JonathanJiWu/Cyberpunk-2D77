@@ -38,7 +38,7 @@ function spawnEnemy(type, x, y, opts = {}) {
   const elite = opts.elite !== undefined ? opts.elite : Math.random() < eliteChance(game.time);
   const mul = elite ? 2.2 : 1;
   const size = elite ? 1.15 : 1;
-  const hp = def.hp * (1 + game.time * TUNING.spawn.hpGrowth) * mul;
+  const hp = def.hp * (1 + game.time * TUNING.spawn.hpGrowth) * mul * coopMul("enemyHp");
   const e = {
     type,
     def,
@@ -152,10 +152,11 @@ function updateDirector(dt) {
   updateSquads(t);
   let rate = Math.min(S.maxRate, S.startRate + t * S.ratePerSecond);
   if (director.stage !== STAGE.start) rate *= 1.3; // the calm before... no calm
+  rate *= coopMul("spawnRate"); // two players: more of everything (coop.js)
   director.acc += rate * dt;
   while (director.acc >= 1) {
     director.acc -= 1;
-    if (enemies.length >= S.maxAlive) {
+    if (enemies.length >= S.maxAlive * coopMul("maxAlive")) {
       director.acc = 0;
       break;
     }
@@ -168,29 +169,50 @@ function updateDirector(dt) {
 
 // --------------------------------------------------------------- Update -----
 function updateEnemies(dtAll) {
-  const pc = centerOf(player);
   for (const e of enemies) {
     if (e.dead) continue;
-    // bleeding / burning tick here; a glitched enemy only gets every third frame
-    const dt = enemyStatus(e, dtAll);
-    if (e.dead) continue;
-    // New faces go into the database the first time they're on screen
-    if (onScreen(e) && discover(e.type)) {
-      const name = e.boss ? BOSSES[e.type].name : e.def.name;
-      game.toast = { text: `DATABASE: NEW ENTRY // ${name.toUpperCase()}`, time: 2.4 };
+    // `player` is its target while it thinks: in co-op, the nearest player (coop.js)
+    withPlayer(coopTargetFor(e), () => updateEnemy(e, dtAll));
+  }
+
+  // Keep enemies from stacking into one blob
+  for (let i = 0; i < enemies.length; i++) {
+    const a = enemies[i];
+    if (a.dead || a.boss) continue;
+    for (let j = i + 1; j < enemies.length; j++) {
+      const b = enemies[j];
+      if (b.dead || b.boss || !overlaps(a, b)) continue;
+      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 40 * dtAll * 4;
+      a.x += push;
+      b.x -= push;
     }
-    e.vulnT = Math.max(0, e.vulnT - dt);
-    if (e.boss) {
-      if (e.type === "overseer") updateOverseer(e, dt);
-      else if (e.type === "nullptr") updateNull(e, dt);
-      else updateGoat(e, dt);
-      continue;
-    }
+  }
+}
+
+function updateEnemy(e, dtAll) {
+  const pc = centerOf(player);
+  // bleeding / burning tick here; a glitched enemy only gets every third frame
+  const dt = enemyStatus(e, dtAll);
+  if (e.dead) return;
+  // New faces go into the database the first time they're on screen
+  if (onScreen(e) && discover(e.type)) {
+    const name = e.boss ? BOSSES[e.type].name : e.def.name;
+    game.toast = { text: `DATABASE: NEW ENTRY // ${name.toUpperCase()}`, time: 2.4 };
+  }
+  e.vulnT = Math.max(0, e.vulnT - dt);
+  if (e.boss) {
+    if (e.type === "overseer") updateOverseer(e, dt);
+    else if (e.type === "nullptr") updateNull(e, dt);
+    else updateGoat(e, dt);
+    return;
+  }
+  // Minions
+  {
     const def = e.def;
     if (!def.walker && e.downed) {
       e.hurt -= dtAll;
       updateDowned(e, dtAll);
-      continue;
+      return;
     }
     e.hurt -= dt;
     e.orbitCd -= dt;
@@ -246,7 +268,7 @@ function updateEnemies(dtAll) {
       e.y += (e.vy + e.kbY) * dt + Math.sin(game.time * 2.5 + e.bob) * 25 * dt;
       e.facing = dx > 0 ? 1 : -1;
     } else if (def.kind === "bomber") {
-      if (updateBomber(e, dt, dx, dy, d, stunned || blind, sm)) continue;
+      if (updateBomber(e, dt, dx, dy, d, stunned || blind, sm)) return;
     } else {
       // Ranged flyers (drones, wyrms, snipers) keep their distance and shoot
       const side = ec.x < pc.x ? -1 : 1;
@@ -285,29 +307,19 @@ function updateEnemies(dtAll) {
     if (!def.walker) e.y = clamp(e.y, WORLD_TOP + 40, GROUND_Y - e.h - 10);
     e.anim += dt * def.sheet.fps * sm;
 
-    // Body contact
-    if (!stunned && !blind && e.hitCd <= 0 && !player.flameOn && overlaps(e, player)) {
-      if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
-        e.hitCd = 0.9;
-        e.kbX = -Math.sign(dx) * 300;
-      }
+    // Body contact: whoever it runs into (either player in co-op)
+    if (!stunned && e.hitCd <= 0) {
+      eachTarget(() => {
+        if (e.hitCd > 0 || player.camo > 0 || player.flameOn || !overlaps(e, player)) return;
+        if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
+          e.hitCd = 0.9;
+          e.kbX = -Math.sign(dx) * 300;
+        }
+      });
     }
 
     // Enemies left far behind just leave
     if (Math.abs(pc.x - ec.x) > 2600 || Math.abs(pc.y - ec.y) > 1900) e.dead = e.despawned = true;
-  }
-
-  // Keep enemies from stacking into one blob
-  for (let i = 0; i < enemies.length; i++) {
-    const a = enemies[i];
-    if (a.dead || a.boss) continue;
-    for (let j = i + 1; j < enemies.length; j++) {
-      const b = enemies[j];
-      if (b.dead || b.boss || !overlaps(a, b)) continue;
-      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 40 * dtAll * 4;
-      a.x += push;
-      b.x -= push;
-    }
   }
 }
 
@@ -396,7 +408,7 @@ function explodeBomber(e) {
   burst(c.x, c.y, 10, "#ffe14d", 300);
   camera.shake = Math.max(camera.shake, 10);
   sfx.stomp.play({ rate: 0.8 });
-  if (circleHitsBox(c.x, c.y, B.radius, player)) hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y, e);
+  eachTarget(() => circleHitsBox(c.x, c.y, B.radius, player) && hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y, e));
   // the blast hurts other enemies too
   enemies.forEach((o) => {
     if (o !== e && !o.dead && circleHitsBox(c.x, c.y, B.radius, o)) damageEnemy(o, 30, { source: "blast" });
@@ -452,16 +464,20 @@ function updateEnemyShots(dt) {
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
     if (!s) continue; // a hit just now cleared the list (e.g. Ronin's reflection killed a boss)
-    const frozen = player.dilation > 0 && stats.dilation.freezeShots && Math.hypot(s.x - player.x - player.w / 2, s.y - player.y - player.h / 2) < 220;
+    const frozen = somePlayer(() => player.dilation > 0 && stats.dilation.freezeShots && Math.hypot(s.x - player.x - player.w / 2, s.y - player.y - player.h / 2) < 220);
     if (!frozen) {
       s.x += s.vx * dt;
       s.y += s.vy * dt;
     }
     s.life -= dt;
     let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 300 || s.x < camera.x - 300 || s.x > camera.x + W + 300;
-    if (!gone && circleHitsBox(s.x, s.y, s.r, player) && player.invuln <= 0) {
-      hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy, s.owner);
-      gone = true;
+    // a shot hits whichever player it reaches first (either one in co-op)
+    if (!gone) {
+      eachTarget(() => {
+        if (gone || !circleHitsBox(s.x, s.y, s.r, player) || player.invuln > 0) return;
+        hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy, s.owner);
+        gone = true;
+      });
     }
     if (gone) {
       const color = s.color || (s.kind === "laser" || s.kind === "snipe" ? "#ff2f6d" : s.kind === "ring" ? "#19f5ff" : "#ff9b21");

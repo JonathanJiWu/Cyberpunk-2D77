@@ -27,18 +27,24 @@ const KEYMAP = {
   Space: "jump",
 };
 
-const input = {
-  keys: new Set(),
-  stick: { id: null, ox: 0, oy: 0, x: 0, y: 0, upLatch: false }, // left: move / jump
-  aim: { id: null, ox: 0, oy: 0, x: 0, y: 0 }, // right: twin-stick aim + fire (id "pad": a gamepad's right stick)
-  pad: { x: 0, y: 0, zap: false, flame: false, jump: false }, // player 1's gamepad (gamepad.js)
-  buttons: { flame: false },
-  mouse: { x: W / 2, y: H / 2, zap: false, flame: false },
-  fingers: new Map(), // tap mode: pointerId -> {x, y} (screen coords)
-  aimFinger: null,
-  jumpQueued: false,
-  shots: [], // queued taps: world points to fire at
-};
+// One player's input. `input` is a `let`: co-op player 2 (coop.js) gets its
+// own state, fed by its pad only, and the queries below read whichever is bound.
+function makeInputState() {
+  return {
+    keys: new Set(),
+    stick: { id: null, ox: 0, oy: 0, x: 0, y: 0, upLatch: false }, // left: move / jump
+    aim: { id: null, ox: 0, oy: 0, x: 0, y: 0 }, // right: twin-stick aim + fire (id "pad": a gamepad's right stick)
+    pad: { x: 0, y: 0, zap: false, flame: false, jump: false }, // this player's gamepad (gamepad.js)
+    buttons: { flame: false },
+    mouse: { x: W / 2, y: H / 2, zap: false, flame: false },
+    fingers: new Map(), // tap mode: pointerId -> {x, y} (screen coords)
+    aimFinger: null,
+    jumpQueued: false,
+    shots: [], // queued taps: world points to fire at
+  };
+}
+let input = makeInputState();
+const mainInput = input; // player 1's: the keyboard, mouse and touch controls write here
 
 // --------------------------------------------------------------- Settings ---
 const settings = {
@@ -142,6 +148,7 @@ function clearInput() {
   input.jumpQueued = false;
   input.shots.length = 0;
   Object.assign(input.pad, { x: 0, y: 0, zap: false, flame: false, jump: false }); // re-read next frame if still held
+  if (input !== mainInput) return; // co-op player 2 has no on-screen controls
   leftStick.release();
   rightStick.release();
   document.querySelectorAll(".action-btn.pressed").forEach((b) => b.classList.remove("pressed"));

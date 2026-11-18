@@ -50,7 +50,7 @@ function goatDefeated(e) {
   enemyShots.length = 0;
   shockwaves.length = 0;
   meteors.length = 0;
-  player.invuln = Math.max(player.invuln, 3);
+  forEachPlayer(() => (player.invuln = Math.max(player.invuln, 3)));
   camera.shake = 30;
 }
 
@@ -291,7 +291,10 @@ function updateGoat(e, dt) {
         camera.shake = Math.max(camera.shake, 26);
         ring(ec.x, ec.y, 500, "#ff2457");
         sfx.stomp.play({ rate: 0.35 });
-        if (Math.abs(pc.x - ec.x) < 600) player.vx = Math.sign(pc.x - ec.x || 1) * 900;
+        eachTarget(() => {
+          const c = centerOf(player);
+          if (Math.abs(c.x - ec.x) < 600) player.vx = Math.sign(c.x - ec.x || 1) * 900;
+        });
         if (e.phase >= 1) queueMeteors(6, 500);
       }
       if (e.stateTime > e.roarFor) bossState(e, "stalk");

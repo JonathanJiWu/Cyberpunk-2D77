@@ -52,8 +52,10 @@ function overseerDefeated(e) {
   game.banner = { text: "OVERSEER DOWN // NOTHING IS WATCHING YOU", time: 3, color: "#19f5ff" };
   music.setIntensity(1);
   shockwaves.length = 0;
-  player.hp = Math.min(stats.maxHp, player.hp + 30);
-  popup("+30 HP", player.x + player.w / 2, player.y - 30, "#ff2f6d", 26, 1.4);
+  eachTarget(() => {
+    player.hp = Math.min(stats.maxHp, player.hp + 30);
+    popup("+30 HP", player.x + player.w / 2, player.y - 30, "#ff2f6d", 26, 1.4);
+  });
   spawnPowerup(player.x + player.w / 2, player.y - 200);
 }
 
@@ -252,7 +254,7 @@ function updateOverseer(e, dt) {
         }
         const k = Math.min(1, (e.stateTime - charge) / sweep);
         e.beam.angle = e.beam.from + (e.beam.to - e.beam.from) * k;
-        if (!blind && !bossLocked() && beamHitsFrom(eye, e.beam.angle, OVERSEER.beamWidth)) hurtPlayer(OVERSEER.beamDamage, eye.x, eye.y, e);
+        if (!bossLocked()) eachTarget(() => !(player.camo > 0) && beamHitsFrom(eye, e.beam.angle, OVERSEER.beamWidth) && hurtPlayer(OVERSEER.beamDamage, eye.x, eye.y, e));
         if (Math.random() < 0.5) {
           const gx = eye.x + Math.cos(e.beam.angle) * 900;
           const gy = Math.min(GROUND_Y, eye.y + Math.sin(e.beam.angle) * 900);

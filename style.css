@@ -3035,3 +3035,24 @@ body:is(.pad-xbox, .pad-ps, .pad-generic) .overlay {
   font-size: 1.3em;
   vertical-align: -0.12em;
 }
+
+/* Local co-op (js/coop.js): player 2's pick on the IC cards, the 2P mark on the leaderboard */
+.char-p2 {
+  flex: none;
+  align-self: flex-start;
+  margin-left: auto;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  background: #ffb020;
+  color: #14051f;
+}
+
+.char-card:has(.char-p2) {
+  border-color: #ffb020;
+}
+
+.lb-tag.lb-2p {
+  background: #ffb020;
+  color: #14051f;
+  animation: none;
+}

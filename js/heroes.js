@@ -8,8 +8,8 @@
 // =============================================================================
 
 const CH = () => CHARACTERS[player.char] || CHARACTERS.paine;
-const slashFx = []; // blade arcs
-const hackFx = []; // overload circles
+let slashFx = []; // blade arcs (per player in co-op, see coop.js)
+let hackFx = []; // overload circles
 
 // Smallest signed angle between two directions
 const angleDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));

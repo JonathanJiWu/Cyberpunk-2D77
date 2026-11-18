@@ -87,6 +87,7 @@ function lbClean(e) {
     livesLost: Math.round(lbNum(e.livesLost)),
     date: String(e.date || ""),
     id: String(e.id || ""),
+    ...(e.coop ? { coop: true } : {}),
   };
 }
 
@@ -136,6 +137,7 @@ function captureRun() {
     livesLost: game.livesLost || 0,
     date: "",
   };
+  if (game.coopRun) entry.coop = true; // a local co-op run (marked 2P on the board)
   entry.score = scoreRun(entry);
   lbRun = { entry, saved: false, rank: 0, total: 0 };
   lbScoreEl.textContent = entry.score.toLocaleString("en-US");
@@ -249,6 +251,7 @@ function lbRow(e, rank, isNew) {
   if (!isNaN(when)) tr.title = when.toLocaleString();
   const name = lbNode("td", "lb-name-cell");
   name.append(lbNode("span", "lb-handle", e.name));
+  if (e.coop) name.append(lbNode("span", "lb-tag lb-2p", "2P"));
   if (isNew) name.append(lbNode("span", "lb-tag", "NEW"));
   const result = lbNode("td");
   result.append(lbNode("span", e.won ? "lb-win" : "lb-kia", e.won ? "WIN" : "KIA"));
