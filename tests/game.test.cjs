@@ -813,6 +813,183 @@ const fastForward = (page, seconds, bot) =>
     assert(!e.muted && e.master > 0.99 && e.button === "false", "moving a slider did not unmute: " + JSON.stringify(e));
     await context.close();
   });
+
+  // ------------------------------------------- Synth sound effects ----
+  const SYNTH_SOUNDS = [
+    ...["bowDraw", "bowRelease", "arrowHit", "arrowPierce", "enemyFall", "fallThud", "bleed", "flameOn", "heatWave"],
+    ...["bladeSwing", "bladeHeavy", "dash", "reflect", "parry"],
+    ...["emDischarge", "glitch", "laptop", "dilationIn", "dilationOut", "dilationLoop"],
+    ...["pickupRam", "pickupSsd", "pickupCpu"],
+    ...["nullBlink", "nullDecoy", "nullSlash", "nullShuriken", "nullCharge", "nullShot", "nullDeath"],
+    ...["bossIntro", "bossDefeated", "reroll", "install", "uiMove", "uiSelect", "uiBack", "padConnect", "lifeLost", "levelUp"],
+  ];
+
+  await test("synth: play/loop/stop never throw before audio unlocks or while the context is suspended", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const locked = await page.evaluate((names) => {
+      let played = 0;
+      for (const name of names.concat(["noSuchSound", undefined, 42])) {
+        for (const o of [undefined, null, {}, { volume: NaN, rate: 0, pan: 9 }, { rate: -2, volume: -1 }]) played += synth.play(name, o) ? 1 : 0;
+        played += synth.loop(name) ? 1 : 0;
+        synth.stop(name);
+      }
+      return { played, ctx: !!SoundSystem.ctx };
+    }, SYNTH_SOUNDS);
+    assert(!locked.ctx, "the synth made an AudioContext before any gesture");
+    assert(locked.played === 0, "sounds claimed to play with no audio: " + locked.played);
+    await page.click("#overlay-title"); // a real click unlocks audio
+    const r = await page.evaluate(async (names) => {
+      await SoundSystem.ctx.suspend(); // what a hidden tab does
+      let played = 0;
+      for (const name of names) {
+        played += synth.play(name, { volume: 1, rate: 1.2, pan: -0.5 }) ? 1 : 0;
+        played += synth.loop(name) ? 1 : 0;
+      }
+      const queued = names.reduce((n, name) => n + synth.voices(name), 0);
+      names.forEach((name) => synth.stop(name));
+      await SoundSystem.ctx.resume();
+      return { played, queued, resumed: synth.play("uiMove"), voices: synth.voices("uiMove"), state: SoundSystem.ctx.state };
+    }, SYNTH_SOUNDS);
+    assert(r.played === 0 && r.queued === 0, "sounds were queued on a suspended context: " + JSON.stringify(r));
+    assert(r.resumed && r.voices === 1 && r.state === "running", "no sound once the context resumed: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("synth: every listed sound exists, and ?sounds shows a hidden panel that plays each one", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const r = await page.evaluate(
+      (names) => ({ missing: names.filter((n) => !synth.has(n)), loops: synth.names.filter((n) => synth.isLoop(n)), panel: !!document.getElementById("sound-lab") }),
+      SYNTH_SOUNDS
+    );
+    assert(!r.missing.length, "missing sounds: " + r.missing.join(", "));
+    assert(r.loops.join() === "dilationLoop", "unexpected loops: " + r.loops.join());
+    assert(!r.panel, "the sound panel shows without ?sounds");
+    await page.goto(url + "?sounds", { waitUntil: "load" });
+    const buttons = await page.$$eval("#sound-lab [data-sound]", (bs) => bs.map((b) => b.dataset.sound));
+    assert(buttons.length === SYNTH_SOUNDS.length && SYNTH_SOUNDS.every((n) => buttons.includes(n)), "panel buttons: " + buttons.join());
+    await page.click('#sound-lab [data-sound="reflect"]'); // the first click also unlocks audio
+    await page.click('#sound-lab [data-sound="dilationLoop"]');
+    await page.waitForTimeout(100);
+    const on = await page.evaluate(() => ({ reflect: synth.voices("reflect"), loop: synth.voices("dilationLoop"), state: game.state }));
+    await page.click('#sound-lab [data-sound="dilationLoop"]');
+    const off = await page.evaluate(() => synth.voices("dilationLoop"));
+    assert(on.reflect === 1 && on.loop === 1 && off === 0, "panel buttons did not play/toggle: " + JSON.stringify({ on, off }));
+    assert(on.state === "menu", "clicking the panel reached the game: " + on.state);
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("synth: every sound renders offline audible, without clipping, and ends in silence", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const rows = await page.evaluate(async (names) => {
+      const out = [];
+      for (const name of names) {
+        // pickups also at combo rates (the game raises `rate` with the combo)
+        for (const rate of name.startsWith("pickup") ? [1, 1.6, 2.5] : [1]) {
+          const buf = await synth.render(name, { rate, seconds: 4 });
+          const win = Math.floor(buf.sampleRate * 0.05);
+          const tailFrom = buf.length - Math.floor(buf.sampleRate * 0.1);
+          let peak = 0;
+          let loudest = 0; // RMS of the loudest 50 ms
+          let tail = 0; // the last 100 ms
+          for (let c = 0; c < buf.numberOfChannels; c++) {
+            const d = buf.getChannelData(c);
+            for (let i = 0; i < d.length; i++) {
+              const a = Math.abs(d[i]);
+              if (a > peak) peak = a;
+              if (i >= tailFrom && a > tail) tail = a;
+            }
+            for (let i = 0; i + win <= d.length; i += win >> 1) {
+              let sum = 0;
+              for (let j = i; j < i + win; j++) sum += d[j] * d[j];
+              loudest = Math.max(loudest, Math.sqrt(sum / win));
+            }
+          }
+          out.push({ name, rate, peak: +peak.toFixed(3), loudest: +loudest.toFixed(3), tail: +tail.toFixed(4) });
+        }
+      }
+      return out;
+    }, SYNTH_SOUNDS);
+    const bad = rows.filter((r) => !(r.peak > 0.05 && r.loudest > 0.01 && r.peak < 0.98 && r.tail < 0.002));
+    assert(rows.length === SYNTH_SOUNDS.length + 6, "not every sound rendered: " + rows.length);
+    assert(!bad.length, "silent, clipping or never-ending: " + JSON.stringify(bad));
+    await context.close();
+  });
+
+  await test("synth: throttling: a minimum gap per sound, a cap on simultaneous voices, loops never stack", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await page.click("#overlay-title"); // a real click unlocks audio
+    const r = await page.evaluate(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      if (SoundSystem.ctx.state !== "running") await SoundSystem.ctx.resume();
+      const name = "bladeHeavy"; // rings for ~0.9 s
+      const { gap, max } = synth.limits(name);
+      const instant = [synth.play(name), synth.play(name)]; // the same instant: the gap drops the second
+      let most = 0;
+      for (let i = 0; i < max * 4; i++) {
+        await sleep(gap * 1000 + 15);
+        synth.play(name);
+        most = Math.max(most, synth.voices(name));
+      }
+      // a big sting is never cut short or doubled
+      const sting = [synth.play("bossIntro")];
+      await sleep(synth.limits("bossIntro").gap * 1000 + 20);
+      sting.push(synth.play("bossIntro"), synth.voices("bossIntro"));
+      ["dilationLoop", "dilationLoop", "dilationLoop"].forEach((n) => synth.loop(n));
+      const loops = synth.voices("dilationLoop");
+      synth.stop("dilationLoop");
+      return { gap, max, instant, most, sting, loops, stopped: synth.voices("dilationLoop") };
+    });
+    assert(r.instant[0] && !r.instant[1], "an instant repeat was not dropped: " + JSON.stringify(r));
+    assert(r.max >= 2 && r.most === r.max, `expected at most ${r.max} voices (and to reach it), saw ${r.most}`);
+    assert(r.sting[0] && !r.sting[1] && r.sting[2] === 1, "a ringing boss sting was cut or doubled: " + JSON.stringify(r));
+    assert(r.loops === 1 && r.stopped === 0, "loops stacked or did not stop: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("synth: real audio: synth sounds reach the master bus, and mute and the SFX slider apply", async () => {
+    const { context, page, log } = await openStrict();
+    await page.click("#overlay-btn");
+    await dropIn(page);
+    assert(await waitForLog(log, "[audio] running"), "the AudioContext never ran");
+    await page.evaluate(() => {
+      director.firstSpawn = 1e9; // no enemies: they make sounds too
+      music.pause();
+    });
+    await page.waitForTimeout(600); // let the music fade out
+    const play = () => page.evaluate(() => synth.play("heatWave"));
+    const rms = { quiet: await masterRms(page, 300) };
+    rms.full = await masterRms(page, 900, play);
+    // M mutes: one-shots and a running loop go silent...
+    await page.keyboard.press("KeyM");
+    rms.muted = await masterRms(page, 900, () => page.evaluate(() => (synth.play("heatWave"), synth.loop("dilationLoop"))));
+    // ...unmuting brings the loop back, and stop() fades it out
+    await page.keyboard.press("KeyM");
+    rms.loop = await masterRms(page, 1300);
+    await page.evaluate(() => synth.stop("dilationLoop"));
+    await page.waitForTimeout(1000); // the fade and the reverb tail
+    rms.stopped = await masterRms(page, 300);
+    // The SFX slider (pause menu) at 40%: a gain of 0.16
+    await page.keyboard.press("KeyP");
+    await page.waitForTimeout(500);
+    await page.focus("#vol-sfx");
+    await page.keyboard.press("Home");
+    for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(600); // the slider plays a sample of its own
+    const sfxGain = await page.evaluate(() => SoundSystem.sfxBus.gain.value);
+    rms.low = await masterRms(page, 900, play);
+    const ratio = rms.low / rms.full;
+    const info = JSON.stringify({ rms, sfxGain, ratio });
+    assert(rms.quiet < 0.005, "not quiet before playing: " + info);
+    assert(rms.full > 0.02, "the synth is silent on the master bus: " + info);
+    assert(rms.muted < 0.001, "mute did not silence the synth: " + info);
+    assert(rms.loop > 0.01 && rms.stopped < 0.003, "the loop did not come back after unmuting, or did not stop: " + info);
+    assert(Math.abs(sfxGain - 0.16) < 0.01 && ratio > 0.08 && ratio < 0.3, "the SFX slider does not scale the synth: " + info);
+    assert(!log.some((l) => l.startsWith("page error")), log.join(" | "));
+    await context.close();
+  });
   await strictBrowser.close();
 
 
