@@ -356,7 +356,7 @@ function drawOverseer(e, time) {
     });
     ctx.restore();
   }
-  glow(c.x, c.y, 200, e.enraged ? "rgba(255,30,70,0.35)" : "rgba(25,245,255,0.25)");
+  decorGlow(c.x, c.y, 200, e.enraged ? "rgba(255,30,70,0.35)" : "rgba(25,245,255,0.25)"); // its aura (the tells have their own glows)
   const img = IMG.overseerAvatar;
   const s = OVERSEER.scale;
   const dw = 64 * s;

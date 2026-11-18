@@ -415,11 +415,12 @@ function drawXpChips(time) {
   const bottom = camera.y + H + 100;
   const prevAlpha = ctx.globalAlpha;
   const prevOp = ctx.globalCompositeOperation;
+  const lite = perfMode(); // Performance mode: just the hardware (no glows, beams or glints)
   ctx.imageSmoothingEnabled = true;
 
   // Pass 1 (additive): glows, motion streaks and the CPUs' loot beams
   ctx.globalCompositeOperation = "lighter";
-  for (let i = 0; i < gems.length; i++) {
+  for (let i = 0; i < gems.length && !lite; i++) {
     const g = gems[i];
     const cx = g.x + 12;
     const cy = g.y + 12;
@@ -471,7 +472,7 @@ function drawXpChips(time) {
 
   // Pass 3 (additive): glints during the shine sweep, and collection pops
   ctx.globalCompositeOperation = "lighter";
-  for (let i = 0; i < gems.length; i++) {
+  for (let i = 0; i < gems.length && !lite; i++) {
     const g = gems[i];
     const f = g.pulled ? 0 : xpFrame(g, time);
     if (f < 1) continue;

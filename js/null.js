@@ -1127,7 +1127,7 @@ function drawNull(e, time) {
   if (e.state === "toss" && e.step === 0) glow(nullHand(e).x, nullHand(e).y, 34, "rgba(200,160,255,0.7)");
   if ((e.state === "lunge" || e.state === "decoy") && e.step === 0) glow(cx, e.y + e.h * 0.55, 90, "rgba(176,108,255,0.7)", 0.5 + 0.5 * Math.sin(time * 40));
   if (real && e.aim) drawNullAim(e, time);
-  glow(cx, e.y + e.h * 0.5, 150, e.phase === 2 ? "rgba(255,30,80,0.3)" : "rgba(140,70,255,0.25)"); // copies too: no free tells
+  decorGlow(cx, e.y + e.h * 0.5, 150, e.phase === 2 ? "rgba(255,30,80,0.3)" : "rgba(140,70,255,0.25)"); // copies too: no free tells
 
   // Dash afterimages
   e.trail.forEach((t) => {

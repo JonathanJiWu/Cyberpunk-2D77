@@ -124,6 +124,7 @@ These are on the start and pause menus and remembered between visits.
 | Rumble | Controller rumble on hits and hero landings. Shown while a pad is in use. |
 | Display | Windowed or Fullscreen, kept in sync with the fullscreen button at the top right. In the browser it uses the browser's fullscreen (hidden on iPhones, which have none), and a page always opens windowed. In the desktop app it is the real window, also on F11, and it is remembered. |
 | Resolution | Auto, or 1280x720 up to 3840x2160 (4K). In the browser and in fullscreen it is the game's internal render size: the picture still fills the screen, so a lower one runs faster and a higher one looks sharper. Auto matches your screen, up to 1080p. In the desktop app's windowed mode it also resizes the window to that size, shrunk to fit your screen. The line under it says what it does and the size the game is rendering at. |
+| Performance mode | For slower computers and phones: fewer effects and, with Resolution on Auto, a lower render size. See [Performance](#performance). |
 
 ## Controls
 
@@ -240,9 +241,30 @@ Run `npm install`, then `npm test`. This plays the game in headless Chromium, on
 - easter eggs, the billboard and the soundtrack;
 - the touch controls, including the twin-stick with auto-fire on;
 - game controllers (mocked pads): connecting, play, auto-fire with two sticks, every menu, the hacking terminal and the button prompts;
-- the bundled font (no internet, canvas text waits for it) and the display settings: fullscreen in sync with the HUD button, a refused fullscreen request, resolution, persistence and the phone layout.
+- the bundled font (no internet, canvas text waits for it) and the display settings: fullscreen in sync with the HUD button, a refused fullscreen request, resolution, persistence and the phone layout;
+- Performance mode: it persists and applies live, the slow-frame tip, far fewer expensive canvas calls in a heavy scene, and a frame-time check in both modes.
 
 GitHub Actions runs the same tests on every push and only deploys if they pass. The desktop app has its own tests, see [Desktop app](#desktop-app).
+
+## Performance
+**Performance mode** (on the start and pause menus) is for slower computers and phones. Everything you need to read a fight looks the same: enemies, bullets, telegraphs (laser lines, NULL's glyphs and aim lines, meteor markers, wind-ups), hit flashes, boss tells and the HUD. It cuts the rest:
+- **Resolution**: with Resolution on Auto it renders at two thirds of your screen's pixels across, up to 720p. A resolution you pick yourself is kept.
+- **Particles**: half as many per burst, at most 90 at once (instead of 260), and fewer damage numbers.
+- **Glows**: no decorative ones (street lamps, signs, platform under-glow, street reflections, boss auras, the moon), and no glitch ghosting on enemies.
+- **Backdrop and weather**: no stars or flying traffic, and a third of the rain without splashes.
+- **Effects**: a plainer billboard hologram, XP chips without their glow, shorter Time Dilation code rain, lighter Flame On rings, and cheap flat overlays instead of full-screen gradients for the hit flash and bullet time.
+
+If frames stay slow (under about 45 fps for 5 seconds of play), the game suggests Performance mode, once.
+
+The normal mode got faster too, with the same look. The backdrop photo is scaled once instead of every frame, the sky, haze and building shading come from cached gradient strips, and the sky gradient is skipped on the street, where it is invisible. Tinted sprites (hit flashes, stuns, ghosts) are cached, and glow sprites no longer pile up a new canvas every frame for animated colours. Particles are recycled, and the neon notes are painted once. The touch SPECIAL button only touches the page when its state changes.
+
+**Benchmark**: `npm run bench` plays heavy scenes in headless Chromium in both modes: a late-game swarm, each boss (the Overseer's laser, NULL with copies, the GOAT's meteors and fire breath), Hackerman's Time Dilation, the Widow's Flame On, and rain with the billboard. For each it prints per-frame update, render and raster times (mean / p95 / worst), the expensive canvas calls per frame (gradients, shadow blur, text, images, save/restore, new canvases) and the allocation rate. Options:
+- `--scene=swarm,goat` and `--mode=normal|perf`;
+- `--viewport=1280x720`, `--frames=300`, `--repeat=3` (medians);
+- `--baseline=<another checkout>` runs an older copy side by side and prints before → after;
+- `--sites` (top allocation sites), `--profile` (CPU time per function), `--ablate=drawRain` (stub a function out to see what it costs), `--json=out.json`.
+
+Headless Chromium has no GPU, so "raster" is the software pixel cost; compare runs from the same machine.
 
 ## Installation and setup
 1. Clone or download the repository.
@@ -324,7 +346,7 @@ To sign, add the certificates as repository secrets (`CSC_LINK` and `CSC_KEY_PAS
 | `style.css` | Responsive layout, menus, hardware cards, terminal, leaderboard and touch controls |
 | `js/config.js` | Balance numbers, upgrades, power-ups and the map layout |
 | `js/database.js` | The DATABASE: ICs (stats, kits, voice lines, lore), enemy types, bosses (HP, taunts), each upgrade's hardware look, and all the jokes. **Start here to tweak characters and enemies.** |
-| `js/core.js` | Canvas, asset loading, drawing helpers and visual effects |
+| `js/core.js` | Canvas, asset loading, drawing helpers (cached glows, tinted sprites, gradient strips), visual effects and `perfMode()` |
 | `js/sound.js` | Web Audio unlock (autoplay rules), music and SFX volume buses, sound effects, and the original mp3 soundtrack |
 | `js/music.js` | The generated darksynth soundtrack and the music setting |
 | `js/input.js` | Keyboard, mouse, joysticks, buttons, tap gestures and settings |
@@ -347,7 +369,8 @@ To sign, add the certificates as repository secrets (`CSC_LINK` and `CSC_KEY_PAS
 | `js/main.js` | Game state, menus, layout and the main loop |
 | `tests/game.test.cjs` | The automated browser tests |
 | `tools/make_sprites.py` | Generates the new pixel art in `img/` |
-| `js/display.js` | The display settings (fullscreen, resolution) and the desktop app's Quit button |
+| `tools/bench.cjs` | The performance benchmark (`npm run bench`) |
+| `js/display.js` | The display settings (fullscreen, resolution, Performance mode and its slow-frame tip) and the desktop app's Quit button |
 | `fonts/` | Press Start 2P, bundled so the game needs no internet |
 | `desktop/main.js` | The desktop app (Electron): the window and its saved state, keys, serving the game, auto-update |
 | `desktop/preload.js` | The small `window.desktop` API the page gets in the desktop app |

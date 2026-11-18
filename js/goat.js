@@ -339,7 +339,7 @@ function drawGoat(e, time) {
   });
   if (e.state === "charge" && e.step === 0) glow(c.x + e.facing * 70, e.y + 60, 50 + 20 * Math.sin(time * 30), "rgba(255,30,30,0.9)");
   if (e.state === "breath" && e.stateTime < 0.6) glow(mouthOf(e).x, mouthOf(e).y, 50 + 30 * Math.sin(time * 30), "rgba(255,160,40,0.9)");
-  glow(c.x, c.y, 260, e.phase === 2 ? "rgba(255,0,40,0.5)" : e.enraged ? "rgba(255,20,60,0.4)" : "rgba(255,120,40,0.25)");
+  decorGlow(c.x, c.y, 260, e.phase === 2 ? "rgba(255,0,40,0.5)" : e.enraged ? "rgba(255,20,60,0.4)" : "rgba(255,120,40,0.25)"); // its aura
   drawGoatBody(e.x, e.y, e.w, e.h, e.facing, goatFrame(e), e, time);
   if (e.state === "dazed") {
     for (let i = 0; i < 3; i++) {

@@ -45,8 +45,8 @@ function squash(sx, sy) {
 }
 
 function dust(x, y, count, spread = 1) {
-  for (let i = 0; i < count && particles.length < 260; i++) {
-    particles.push({ x: x + rand(-12, 12) * spread, y: y - 4, vx: rand(-140, 140) * spread, vy: rand(-140, -40), life: rand(0.25, 0.45), size: rand(5, 9), color: "#bfaee6" });
+  for (let i = 0; i < count && particles.length < particleCap(); i++) {
+    particles.push(makeParticle(x + rand(-12, 12) * spread, y - 4, rand(-140, 140) * spread, rand(-140, -40), rand(0.25, 0.45), rand(5, 9), "#bfaee6"));
   }
 }
 

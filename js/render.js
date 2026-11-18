@@ -64,13 +64,7 @@ function render(time) {
     ctx.fillStyle = `rgba(255,255,255,${game.landFlash * 1.6})`; // hero landing impact
     ctx.fillRect(0, 0, W, H);
   }
-  if (game.hurtFlash > 0) {
-    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.95);
-    g.addColorStop(0, "rgba(255,0,60,0)");
-    g.addColorStop(1, `rgba(255,0,60,${game.hurtFlash})`);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-  }
+  if (game.hurtFlash > 0) drawHurtFlash(game.hurtFlash);
   if (game.state === "over") {
     ctx.globalAlpha = clamp(game.overTime / 0.8, 0, 1);
     if (isReady(IMG.endGame)) {
@@ -85,6 +79,25 @@ function render(time) {
     drawLetterbox();
     drawHUD(time);
   }
+}
+
+// Red edges when you get hit. A full-screen radial gradient costs several ms
+// without a GPU, so Performance mode draws four translucent bars instead.
+function drawHurtFlash(k) {
+  if (perfMode()) {
+    const t = H * 0.16;
+    ctx.fillStyle = `rgba(255,0,60,${Math.min(1, k) * 0.55})`;
+    ctx.fillRect(0, 0, W, t);
+    ctx.fillRect(0, H - t, W, t);
+    ctx.fillRect(0, t, t, H - 2 * t);
+    ctx.fillRect(W - t, t, t, H - 2 * t);
+    return;
+  }
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.95);
+  g.addColorStop(0, "rgba(255,0,60,0)");
+  g.addColorStop(1, `rgba(255,0,60,${k})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
 }
 
 function drawEffects() {
@@ -121,7 +134,7 @@ function drawEffects() {
   ctx.textBaseline = "middle";
   popups.forEach((p) => {
     ctx.globalAlpha = Math.min(1, p.life / 0.3);
-    ctx.font = `${p.size}px ${FONT}`;
+    ctx.font = fontPx(p.size);
     ctx.fillStyle = "#000";
     ctx.fillText(p.text, p.x + 3, p.y + 3);
     ctx.fillStyle = p.color;
@@ -151,7 +164,7 @@ function drawDebug() {
 
 // ------------------------------------------------------------------ HUD -----
 function hudText(text, x, y, size, color, align = "left", baseline = "top") {
-  ctx.font = `${size}px ${FONT}`;
+  ctx.font = fontPx(size);
   ctx.textAlign = align;
   ctx.textBaseline = baseline;
   ctx.fillStyle = "rgba(0,0,0,0.75)";
@@ -302,7 +315,7 @@ function drawHUD(time) {
   if (game.banner) {
     ctx.globalAlpha = clamp(game.banner.time / 0.4, 0, 1);
     // shrink long banners so they always fit the screen
-    ctx.font = `52px ${FONT}`;
+    ctx.font = fontPx(52);
     const size = Math.min(52, Math.floor((52 * (VW - 80)) / ctx.measureText(game.banner.text).width));
     hudText(game.banner.text, VW / 2, H / k / 2 - 180, size, game.banner.color || "#ff2457", "center", "middle");
     ctx.globalAlpha = 1;
