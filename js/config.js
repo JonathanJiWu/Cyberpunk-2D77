@@ -40,7 +40,8 @@ const TUNING = {
   },
   boss: {
     at: 150, // seconds into the run when the Overseer shows up (boss HP is in database.js)
-    overseerDelay: 40, // the final boss (the GOAT) arrives this long after the Overseer falls
+    overseerDelay: 35, // NULL arrives this long after the Overseer falls...
+    nullDelay: 35, // ...and the final boss (the GOAT) this long after NULL
   },
 };
 

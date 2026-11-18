@@ -1597,7 +1597,7 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
-  await test("bosses: the Overseer (minions derez, no spawns, vents) then the GOAT as final boss; beating it wins", async () => {
+  await test("bosses: the Overseer (minions derez, no spawns, vents), then NULL, then the GOAT as final boss; beating it wins", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { quiet: false, settings: { autoFire: false, autoFlame: false } });
     const r = await page.evaluate(() => {
@@ -1615,7 +1615,7 @@ const fastForward = (page, seconds, bot) =>
       game.time = director.nextBossAt;
       step(2);
       const o = game.boss;
-      out.overseer = !!o && o.type === "overseer" && director.stage === 1;
+      out.overseer = !!o && o.type === "overseer" && director.stage === STAGE.overseer && STAGE.overseer === 1;
       out.locked = bossLocked();
       out.minionsAfter = enemies.filter((e) => !e.dead && !e.boss).length;
       const states = new Set();
@@ -1629,10 +1629,20 @@ const fastForward = (page, seconds, bot) =>
       damageEnemy(o, o.hp + 1, { source: "test" });
       step(5);
       out.afterOverseer = { stage: director.stage, wait: Math.round(director.nextBossAt - game.time), defeated: game.bossesDefeated };
+      // NULL is next (its own test below covers the fight): wait out its
+      // entrance, then delete it
+      director.nextBossAt = game.time;
+      step(2);
+      const n = game.boss;
+      out.nullNext = !!n && n.type === "nullptr" && director.stage === STAGE.nullptr && BOSSES.nullptr.title === "Second boss";
+      for (let i = 0; i < 600 && (n.parked || bossLocked()); i++) step(1);
+      damageEnemy(n, n.hp + 1, { source: "test" });
+      step(5);
+      out.afterNull = { stage: director.stage, wait: Math.round(director.nextBossAt - game.time), defeated: game.bossesDefeated, copies: enemies.filter((e) => !e.dead && e.type === "nullptr").length };
       director.nextBossAt = game.time;
       step(2);
       const g = game.boss;
-      out.goat = !!g && g.type === "goat" && director.stage === 3 && BOSSES.goat.title === "Final boss";
+      out.goat = !!g && g.type === "goat" && director.stage === STAGE.goat && BOSSES.goat.title === "Final boss";
       const gStates = new Set();
       for (let i = 0; i < 60 * 40; i++) {
         step(1);
@@ -1656,11 +1666,217 @@ const fastForward = (page, seconds, bot) =>
     assert(r.spawnedDuringBoss === 0, "minions spawned during the boss fight: " + r.spawnedDuringBoss);
     assert(r.grounded, "the Overseer is not on the ground");
     assert(r.afterOverseer.stage === 2 && r.afterOverseer.wait > 10 && r.afterOverseer.defeated === 1, "no interlude after the Overseer: " + JSON.stringify(r.afterOverseer));
+    assert(r.nullNext, "NULL did not arrive second: " + JSON.stringify(r));
+    assert(r.afterNull.stage === 4 && r.afterNull.wait > 10 && r.afterNull.defeated === 2 && r.afterNull.copies === 0, "no interlude after NULL: " + JSON.stringify(r.afterNull));
     assert(r.goat, "the GOAT did not arrive as the final boss");
     assert(["charge", "leap", "breath"].filter((s) => r.goatStates.includes(s)).length >= 2, "GOAT used too few attacks: " + r.goatStates.join(","));
     assert(r.phase >= 1 && r.goatStates.includes("roar"), "GOAT did not enrage with a roar: " + JSON.stringify(r));
     assert(r.dying, "no death sequence for the GOAT");
     assert(r.won && r.state === "over", "killing the GOAT did not win: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("NULL: glitch entrance, one real among its copies (hits pop copies), blink glyph, shuriken fan, rail snipe, phases, rewards; Overseer > NULL > GOAT to a win", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { quiet: false, settings: { autoFire: false, autoFlame: false } });
+    const r = await page.evaluate(() => {
+      const out = { order: [] };
+      const step = (k) => {
+        for (let i = 0; i < k && game.state !== "over"; i++) {
+          player.hp = stats.maxHp;
+          if (game.state === "levelup") chooseUpgrade(0, true);
+          update(1 / 60);
+        }
+      };
+      const until = (cond, max = 600) => {
+        let i = 0;
+        while (!cond() && i++ < max) step(1);
+        return i;
+      };
+      const figures = () => enemies.filter((e) => !e.dead && e.type === "nullptr");
+      const minions = () => enemies.filter((e) => !e.dead && !e.boss).length;
+      const draw = () => render(performance.now() / 1000); // the drawing code must not throw either
+      director.firstSpawn = 0;
+      step(240);
+      // The Overseer first
+      game.time = director.nextBossAt;
+      step(2);
+      const o = game.boss;
+      out.order.push(o.type);
+      step(60 * 4);
+      damageEnemy(o, o.hp + 1, { source: "test" });
+      step(5);
+      out.interlude1 = { stage: director.stage, wait: Math.round(director.nextBossAt - game.time) };
+      step(60 * 3);
+      out.minionsBefore = minions();
+
+      // ---- The entrance: fragments converge into one figure, its own card, then copies
+      director.nextBossAt = game.time;
+      step(2);
+      const n = game.boss;
+      out.order.push(n.type);
+      out.entrance = { stage: director.stage, locked: bossLocked(), card: game.cinematic.style, title: game.cinematic.title, minions: minions(), parked: n.parked, cloaked: n.cloaked };
+      step(30);
+      out.entrance.frags = nullFx.frags.length;
+      draw();
+      until(() => n.formed);
+      out.entrance.formed = !n.parked;
+      until(() => !bossLocked());
+      const figs = figures();
+      out.split = { figures: figs.length, real: figs.filter((e) => !e.decoy).length, label: nullTargetLabel(n), cloaked: n.cloaked };
+      draw();
+
+      // ---- Copies attack too, but weakly
+      const d = figs.find((e) => e.decoy);
+      enemyShots.length = 0;
+      player.invuln = 2; // (so none of them is used up on you before it's counted)
+      nullState(d, "toss");
+      until(() => d.step === 1, 40); // (counted on the frame they leave its hand)
+      const holo = enemyShots.filter((s) => s.kind === "shuriken" && s.holo);
+      out.copyAttack = { shots: holo.length, damage: holo.length ? holo[0].damage : 0, owner: holo.every((s) => s.owner === n) };
+
+      // ---- Hitting a copy pops it (no damage to NULL) and reveals the real one
+      const hp0 = n.hp;
+      damageEnemy(d, 5, { source: "test" });
+      step(1);
+      out.pop = { dead: d.dead, untouched: n.hp === hp0, reveal: n.revealT > 0, label: nullTargetLabel(n), cloaked: n.cloaked, real: figures().filter((e) => !e.decoy).length };
+      until(() => !n.parked);
+      const hp2 = n.hp;
+      damageEnemy(n, 10, { source: "test" });
+      out.realHit = n.hp < hp2;
+      draw();
+
+      // ---- Blink: it dissolves, a glyph marks where it will be, then it's there and slashes
+      figures().filter((e) => e.decoy).forEach((e) => popDecoy(e, true));
+      until(() => !n.parked && n.onGround);
+      n.chainLeft = n.chainIdx = 0;
+      nullState(n, "blink");
+      until(() => n.parked, 60);
+      const g = n.glyph;
+      out.blink = { glyph: !!g && nullFx.glyphs.includes(g), parked: n.parked, cloaked: n.cloaked };
+      draw();
+      const hp1 = n.hp;
+      damageEnemy(n, 50, { source: "test" });
+      out.blink.untouchable = n.hp === hp1;
+      out.blink.wait = until(() => !n.parked, 120) / 60;
+      out.blink.tell = g ? g.tell : 0;
+      out.blink.atGlyph = g ? Math.abs(n.x + n.w / 2 - g.x) < 40 : false;
+      out.blink.glyphGone = !nullFx.glyphs.includes(g);
+      until(() => nullFx.slashes.length > 0, 60);
+      out.blink.slashed = nullFx.slashes.length > 0;
+      draw();
+
+      // ---- Shuriken fan: a glint first, then spinning stars at different speeds
+      until(() => n.state === "move" && n.onGround, 240);
+      enemyShots.length = 0;
+      player.invuln = 3;
+      nullState(n, "fan");
+      step(5);
+      out.fan = { beforeThrow: enemyShots.length };
+      until(() => n.step >= 1, 60); // counted on the frame they leave its hand
+      const stars = enemyShots.filter((s) => s.kind === "shuriken");
+      const angles = stars.map((s) => Math.atan2(s.vy, s.vx));
+      Object.assign(out.fan, { n: stars.length, speeds: new Set(stars.map((s) => Math.round(Math.hypot(s.vx, s.vy)))).size, owner: stars.every((s) => s.owner === n), spread: Math.max(...angles) - Math.min(...angles) });
+      draw();
+
+      // ---- Rail snipe: an aim line that tracks, then locks, then one fast shot
+      until(() => n.state === "move" && n.onGround, 240);
+      enemyShots.length = 0;
+      nullState(n, "snipe");
+      until(() => !!n.aim, 300);
+      out.snipe = { aiming: !!n.aim, lockedAtFirst: !!(n.aim && n.aim.locked), railsWhileAiming: nullFx.rails.length };
+      draw();
+      until(() => n.aim && n.aim.locked, 120);
+      out.snipe.locked = !!(n.aim && n.aim.locked);
+      const locked = n.aim && n.aim.angle;
+      step(4);
+      out.snipe.held = !n.aim || n.aim.angle === locked;
+      out.snipe.railsAtLock = nullFx.rails.length;
+      until(() => nullFx.rails.length > 0, 60);
+      const rail = nullFx.rails[0];
+      out.snipe.fired = !!rail && rail.owner === n && Math.abs(Math.atan2(rail.uy, rail.ux) - locked) < 1e-6;
+      draw();
+      out.minionsDuring = minions();
+
+      // ---- Phases: more copies below 60%, STACK OVERFLOW below 25%
+      until(() => !n.parked && n.state === "move", 300);
+      n.hp = n.maxHp * 0.5;
+      step(60);
+      out.phase1 = { phase: n.phase, copies: figures().filter((e) => e.decoy).length };
+      until(() => !n.parked, 300);
+      n.hp = n.maxHp * 0.2;
+      step(1);
+      out.phase2 = { phase: n.phase, banner: game.banner && game.banner.text, state: n.state, chain: n.chainLeft };
+      out.phase2.coredump = until(() => n.state === "coredump", 600) < 600;
+      step(2);
+      out.phase2.exposed = n.vulnT > 0;
+      draw();
+
+      // ---- Rewards: +1 life (a heal when full) and the RARE CACHE
+      director.firstSpawn = 1e9; // no XP from here on: the next level-up is ours
+      gems.length = 0;
+      game.lives = 2;
+      until(() => !n.parked && !bossLocked());
+      damageEnemy(n, n.hp + 1, { source: "test" });
+      step(2);
+      out.killed = { dead: n.dead, stage: director.stage, copies: figures().length, defeated: game.bossesDefeated };
+      step(60 * 3);
+      draw();
+      out.reward = { lives: game.lives, cache: progress.rareCache, banner: game.banner ? game.banner.text : "", wait: Math.round(director.nextBossAt - game.time) };
+      progress.pending = 1;
+      update(1 / 60);
+      out.cache = { state: game.state, allRare: currentChoices.length > 0 && currentChoices.every((c) => c.rare) };
+      chooseUpgrade(0, true);
+      out.cache.spent = !progress.rareCache;
+
+      // ---- Then the GOAT, to a win
+      director.nextBossAt = game.time;
+      step(2);
+      const goat = game.boss;
+      out.order.push(goat.type);
+      out.goatStage = director.stage === STAGE.goat;
+      step(60 * 5);
+      damageEnemy(goat, goat.hp + 1, { source: "test" });
+      step(60 * 4);
+      out.won = game.won && game.state === "over";
+      out.bossesDefeated = game.bossesDefeated;
+      return out;
+    });
+    const j = JSON.stringify;
+    assert(r.order.join(">") === "overseer>nullptr>goat", "boss order: " + r.order.join(">"));
+    assert(r.interlude1.stage === 2 && r.interlude1.wait >= 30, "no interlude before NULL: " + j(r.interlude1));
+    assert(r.minionsBefore > 0, "no minions in the interlude to derez");
+    const e = r.entrance;
+    assert(e.stage === 3 && e.locked && e.card === "nullptr" && e.title === "NULL" && e.minions === 0, "NULL's entrance: " + j(e));
+    assert(e.parked && e.frags > 20 && e.formed, "no fragments converging into NULL: " + j(e));
+    assert(r.split.figures === 3 && r.split.real === 1 && r.split.label === "REAL TARGET: ?" && r.split.cloaked, "NULL did not split into copies: " + j(r.split));
+    assert(r.copyAttack.shots === 2 && r.copyAttack.damage < 10 && r.copyAttack.owner, "the copies don't attack (weakly): " + j(r.copyAttack));
+    assert(r.pop.dead && r.pop.untouched && r.pop.reveal && r.pop.label === "REAL TARGET: LOCKED" && !r.pop.cloaked && r.pop.real === 1, "hitting a copy did not pop it and reveal NULL: " + j(r.pop));
+    assert(r.realHit, "hitting the real NULL did no damage");
+    const b = r.blink;
+    assert(b.glyph && b.parked && b.cloaked && b.untouchable, "no glyph while NULL is gone (or it could be hit): " + j(b));
+    assert(b.wait >= b.tell - 0.05 && b.atGlyph && b.glyphGone && b.slashed, "NULL did not reappear at its glyph after the tell and slash: " + j(b));
+    assert(r.fan.beforeThrow === 0 && r.fan.n === 5 && r.fan.speeds >= 4 && r.fan.owner && r.fan.spread > 0.6, "shuriken fan: " + j(r.fan));
+    const s = r.snipe;
+    assert(s.aiming && !s.lockedAtFirst && s.railsWhileAiming === 0 && s.locked && s.held && s.railsAtLock === 0 && s.fired, "rail snipe telegraph: " + j(s));
+    assert(r.minionsDuring === 0, "minions spawned during NULL: " + r.minionsDuring);
+    assert(r.phase1.phase === 1 && r.phase1.copies === 3, "below 60% NULL should make more copies: " + j(r.phase1));
+    const p2 = r.phase2;
+    assert(p2.phase === 2 && p2.banner === "STACK OVERFLOW" && p2.state === "blink" && p2.chain === 2 && p2.coredump && p2.exposed, "STACK OVERFLOW: " + j(p2));
+    assert(r.killed.dead && r.killed.stage === 4 && r.killed.copies === 0 && r.killed.defeated === 2, "NULL's defeat: " + j(r.killed));
+    assert(r.reward.lives === 3 && r.reward.cache && /RARE CACHE/.test(r.reward.banner) && r.reward.wait >= 25, "NULL's rewards: " + j(r.reward));
+    assert(r.cache.state === "levelup" && r.cache.allRare && r.cache.spent, "the RARE CACHE level-up: " + j(r.cache));
+    assert(r.goatStage && r.won && r.bossesDefeated === 3, "no win after all three bosses: " + j(r));
+    // With all 3 lives, the reward is a big heal instead
+    const heal = await page.evaluate(() => {
+      startGame();
+      skipIntro();
+      player.hp = 20;
+      nullReward();
+      return { lives: game.lives, hp: player.hp, max: stats.maxHp, cache: progress.rareCache };
+    });
+    assert(heal.lives === 3 && heal.hp >= 20 + heal.max * 0.5 && heal.cache, "full lives: no big heal: " + j(heal));
     assert(!problems.length, problems.join("; "));
     await context.close();
   });
@@ -1683,7 +1899,7 @@ const fastForward = (page, seconds, bot) =>
     assert(open1 && closed, "codex did not open and close");
     assert(counts.characters.all === 3, "ICs: " + JSON.stringify(counts.characters));
     assert(counts.enemies.all === 8 && counts.enemies.locked === 8, "enemies: " + JSON.stringify(counts.enemies));
-    assert(counts.bosses.all === 2 && counts.bosses.locked === 2, "bosses: " + JSON.stringify(counts.bosses));
+    assert(counts.bosses.all === 3 && counts.bosses.locked === 3, "bosses: " + JSON.stringify(counts.bosses));
     assert(counts.skills.all >= 10 && counts.skills.locked === 0, "skills: " + JSON.stringify(counts.skills));
     assert(!problems.length, problems.join("; "));
     await context.close();

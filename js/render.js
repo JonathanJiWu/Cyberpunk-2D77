@@ -22,6 +22,7 @@ function render(time) {
   drawPickups(time);
   drawEnemies(time);
   drawGoatDeath(time);
+  drawNullFx(time);
   drawShockwaves(time);
   drawPlayer(time);
   drawPlayerProjectiles();
@@ -42,9 +43,9 @@ function render(time) {
     ctx.fillRect(0, 0, W, H);
   }
 
-  // Red sky while a boss is alive; the GOAT sets it on fire, with lightning
+  // Red sky while a boss is alive (violet for NULL); the GOAT sets it on fire
   if (game.boss && !game.boss.dead && game.state !== "over") {
-    ctx.fillStyle = `rgba(255,20,60,${0.08 + 0.04 * Math.sin(time * 2)})`;
+    ctx.fillStyle = game.boss.type === "nullptr" ? `rgba(90,30,200,${0.09 + 0.04 * Math.sin(time * 2)})` : `rgba(255,20,60,${0.08 + 0.04 * Math.sin(time * 2)})`;
     ctx.fillRect(0, 0, W, H);
   }
   if (game.goatSky && game.state !== "over") {
@@ -274,15 +275,16 @@ function drawHUD(time) {
   // Run timer / boss
   hudText(formatTime(game.time), VW / 2, 34, 40, "#ffffff", "center");
   const boss = game.boss;
-  if (boss && !boss.dead) {
+  if (boss && !boss.dead && boss.type === "nullptr") drawNullBar(boss, VW, time);
+  else if (boss && !boss.dead) {
     const name = BOSSES[boss.type].name.toUpperCase();
     const color = boss.type === "overseer" ? "#19f5ff" : "#ff2457";
     hudText(boss.enraged ? `${name} !!` : name, VW / 2, 92, 22, boss.enraged ? color : "#ffffff", "center");
     drawBar(VW / 2 - 320, 124, 640, 26, boss.hp / boss.maxHp, boss.ghostHp / boss.maxHp, color);
-  } else if (director.stage === 0 || director.stage === 2) {
+  } else if (director.stage === STAGE.start || director.stage === STAGE.interlude1 || director.stage === STAGE.interlude2) {
     const left = director.nextBossAt - game.time;
     const urgent = left < 10 && Math.sin(time * 10) > 0;
-    const label = director.stage === 0 ? "BOSS IN" : "FINAL BOSS IN";
+    const label = { [STAGE.start]: "BOSS IN", [STAGE.interlude1]: "NEXT BOSS IN", [STAGE.interlude2]: "FINAL BOSS IN" }[director.stage];
     hudText(`${label} ${formatTime(left)}`, VW / 2, 92, 20, urgent ? "#ff2457" : "#c9b6ff", "center");
   }
 
@@ -306,9 +308,10 @@ function drawHUD(time) {
     ctx.globalAlpha = 1;
   }
   drawBossCard(VW, H / k);
+  drawNullTear(VW, H / k);
   ctx.restore();
 
-  if (boss && !boss.dead && !onScreen(boss)) drawBossArrow(boss, time);
+  if (boss && !boss.dead && !boss.cloaked && !onScreen(boss)) drawBossArrow(boss, time);
   drawCinematic();
 }
 

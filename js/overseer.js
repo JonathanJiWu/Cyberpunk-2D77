@@ -29,7 +29,7 @@ const OVERSEER = {
 };
 
 function spawnOverseer() {
-  director.stage = 1;
+  director.stage = STAGE.overseer;
   const pc = centerOf(player);
   const side = pc.x < WORLD_W / 2 ? 1 : -1;
   const x = clamp(pc.x + side * 520 - OVERSEER.w / 2, 40, WORLD_W - OVERSEER.w - 40);
@@ -44,12 +44,12 @@ function spawnOverseer() {
 }
 
 function overseerDefeated(e) {
-  director.stage = 2;
+  director.stage = STAGE.interlude1;
   director.nextBossAt = game.time + TUNING.boss.overseerDelay;
   game.boss = null;
   game.bossesDefeated = (game.bossesDefeated || 0) + 1;
   game.slowmo = { time: 1.2, scale: 0.3 };
-  game.banner = { text: "OVERSEER DOWN // SOMETHING BIGGER IS COMING", time: 3, color: "#19f5ff" };
+  game.banner = { text: "OVERSEER DOWN // NOTHING IS WATCHING YOU", time: 3, color: "#19f5ff" };
   music.setIntensity(1);
   shockwaves.length = 0;
   player.hp = Math.min(stats.maxHp, player.hp + 30);

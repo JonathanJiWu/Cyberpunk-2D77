@@ -335,7 +335,7 @@ function autoAim(range = 1150, projSpeed = TUNING.zap.speed) {
   let target = nearestEnemy(pc.x, pc.y, range, onScreen);
   // A boss takes priority, unless a minion is right on top of you
   const boss = game.boss;
-  if (boss && !boss.dead && target !== boss && onScreen(boss)) {
+  if (boss && !boss.dead && !boss.cloaked && target !== boss && onScreen(boss)) { // (NULL among its copies: no peeking)
     const bc = centerOf(boss);
     const tc = target && centerOf(target);
     const close = tc && Math.hypot(tc.x - pc.x, tc.y - pc.y) < 280;
