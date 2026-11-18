@@ -19,6 +19,7 @@ const game = {
 };
 
 function resetGame() {
+  coopReset(); // co-op: player 2 leaves the old run (their seat stays for the next)
   resetWorld();
   resetPlayer();
   resetEnemies();
@@ -33,6 +34,7 @@ function resetGame() {
   intro.active = false;
   resetSecretsRun();
   resetBossFx();
+  resetKits();
   resetGoat();
   breachEl.hidden = true;
   camera.x = 0;
@@ -42,49 +44,69 @@ function resetGame() {
 }
 
 function updateCamera(dt) {
-  let target = player.x + player.w / 2 - W / 2 + player.facing * 140;
+  const pair = coopFrame(); // co-op: the midpoint of both players
+  const fx = pair ? pair.x : player.x + player.w / 2;
+  let target = pair ? fx - W / 2 : fx - W / 2 + player.facing * 140;
   // During a boss entrance, frame both of you
   const focus = game.cinematic && game.cinematic.focus;
-  if (focus && !focus.dead) target = (player.x + player.w / 2 + focus.x + focus.w / 2) / 2 - W / 2;
+  if (focus && !focus.dead) target = (fx + focus.x + focus.w / 2) / 2 - W / 2;
   camera.x += (target - camera.x) * (1 - Math.exp(-5 * dt));
   camera.x = clamp(camera.x, 0, WORLD_W - W);
   // Follow climbs, keeping the player a bit below the middle of the screen
-  const targetY = clamp(player.y + player.h / 2 - H * 0.58, WORLD_TOP, 0);
+  const targetY = clamp((pair ? pair.y : player.y + player.h / 2) - H * 0.58, WORLD_TOP, 0);
   camera.y += (targetY - camera.y) * (1 - Math.exp(-4 * dt));
 }
 
+// Per-player systems run once per player with the globals bound to them
+// (coop.js); with one player that is simply player 1, as it always was.
 function update(dt) {
   game.time += dt;
   updateWorld(dt, game.time);
   refreshMouseWorld();
-  if (bossLocked()) {
-    clearInput(); // a boss is making its entrance
-    player.invuln = Math.max(player.invuln, 0.4);
-  }
-  if (intro.active) updateIntro(dt);
-  else updatePlayer(dt);
-  updateSecrets(dt);
+  coopUpdate(dt); // co-op: the join panel, respawns, a lost pad
+  forEachPlayer((pc) => {
+    if (!inWorld(pc)) return; // co-op: still picking an IC, or out of lives
+    if (bossLocked()) {
+      clearInput(); // a boss is making its entrance
+      player.invuln = Math.max(player.invuln, 0.4);
+    }
+    if (intro.active) updateIntro(dt);
+    else updatePlayer(dt);
+  });
+  coopLeash(dt); // co-op: both stay on one screen
+  if (!P1().out) updateSecrets(dt); // (player 1's)
   if (game.state !== "playing") return; // jacked into a terminal
   const edt = dt * enemyTimeScale(); // Sandevistan / slow-mo
-  updateDirector(dt);
+  withPlayer(coopLead(), () => updateDirector(dt));
   updateEnemies(edt);
-  updatePlayerShots(dt);
-  updateMissiles(dt);
+  forEachPlayer(() => {
+    updatePlayerShots(dt);
+    updateMissiles(dt);
+  });
   updateEnemyShots(edt);
   updateBossFx(edt);
   updateGoatDeath(dt);
   updatePickups(dt);
   sweepDead();
   updateEffects(dt);
-  updateHeroFx(dt);
-  updateCamera(dt);
+  forEachPlayer(() => {
+    updateHeroFx(dt);
+    updateKits(dt);
+  });
+  withPlayer(coopLead(), () => updateCamera(dt));
   game.hurtFlash = Math.max(0, game.hurtFlash - dt);
   game.hackFlash = Math.max(0, (game.hackFlash || 0) - dt);
   game.landFlash = Math.max(0, (game.landFlash || 0) - dt);
+  game.dilationFlash = Math.max(0, (game.dilationFlash || 0) - dt);
   if (game.banner && (game.banner.time -= dt) <= 0) game.banner = null;
   if (game.state !== "playing") return; // e.g. the boss just died
-  if (player.hp <= 0) playerDown();
-  else if (progress.pending > 0) openLevelUp();
+  let down = false;
+  forEachPlayer((pc) => {
+    if (game.state !== "playing" || !inWorld(pc) || player.hp > 0) return;
+    down = true;
+    playerDown();
+  });
+  if (!down && game.state === "playing" && progress.pending > 0) openLevelUp();
 }
 
 // ------------------------------------------------------------ Game flow -----
@@ -96,6 +118,7 @@ function startGame() {
   music.setIntensity(1);
   music.play(true); // from the top
   startIntro("drop"); // the superhero landing (says the start line)
+  coopStartRun(); // co-op: player 2 (ready on the menus) drops in too
 }
 
 function pauseGame() {
@@ -107,7 +130,7 @@ function pauseGame() {
 
 function resumeGame() {
   if (game.state !== "paused") return;
-  clearInput();
+  forEachPlayer(() => clearInput());
   setState("playing");
   music.play();
 }
@@ -171,6 +194,7 @@ function showOverlay({ title, text, button, help, secondary, stats: lines }) {
   renderCharSelect();
   document.getElementById("ic-label").textContent = game.state === "paused" ? "HOT-SWAP INDIVIDUAL CONTRIBUTOR" : "CHOOSE YOUR INDIVIDUAL CONTRIBUTOR";
   document.getElementById("respec-btn").hidden = game.state !== "paused";
+  coopRefreshMenu(); // co-op's join / leave buttons
   document.getElementById("overlay-tip").textContent = game.state === "paused" ? "" : "TIP: " + HUMOR.tips[Math.floor(Math.random() * HUMOR.tips.length)];
   document.getElementById("secrets").hidden = !help && !lines;
   renderSecretsList();
@@ -200,11 +224,12 @@ function showGameOver() {
     ["Kills", String(game.kills)],
     ["Lives used", `${Math.min(MAX_LIVES, game.livesLost + (game.won ? 0 : 1))}/${MAX_LIVES}`],
   ];
+  if (game.coopRun) lines.push(["Mode", "2P co-op"]);
   if (runSecrets.size) lines.push(["Secrets", SECRETS.filter((s) => runSecrets.has(s.id)).map((s) => s.name).join(", ")]);
   if (game.won) {
     showOverlay({
       title: "Cyber City Is Free!",
-      text: `${CH().name}: "${CH().quotes.win}" The Overseer and the Demon GOAT are scrap. Ship it.`,
+      text: `${CH().name}: "${CH().quotes.win}" The Overseer is scrap, NULL is freed and the Demon GOAT is lamb chops. Ship it.`,
       button: "Play Again",
       stats: lines,
     });
@@ -214,7 +239,7 @@ function showGameOver() {
     const rain = weather.amount > 0.5;
     const joke = HUMOR.gameOver[Math.floor(Math.random() * HUMOR.gameOver.length)];
     showOverlay({
-      title: rain ? "Like tears in rain..." : director.stage >= 3 ? "The GOAT Got Your Soul!" : "Process Terminated",
+      title: rain ? "Like tears in rain..." : director.stage >= STAGE.goat ? "The GOAT Got Your Soul!" : director.stage === STAGE.nullptr ? "NullPointerException!" : "Process Terminated",
       text: rain ? "Time to die. The rain washes the street clean." : `${CH().name}: "${CH().quotes.lose}" // ${joke}`,
       button: "Try Again",
       stats: lines,
@@ -266,7 +291,7 @@ function handleMenuKey(e) {
   if (overlay.hidden) return false;
   if (e.code === "Enter" || e.code === "Space") {
     const el = document.activeElement;
-    if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret") || el.classList.contains("char-card") || el.id === "codex-btn" || el.id === "respec-btn" || el.id === "overlay-btn-2")) return true; // let it click
+    if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret") || el.classList.contains("char-card") || el.id === "codex-btn" || el.id === "respec-btn" || el.id === "overlay-btn-2" || el.id === "coop-join-btn" || el.id === "coop-leave-btn")) return true; // let it click
     e.preventDefault();
     if (!e.repeat) overlayPrimary();
   } else if ((e.code === "Escape" || e.code === "KeyP") && game.state === "paused") {
@@ -311,18 +336,7 @@ muteBtn.addEventListener("click", () => {
 
 const root = document.documentElement;
 if (!(document.fullscreenEnabled || document.webkitFullscreenEnabled)) fullscreenBtn.hidden = true;
-fullscreenBtn.addEventListener("click", () => {
-  if (document.fullscreenElement || document.webkitFullscreenElement) {
-    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    return;
-  }
-  const req = root.requestFullscreen || root.webkitRequestFullscreen;
-  const p = req && req.call(root, { navigationUI: "hide" });
-  // On Android, also try to lock the screen to landscape
-  Promise.resolve(p)
-    .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape"))
-    .catch(() => {});
-});
+fullscreenBtn.addEventListener("click", () => toggleFullscreen()); // display.js: the Fullscreen API, or the desktop app's window
 // Keep buttons from holding keyboard focus (Space would "click" them)
 document.querySelectorAll(".icon-btn").forEach((b) => b.addEventListener("mouseup", () => b.blur()));
 
@@ -343,9 +357,10 @@ function layout() {
   gameEl.style.width = w + "px";
   gameEl.style.height = h + "px";
   gameEl.style.setProperty("--u", w / 100 + "px");
-  // Render at the screen's real resolution (capped at 1080p) for crisp pixels
+  // Render at the screen's real resolution (capped at 1080p) for crisp pixels,
+  // or at the resolution picked in the settings (display.js)
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const backingW = Math.max(320, Math.min(W, Math.round(w * dpr)));
+  const backingW = renderWidthFor(w, dpr);
   if (canvas.width !== backingW) {
     canvas.width = backingW;
     canvas.height = Math.round((backingW * 9) / 16);
@@ -366,6 +381,19 @@ layout();
 // requestAnimationFrame + delta time: same speed at 60Hz, 120Hz or on a slow
 // phone. Long frames are split so fast things never skip through walls.
 let lastTime = performance.now();
+// The touch SPECIAL button: its ring, state and label. The DOM is only
+// touched when something changed (in 1% steps), not every frame.
+const specialBtnState = { heat: "", hot: null, on: null };
+function syncSpecialButton() {
+  const special = CH().special;
+  const st = specialBtnState;
+  const heat = (player.heat / TUNING.heat.max).toFixed(2);
+  const on = special.hold ? input.buttons.flame : false;
+  if (heat !== st.heat) flameBtn.style.setProperty("--heat", (st.heat = heat));
+  if (player.heatLocked !== st.hot) flameBtn.classList.toggle("overheated", (st.hot = player.heatLocked));
+  if (on !== st.on) flameBtn.classList.toggle("on", (st.on = on));
+  if (flameBtn.textContent !== special.label) flameBtn.textContent = special.label;
+}
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = Math.min(0.1, Math.max(0, (now - lastTime) / 1000));
@@ -376,13 +404,7 @@ function frame(now) {
       update(step);
       dt -= step;
     }
-    if (touchMode) {
-      const special = CH().special;
-      flameBtn.style.setProperty("--heat", (player.heat / TUNING.heat.max).toFixed(3));
-      flameBtn.classList.toggle("overheated", player.heatLocked);
-      flameBtn.classList.toggle("on", special.hold ? input.buttons.flame : false);
-      if (flameBtn.textContent !== special.label) flameBtn.textContent = special.label;
-    }
+    if (touchMode) syncSpecialButton();
   } else if (game.state === "breach") {
     updateBreach(dt);
   } else if (game.state === "over") {

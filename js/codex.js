@@ -51,8 +51,8 @@ function statBar(label, value, color) {
 }
 
 function portraitCanvas(ch, size) {
-  const own = isReady(IMG.portraits);
-  return own ? spriteCanvas("portraits", ch.portrait * 48, 0, 48, 48, size) : spriteCanvas(CHARACTERS.paine.sprite.img, 0, 0, 32, 48, size);
+  const sheet = isReady(IMG.portraits2) ? "portraits2" : "portraits";
+  return isReady(IMG[sheet]) ? spriteCanvas(sheet, ch.portrait * 48, 0, 48, 48, size) : spriteCanvas(CHARACTERS.paine.sprite.img, 0, 0, 32, 48, size);
 }
 
 // ------------------------------------------------------- Character select ---
@@ -72,8 +72,11 @@ function renderCharSelect() {
     info.append(statBar("HP", ch.hp / 160, "#ff2f6d"), statBar("ARMOR", ch.armor / 0.25, "#19f5ff"));
     info.append(el("span", "char-kit", `${ch.primary.name} + ${ch.special.name}`));
     card.append(info);
+    if (coop.seat && coop.seat.char === id) card.append(el("span", "char-p2", "P2")); // co-op: player 2's pick
     card.addEventListener("click", () => {
-      if (game.state === "paused") switchCharacter(id); // hot-swap mid-run
+      if (coopPickChar(id)) {
+        // clicked with player 2's pad: their IC (hot-swapped if they're in a run)
+      } else if (game.state === "paused") switchCharacter(id); // hot-swap mid-run
       else {
         settings.character = id;
         applySettings();
@@ -86,6 +89,7 @@ function renderCharSelect() {
 renderCharSelect();
 // Portraits load after the menu is built: refresh once they arrive
 if (IMG.portraits) IMG.portraits.addEventListener("load", renderCharSelect);
+if (IMG.portraits2) IMG.portraits2.addEventListener("load", renderCharSelect);
 
 // ---------------------------------------------------------------- Codex -----
 const codexEl = document.getElementById("codex");
@@ -168,7 +172,9 @@ function renderCodex() {
       if (locked) info.append(el("h3", "", `??? // ${b.title.toUpperCase()}`), el("p", "codex-lore", "Survive long enough to meet it."));
       else {
         info.append(el("h3", "", `${b.name} // ${b.title.toUpperCase()}`), statBar("HP", b.hp / 4400, "#ff2457"));
-        info.append(el("p", "codex-kit", b.desc), el("p", "codex-lore", b.lore));
+        info.append(el("p", "codex-kit", b.desc));
+        if (b.tells) info.append(el("p", "codex-kit", `TELLS: ${b.tells}`));
+        info.append(el("p", "codex-lore", b.lore));
       }
       card.append(info);
       codexBody.append(card);

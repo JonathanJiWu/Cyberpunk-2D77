@@ -1,3 +1,12 @@
+/* Bundled with the game (SIL Open Font License, see fonts/OFL.txt): no internet needed */
+@font-face {
+  font-family: "Press Start 2P";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/PressStart2P-Regular.ttf") format("truetype");
+}
+
 :root {
   --neon-pink: #ff2fd6;
   --neon-cyan: #19f5ff;
@@ -535,6 +544,47 @@ body.touch .vol input[type="range"]::-moz-range-thumb {
   color: var(--neon-pink);
 }
 
+/* Display: fullscreen and resolution (js/display.js) */
+.res-select {
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0.55em 0.8em;
+  border: 2px solid rgba(25, 245, 255, 0.4);
+  border-radius: 6px;
+  background: rgba(11, 4, 22, 0.9);
+  color: #fff;
+  color-scheme: dark;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.res-select:hover,
+.res-select:focus-visible {
+  border-color: var(--neon-cyan);
+  outline: none;
+  box-shadow: 0 0 10px rgba(25, 245, 255, 0.5);
+}
+
+.display-hint {
+  grid-column: 1 / -1;
+  max-width: 34em;
+  justify-self: center;
+  color: #a990d6;
+  font-size: 0.85em;
+  line-height: 1.6;
+  text-align: center;
+}
+
+#btn-fullscreen .icon-fs-exit,
+#btn-fullscreen[aria-pressed="true"] .icon-fs-enter {
+  display: none;
+}
+
+#btn-fullscreen[aria-pressed="true"] .icon-fs-exit {
+  display: block;
+}
+
 .how-to {
   margin: 0 0 1em;
   font-size: 0.85em;
@@ -547,10 +597,12 @@ body.touch .vol input[type="range"]::-moz-range-thumb {
   margin-bottom: 0.8em;
 }
 
-/* ------------------------------------------------- Level-up: hardware cards */
+/* ------------------------------------------------- Level-up: hardware posters */
 .levelup {
   z-index: 45;
-  background: radial-gradient(ellipse at center, rgba(40, 20, 0, 0.5), rgba(5, 1, 12, 0.88));
+  background:
+    linear-gradient(180deg, rgba(5, 1, 12, 0.94), rgba(5, 1, 12, 0.5) 12%, rgba(5, 1, 12, 0) 24%),
+    radial-gradient(ellipse at center, rgba(30, 14, 0, 0.62), rgba(5, 1, 12, 0.92));
 }
 
 .levelup-panel {
@@ -575,38 +627,63 @@ body.touch .vol input[type="range"]::-moz-range-thumb {
   color: #f1dcff;
 }
 
-/* Always one row of three, even on phones */
-.cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.3em;
-  perspective: 900px;
+/* The level-up and loadout screens always fit the screen: no scrolling.
+   The card areas are size containers, and every card is a 3:4 poster sized
+   from whichever runs out first, the width or the height. */
+.poster-panel {
+  --deck-gap: clamp(6px, 1.4em, 28px);
+  --wall-gap: clamp(5px, 0.7em, 16px);
+  --body-font: "Bahnschrift SemiCondensed", "Bahnschrift", "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
-/* A card is a circuit board: PCB colour + traces, a part number silkscreen,
-   the component art, a status LED and gold contacts along the bottom. */
+/* Always one row of three, even on phones */
+.cards {
+  container: deck / size;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--deck-gap);
+  perspective: 900px;
+}
+.cards .card {
+  --desc-lines: 6;
+  width: min(calc((100cqw - 2 * var(--deck-gap)) / 3), calc(100cqh * 0.72));
+}
+
+/* A card is a movie poster printed on a circuit board: PCB colour + traces,
+   a role tag and part-number silkscreen, the component art as the poster
+   image, the headline, the level line, the tagline and a "billing block"
+   with the guidance, a status LED and gold contacts along the bottom. */
 .card {
   --pcb: #0f3b2a;
   --pcb2: #072218;
   --trace: rgba(120, 255, 180, 0.13);
   --accent: #5aff7a;
+  --role: #ffe14d;
+  container: poster / inline-size;
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.55em;
-  min-height: 25em;
-  padding: 1.1em 0.9em 2.3em;
+  flex: none;
+  aspect-ratio: 3 / 4;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
   border: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
   border-radius: 6px 6px 3px 3px;
   background:
+    radial-gradient(ellipse 70% 38% at 50% 30%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
     repeating-linear-gradient(90deg, transparent 0 22px, var(--trace) 22px 24px, transparent 24px 46px),
     repeating-linear-gradient(0deg, transparent 0 30px, var(--trace) 30px 32px, transparent 32px 64px),
     linear-gradient(160deg, var(--pcb), var(--pcb2));
   box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent), inset 0 0 22px rgba(0, 0, 0, 0.55);
   color: #f1fff6;
-  font-size: 0.85em;
-  line-height: 1.5;
+  font: inherit;
+  line-height: 1.3;
+  text-align: center;
   touch-action: manipulation;
   transition: transform 0.12s, box-shadow 0.12s;
   animation: card-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1) both;
@@ -621,6 +698,12 @@ body.touch .vol input[type="range"]::-moz-range-thumb {
 .hw-cooler { --pcb: #0b2c3d; --pcb2: #04121b; --trace: rgba(25, 245, 255, 0.12); --accent: #19f5ff; }
 .hw-chip { --pcb: #2a0b3d; --pcb2: #12041c; --trace: rgba(176, 108, 255, 0.16); --accent: #b06cff; }
 
+/* Roles: colour-coded everywhere (cards, the loadout spec sheet) */
+.role-offense { --role: #ff4d6d; }
+.role-defense { --role: #4ea8ff; }
+.role-mobility { --role: #5aff7a; }
+.role-utility { --role: #ffe14d; }
+
 @keyframes card-in {
   from { opacity: 0; transform: translateY(40px) rotateX(35deg) scale(0.9); }
 }
@@ -631,26 +714,67 @@ body.touch .vol input[type="range"]::-moz-range-thumb {
   transform: translateY(-6px) scale(1.02);
   box-shadow: 0 0 32px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 0 22px rgba(0, 0, 0, 0.5);
 }
-
-/* gold edge-connector */
-.hw-pins {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  bottom: -2px;
-  height: 1.1em;
-  border-radius: 2px 2px 0 0;
-  background: repeating-linear-gradient(90deg, #ffd166 0 6px, #a87a12 6px 8px, transparent 8px 11px);
-  box-shadow: 0 0 8px rgba(255, 209, 102, 0.5);
+.card:not(.rare):focus-visible {
+  border-color: #fff;
 }
-.hw-cpu .hw-pins { left: 0; right: 0; height: 0.5em; background: repeating-linear-gradient(90deg, #ffd166 0 3px, transparent 3px 7px); }
+
+/* The poster itself: everything below sizes with the card (cqi) */
+.poster {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1.4cqi;
+  padding: 4cqi 5cqi 9cqi;
+  overflow: hidden;
+}
+
+.poster-top {
+  display: flex;
+  align-items: center;
+  gap: 2.5cqi;
+  min-height: 7cqi;
+  padding-right: 7cqi; /* the LED */
+}
+
+.role-tag {
+  flex: none;
+  padding: 0.45em 0.55em 0.35em;
+  border-radius: 3px;
+  background: var(--role);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--role) 55%, transparent);
+  color: #0b0416;
+  font-size: clamp(6px, 4.3cqi, 15px);
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+.card-key {
+  flex: none;
+  min-width: 1.7em;
+  padding: 0.3em 0.35em 0.2em;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: rgba(5, 1, 12, 0.6);
+  color: rgba(255, 255, 255, 0.8);
+  font: inherit;
+  font-size: clamp(6px, 4cqi, 14px);
+  line-height: 1;
+}
+body.touch .card-key {
+  display: none;
+}
 
 .hw-led {
   position: absolute;
-  top: 0.7em;
-  right: 0.8em;
-  width: 0.7em;
-  height: 0.7em;
+  top: 5.2cqi;
+  right: 5cqi;
+  width: 3.6cqi;
+  height: 3.6cqi;
+  min-width: 5px;
+  min-height: 5px;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 10px var(--accent);
@@ -659,68 +783,203 @@ body.touch .vol input[type="range"]::-moz-range-thumb {
 @keyframes led { 50% { opacity: 0.25; } }
 
 .hw-part {
-  max-width: 85%;
-  font-size: 0.62em;
+  overflow: hidden;
+  font-size: clamp(5px, 3.1cqi, 11px);
   letter-spacing: 0.05em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: color-mix(in srgb, var(--accent) 70%, white);
   opacity: 0.85;
 }
 
+/* The poster image: the hardware art, with the skill icon as a badge */
+.poster-art {
+  container: art / size;
+  position: relative;
+  flex: 0 1 26cqi;
+  min-height: 14cqi;
+}
 .hw-art {
-  width: 9.6em;
-  height: 6em;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(100cqw, 160cqh);
+  aspect-ratio: 64 / 40;
+  transform: translate(-50%, -50%);
   image-rendering: pixelated;
   filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 60%, transparent));
 }
-
 .card-icon {
   width: 3.4em;
   height: 3.4em;
-  margin-top: -1.6em;
   border: 2px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   background-color: rgba(5, 1, 12, 0.85);
   image-rendering: pixelated;
 }
-
-.card-key {
+.poster-art .card-icon {
   position: absolute;
-  top: 0.6em;
-  left: 0.7em;
-  font-size: 0.8em;
-  color: rgba(255, 255, 255, 0.45);
+  bottom: 0;
+  width: min(42cqh, 24cqw);
+  height: auto;
+  aspect-ratio: 1;
+  left: calc(50% + min(100cqw, 160cqh) / 2 - min(42cqh, 24cqw) * 0.75);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
 }
 
-body.touch .card-key {
-  display: none;
-}
-
+/* The headline: always two lines tall so every card lines up */
 .card-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5em;
   color: #fff;
-  font-size: 1.1em;
-  text-shadow: 0 0 8px var(--accent);
+  font-size: clamp(7px, 6.6cqi, 32px);
+  line-height: 1.25;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--accent), 2px 2px 0 rgba(0, 0, 0, 0.7);
 }
 
 .card-level {
   color: #ffe14d;
-  font-size: 0.85em;
+  font-size: clamp(6px, 4.2cqi, 16px);
 }
-
 .card.is-new .card-level {
   color: var(--neon-pink);
 }
 
+/* The tagline and the billing block use a condensed body font */
 .card-desc {
+  display: -webkit-box;
+  flex: none;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--desc-lines, 3);
   color: #e7f7ee;
+  font-family: var(--body-font);
+  font-size: clamp(8.5px, 5.6cqi, 21px);
+  font-weight: 600;
+  line-height: 1.22;
+}
+
+.card-guide {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.2em 0.55em;
+  margin-top: auto;
+  padding-top: 1.6cqi;
+  border-top: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  font-family: var(--body-font);
+  font-size: clamp(8px, 5.4cqi, 20px);
+  line-height: 1.18;
+  text-align: left;
+}
+.guide-row {
+  display: contents;
+}
+.guide-row b {
+  color: var(--role);
+  font-size: 0.82em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.guide-row span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: #f1fff6;
 }
 
 .hw-tag {
-  margin-top: auto;
-  padding: 0.25em 0.6em;
+  align-self: center;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0.3em 0.6em 0.2em;
   border: 1px solid var(--accent);
   border-radius: 3px;
-  font-size: 0.65em;
+  background: rgba(5, 1, 12, 0.55);
   color: var(--accent);
+  font-size: clamp(5px, 3.6cqi, 13px);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.card-desc + .hw-tag {
+  margin-top: auto;
+}
+/* every card keeps the tag's space, so all the posters line up */
+.hw-tag.is-empty {
+  visibility: hidden;
+}
+
+/* gold edge-connector */
+.hw-pins {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -2px;
+  height: 5cqi;
+  min-height: 5px;
+  border-radius: 2px 2px 0 0;
+  background: repeating-linear-gradient(90deg, #ffd166 0 6px, #a87a12 6px 8px, transparent 8px 11px);
+  box-shadow: 0 0 8px rgba(255, 209, 102, 0.5);
+}
+.hw-cpu .hw-pins { left: 0; right: 0; height: 2.4cqi; background: repeating-linear-gradient(90deg, #ffd166 0 3px, transparent 3px 7px); }
+
+/* Mid-size posters (the loadout on laptops): drop the part-number line so
+   the guidance can be bigger */
+@container poster (150px <= width < 210px) {
+  .hw-part {
+    display: none;
+  }
+  .card-desc {
+    font-size: 5.8cqi;
+  }
+  .card-guide {
+    font-size: 5.6cqi;
+  }
+  .guide-row b {
+    letter-spacing: 0.02em;
+  }
+}
+
+/* Small posters (phones): the guidance moves to the loadout's spec sheet */
+@container poster (width < 150px) {
+  .poster {
+    gap: 1.5cqi;
+    padding: 4cqi 5cqi 8cqi;
+  }
+  .hw-part,
+  .card-guide {
+    display: none;
+  }
+  .poster-top {
+    justify-content: center;
+    padding-right: 0;
+  }
+  .lv-kind {
+    display: none;
+  }
+  .loadout-grid .card-desc {
+    -webkit-line-clamp: 3;
+  }
+  .hw-led {
+    top: auto;
+    bottom: 9cqi;
+  }
+  .card-name {
+    font-size: clamp(6px, 6.4cqi, 32px);
+  }
+}
+@container poster (width < 90px) {
+  .card-name {
+    overflow-wrap: anywhere;
+  }
+  .card-desc,
+  .loadout-grid .card-desc {
+    -webkit-line-clamp: 2;
+  }
 }
 
 /* RARE: an overclocked part, with a rainbow edge */
@@ -794,7 +1053,8 @@ body.touch .card-key {
   border-radius: 4px;
   background: rgba(5, 1, 12, 0.85);
   color: #fff;
-  font-size: 1.15em;
+  font-size: clamp(9px, 7cqi, 26px);
+  white-space: nowrap;
   text-shadow: 0 0 10px var(--accent);
   box-shadow: 0 0 24px var(--accent);
   transform: translate(-50%, -50%) rotate(-10deg) scale(2.5);
@@ -808,6 +1068,7 @@ body.touch .card-key {
 
 .levelup-foot {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 1em;
@@ -815,11 +1076,158 @@ body.touch .card-key {
   text-align: left;
 }
 
+/* REROLL: a big arcade button you can't miss. It pulses while rerolls are
+   left, spins its die when used and goes grey at zero. */
 .reroll-btn {
+  position: relative;
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: 0.7em;
+  min-height: 52px;
+  padding: 0.65em 1em 0.6em 0.75em;
+  border: 3px solid #fff4b8;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fff27a 0%, #ffd23f 45%, #ff9b21 100%);
+  box-shadow: 0 6px 0 #a34f00, 0 0 22px rgba(255, 190, 40, 0.65);
+  color: #22062e;
+  font: inherit;
+  font-size: 1.12em;
+  line-height: 1;
+  text-align: left;
+  touch-action: manipulation;
+  transition: transform 0.08s, box-shadow 0.08s, filter 0.12s;
+  animation: reroll-pulse 1.4s ease-in-out infinite;
+}
+.reroll-btn:hover {
+  filter: brightness(1.12) saturate(1.1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 0 #a34f00, 0 0 34px rgba(255, 210, 60, 0.9);
+}
+.reroll-btn:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+.reroll-btn:active,
+.reroll-btn.spin:active {
+  transform: translateY(5px);
+  box-shadow: 0 1px 0 #a34f00, 0 0 18px rgba(255, 190, 40, 0.6);
+  animation: none;
+}
+@keyframes reroll-pulse {
+  0%, 100% { box-shadow: 0 6px 0 #a34f00, 0 0 14px rgba(255, 190, 40, 0.45); }
+  50% { box-shadow: 0 6px 0 #a34f00, 0 0 34px 6px rgba(255, 225, 77, 0.85); }
+}
+.reroll-icon {
+  flex: none;
+  width: 2.4em;
+  height: 2.4em;
+  overflow: visible;
+}
+.reroll-arrows {
+  fill: none;
+  stroke: #22062e;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.reroll-heads,
+.reroll-pips {
+  fill: #22062e;
+}
+.reroll-die {
+  fill: #fff;
+  stroke: #22062e;
+  stroke-width: 2;
+}
+.reroll-pips circle {
+  fill: #ff2fd6;
+}
+.reroll-btn.spin .reroll-icon {
+  animation: reroll-spin 0.55s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+@keyframes reroll-spin {
+  0% { transform: rotate(0) scale(1); }
+  45% { transform: rotate(250deg) scale(1.35); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+.reroll-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+.reroll-label {
+  font-size: 1.15em;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+.reroll-count {
+  font-size: 0.72em;
+  color: #6b1a00;
+}
+.reroll-keys {
+  display: flex;
+  gap: 0.3em;
+}
+.reroll-key {
+  display: grid;
+  place-items: center;
+  min-width: 1.9em;
+  height: 1.9em;
+  padding: 0 0.3em;
+  border: 2px solid #22062e;
+  border-bottom-width: 4px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.55);
+  font: inherit;
+  font-size: 0.72em;
+}
+.reroll-pad {
+  border-radius: 50%;
+  background: #22062e;
+  color: #ffe14d;
+}
+body.touch .reroll-key:not(.reroll-pad) {
+  display: none;
 }
 .reroll-btn:disabled {
-  opacity: 0.4;
+  border-color: #6b6478;
+  background: linear-gradient(180deg, #4a4458, #2d2838);
+  box-shadow: 0 3px 0 #1a1622;
+  color: #a39cb3;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+  animation: none;
+}
+.reroll-btn:disabled .reroll-label,
+.reroll-btn:disabled .reroll-keys {
+  display: none;
+}
+.reroll-btn:disabled .reroll-count {
+  color: #c9c2d8;
+  font-size: 0.85em;
+}
+.reroll-btn:disabled .reroll-icon {
+  opacity: 0.45;
+}
+.reroll-btn:disabled .reroll-arrows {
+  stroke: #a39cb3;
+}
+.reroll-btn:disabled .reroll-heads {
+  fill: #a39cb3;
+}
+.reroll-btn.denied {
+  animation: reroll-denied 0.32s;
+}
+@keyframes reroll-denied {
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reroll-btn,
+  .reroll-btn.spin .reroll-icon {
+    animation: none;
+  }
 }
 
 /* ------------------------------------------------- THE LEGEND hologram */
@@ -873,41 +1281,149 @@ body.touch .card-key {
 }
 
 /* ------------------------------------------------- Pre-drop loadout */
-.loadout-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.8em;
+/* A poster wall of 4 x 3 cards next to (or, upright, above) a sidebar with
+   the title, a spec sheet for the card you point at, THE LEGEND and the
+   buttons. 4 columns x 3 rows of 3:4 posters make a square wall. */
+.loadout-panel {
+  flex-direction: row;
+  align-items: stretch;
+  gap: clamp(8px, 1.4em, 32px);
+  width: 100%;
+  max-width: 100%;
+  text-align: left;
 }
-.card.mini {
-  min-height: 0;
-  gap: 0.3em;
-  padding: 0.7em 0.4em 1.6em;
-  font-size: 0.62em;
+.loadout-grid {
+  container: wall / size;
+  flex: 0 1 auto;
+  height: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  justify-content: center;
+  align-content: center;
+  gap: var(--wall-gap);
+}
+.loadout-grid .card {
+  --desc-lines: 2;
+  width: min(calc((100cqw - 3 * var(--wall-gap)) / 4), calc((100cqh - 2 * var(--wall-gap)) * 0.245));
   animation: none;
 }
-.card.mini .hw-art {
-  width: 6.4em;
-  height: 4em;
+/* one line per guide row keeps the wall aligned; the spec sheet has it all */
+.loadout-grid .guide-row span {
+  -webkit-line-clamp: 1;
 }
-.card.mini .card-icon {
-  width: 2.6em;
-  height: 2.6em;
-  margin-top: -1.2em;
+.loadout-grid .card[aria-pressed="false"] .poster-art {
+  filter: saturate(0.55) brightness(0.8);
 }
-.card.mini .card-desc {
-  font-size: 0.85em;
-  opacity: 0.85;
+.loadout-grid .card[aria-pressed="true"] {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 26px var(--accent), inset 0 0 22px rgba(0, 0, 0, 0.5);
 }
-.card.mini[aria-pressed="false"] {
-  filter: saturate(0.45) brightness(0.8);
-}
-.card.mini[aria-pressed="true"] {
-  transform: translateY(-4px);
-  box-shadow: 0 0 26px var(--accent), inset 0 0 22px rgba(0, 0, 0, 0.5);
-}
-.card.mini[aria-pressed="true"] .hw-tag {
+.loadout-grid .card[aria-pressed="true"] .hw-tag {
   border-color: #ffe14d;
+  background: #ffe14d;
+  color: #0b0416;
+}
+.loadout-grid .card[aria-pressed="false"] .hw-tag {
+  border-style: dashed;
+  opacity: 0.75;
+}
+.levelup.loadout {
+  padding: clamp(6px, calc(var(--u) * 0.9), 18px);
+}
+.loadout-side {
+  display: flex;
+  flex: 1 1 16em;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.9em;
+  min-width: 0;
+  overflow-y: auto;
+}
+.loadout-side h2 {
+  margin: 0;
+  font-size: 1.7em;
+  line-height: 1.3;
+}
+.loadout-side > p {
+  margin: 0;
+  font-size: 0.72em;
+  line-height: 1.7;
+  color: #f1dcff;
+}
+.loadout .levelup-panel p b {
   color: #ffe14d;
+}
+
+/* The spec sheet: the full guidance for the card you're pointing at */
+.loadout-spec {
+  --accent: #ffe14d;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+  min-height: 11.5em;
+  padding: 0.8em 0.9em;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-left: 4px solid var(--role);
+  border-radius: 6px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--pcb, #10213f) 85%, transparent), rgba(5, 1, 12, 0.9));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.spec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6em;
+}
+.spec-head .role-tag {
+  font-size: 0.62em;
+}
+.spec-name {
+  color: #fff;
+  font-size: 0.9em;
+  font-weight: 400;
+  text-shadow: 0 0 8px var(--accent);
+}
+.spec-sub {
+  color: color-mix(in srgb, var(--accent) 70%, white);
+  font-size: 0.55em;
+  line-height: 1.6;
+}
+.spec-desc {
+  color: #e7f7ee;
+  font-family: var(--body-font);
+  font-size: clamp(11px, 0.85em, 20px);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.spec-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.3em 0.7em;
+  font-family: var(--body-font);
+  font-size: clamp(11px, 0.9em, 22px);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.spec-rows b {
+  color: var(--role);
+  font-size: 0.8em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.spec-rows span {
+  color: #f1fff6;
+}
+.spec-slot {
+  color: #ffe14d;
+  font-size: 0.55em;
+}
+.loadout-side .levelup-foot {
+  flex-direction: column;
+  align-items: stretch;
+  margin: 0;
 }
 .loadout-actions {
   display: flex;
@@ -915,8 +1431,8 @@ body.touch .card-key {
   gap: 0.8em;
   justify-content: center;
 }
-.loadout .levelup-panel > p b {
-  color: #ffe14d;
+.loadout-side .loadout-actions {
+  justify-content: flex-end;
 }
 
 /* ------------------------------------------------- Respec */
@@ -964,48 +1480,109 @@ body.touch .card-key {
 }
 
 /* ------------------------------------------------- Phones */
+/* Touch screens and upright windows: the level-up and loadout screens take
+   the whole screen (not just the 16:9 game box), inside the safe area. */
+body.touch .levelup,
+body.portrait .levelup {
+  position: fixed;
+  background: radial-gradient(ellipse at center, rgba(30, 14, 0, 0.75), rgba(5, 1, 12, 0.95));
+  padding: max(8px, var(--safe-top)) max(8px, var(--safe-right)) max(8px, var(--safe-bottom)) max(8px, var(--safe-left));
+}
 body.touch .levelup-panel h2 {
   font-size: 1.5em;
 }
-body.touch .card {
-  min-height: 0;
-  padding: 0.7em 0.5em 1.8em;
-  font-size: 0.68em;
+body.touch .levelup-panel > p {
+  margin-bottom: 0.6em;
 }
-body.touch .hw-art {
-  width: 7em;
-  height: 4.4em;
-}
-body.touch .loadout-grid {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.5em;
-}
-body.touch .card.mini .card-desc {
-  display: none;
+body.touch .levelup-foot {
+  margin-top: 0.6em;
 }
 body.touch .legend-sprite {
   width: 4em;
   height: 4em;
 }
+body.touch .loadout-side {
+  gap: 0.6em;
+}
+body.touch .loadout-side h2 {
+  font-size: 1.35em;
+}
+body.touch .loadout-spec {
+  min-height: 9.5em;
+  padding: 0.6em 0.75em;
+}
+body.touch .loadout-side .legend-sprite {
+  width: 3em;
+  height: 3em;
+}
+body.touch .loadout-side .levelup-foot {
+  flex-direction: row;
+  align-items: center;
+}
+body.touch .loadout-side .legend {
+  flex: 1 1 0;
+}
 body.touch.portrait .levelup {
-  position: fixed;
-  padding: calc(var(--safe-top) + 12px) 8px calc(var(--safe-bottom) + 12px);
+  padding-top: calc(var(--safe-top) + 12px);
+  padding-bottom: calc(var(--safe-bottom) + 12px);
   font-size: 11px;
 }
-body.portrait .cards {
-  gap: 0.5em;
+
+/* Upright: everything stacks. Three cards still sit side by side. Only the
+   cards give way when it's tight; on the very smallest phones the panel
+   scrolls instead (auto margins centre it without cutting off the top). */
+body.portrait .poster-panel > *,
+body.portrait .loadout-side > * {
+  flex-shrink: 0;
 }
-body.portrait .card {
-  font-size: 0.6em;
+body.portrait .poster-panel > h2,
+body.portrait .loadout-side h2 {
+  margin-top: auto;
 }
-body.portrait .card-desc {
-  font-size: 0.9em;
+body.portrait .poster-panel > .levelup-foot,
+body.portrait .loadout-side .levelup-foot {
+  margin-bottom: auto;
 }
-body.portrait .loadout-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+body.portrait .poster-panel > .cards {
+  flex: 0 1 auto;
+  width: 100%;
+  aspect-ratio: 9 / 4.3;
 }
 body.portrait .levelup-foot {
+  flex-direction: column-reverse;
+  align-items: center;
+}
+body.portrait .reroll-btn {
+  align-self: stretch;
+  justify-content: center;
+}
+body.portrait .loadout-panel {
   flex-direction: column;
+  gap: 0.7em;
+}
+body.portrait .loadout-side {
+  display: contents;
+}
+body.portrait .loadout-side h2 {
+  order: -2;
+  text-align: center;
+}
+body.portrait .loadout-side > p {
+  order: -1;
+  text-align: center;
+}
+body.portrait .loadout-grid {
+  flex: 0 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: min(calc(100vw - 16px), 300px);
+}
+body.portrait .loadout-side .levelup-foot {
+  flex-direction: column;
+  align-items: stretch;
+}
+body.portrait .loadout-side .loadout-actions {
+  justify-content: center;
 }
 body.portrait .respec-list {
   grid-template-columns: 1fr;
@@ -2342,4 +2919,140 @@ body.portrait .lb-opt {
 /* Touch-only controls never show on desktop (overrides display rules above) */
 body:not(.touch) .touch-only {
   display: none !important;
+}
+
+/* ------------------------------------------------- Gamepads (gamepad.js) */
+/* Prompts that only make sense with a controller in hand */
+.pad-only {
+  display: none;
+}
+
+body:is(.pad-xbox, .pad-ps, .pad-generic) .pad-only {
+  display: revert;
+}
+
+body:is(.pad-xbox, .pad-ps, .pad-generic) .seg.pad-only {
+  display: inline-flex;
+}
+
+/* How to play lists the pad's buttons instead of keys or touch */
+body:is(.pad-xbox, .pad-ps, .pad-generic) .controls :is(.kb-only, .touch-only) {
+  display: none !important;
+}
+
+/* A neon focus ring that's easy to follow from the couch */
+body:is(.pad-xbox, .pad-ps, .pad-generic) :is(button, summary, input, [tabindex]:not([tabindex="-1"])):focus {
+  outline: 3px solid var(--neon-cyan) !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(255, 47, 214, 0.45), 0 0 22px rgba(25, 245, 255, 0.85);
+}
+
+body:is(.pad-xbox, .pad-ps, .pad-generic) .card:focus {
+  transform: translateY(-6px) scale(1.02);
+}
+
+/* Leave room for the button legend at the bottom of every menu */
+body:is(.pad-xbox, .pad-ps, .pad-generic) .overlay {
+  padding-bottom: 46px;
+}
+
+/* "CONTROLLER CONNECTED: Xbox" */
+.pad-toast {
+  position: fixed;
+  top: calc(var(--safe-top) + 12px);
+  left: 50%;
+  z-index: 60;
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border: 2px solid var(--neon-cyan);
+  border-radius: 6px;
+  background: rgba(11, 4, 22, 0.94);
+  box-shadow: 0 0 18px rgba(25, 245, 255, 0.55);
+  color: var(--neon-cyan);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: pad-toast 2.6s ease both;
+}
+
+.pad-toast.off {
+  border-color: var(--neon-pink);
+  box-shadow: 0 0 18px rgba(255, 47, 214, 0.55);
+  color: var(--neon-pink);
+}
+
+@keyframes pad-toast {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  10%, 85% { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 0); }
+}
+
+/* The button legend under menus while a pad is in use */
+.pad-legend {
+  position: fixed;
+  bottom: calc(var(--safe-bottom) + 8px);
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 12px;
+  border: 1px solid rgba(25, 245, 255, 0.45);
+  border-radius: 6px;
+  background: rgba(11, 4, 22, 0.85);
+  color: #e7dbff;
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.pad-sym {
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
+  font-size: 1.45em;
+  line-height: 1;
+}
+
+.pad-key {
+  display: inline-block;
+  min-width: 2em;
+  margin-right: 0.5em;
+  padding: 0.2em 0.45em;
+  border: 1px solid var(--neon-cyan);
+  border-radius: 999px;
+  color: var(--neon-cyan);
+  font-weight: 400;
+  text-align: center;
+}
+
+.pad-key.pad-sym {
+  padding: 0 0.3em;
+  font-size: 1.3em;
+  vertical-align: -0.12em;
+}
+
+/* Local co-op (js/coop.js): player 2's pick on the IC cards, the 2P mark on the leaderboard */
+.char-p2 {
+  flex: none;
+  align-self: flex-start;
+  margin-left: auto;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  background: #ffb020;
+  color: #14051f;
+}
+
+.char-card:has(.char-p2) {
+  border-color: #ffb020;
+}
+
+.lb-tag.lb-2p {
+  background: #ffb020;
+  color: #14051f;
+  animation: none;
 }

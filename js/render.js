@@ -22,10 +22,15 @@ function render(time) {
   drawPickups(time);
   drawEnemies(time);
   drawGoatDeath(time);
+  drawNullFx(time);
   drawShockwaves(time);
-  drawPlayer(time);
-  drawPlayerProjectiles();
-  drawHeroFx(time);
+  forEachPlayer(() => {
+    // (each player in co-op, with its own projectiles and effects)
+    drawPlayer(time);
+    drawPlayerProjectiles();
+    drawHeroFx(time);
+    drawKitFx(time);
+  });
   drawEnemyShots();
   drawEffects();
   drawSecretsFront(time);
@@ -34,15 +39,16 @@ function render(time) {
   ctx.restore();
   drawRain();
 
+  drawDilationOverlay(time); // Hackerman's bullet time
   // Sandevistan: the world turns green and slow
   if (player.sandyTime > 0 && game.state !== "over") {
     ctx.fillStyle = `rgba(60,255,120,${0.1 + 0.04 * Math.sin(time * 20)})`;
     ctx.fillRect(0, 0, W, H);
   }
 
-  // Red sky while a boss is alive; the GOAT sets it on fire, with lightning
+  // Red sky while a boss is alive (violet for NULL); the GOAT sets it on fire
   if (game.boss && !game.boss.dead && game.state !== "over") {
-    ctx.fillStyle = `rgba(255,20,60,${0.08 + 0.04 * Math.sin(time * 2)})`;
+    ctx.fillStyle = game.boss.type === "nullptr" ? `rgba(90,30,200,${0.09 + 0.04 * Math.sin(time * 2)})` : `rgba(255,20,60,${0.08 + 0.04 * Math.sin(time * 2)})`;
     ctx.fillRect(0, 0, W, H);
   }
   if (game.goatSky && game.state !== "over") {
@@ -61,13 +67,7 @@ function render(time) {
     ctx.fillStyle = `rgba(255,255,255,${game.landFlash * 1.6})`; // hero landing impact
     ctx.fillRect(0, 0, W, H);
   }
-  if (game.hurtFlash > 0) {
-    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.95);
-    g.addColorStop(0, "rgba(255,0,60,0)");
-    g.addColorStop(1, `rgba(255,0,60,${game.hurtFlash})`);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-  }
+  if (game.hurtFlash > 0) drawHurtFlash(game.hurtFlash);
   if (game.state === "over") {
     ctx.globalAlpha = clamp(game.overTime / 0.8, 0, 1);
     if (isReady(IMG.endGame)) {
@@ -82,6 +82,25 @@ function render(time) {
     drawLetterbox();
     drawHUD(time);
   }
+}
+
+// Red edges when you get hit. A full-screen radial gradient costs several ms
+// without a GPU, so Performance mode draws four translucent bars instead.
+function drawHurtFlash(k) {
+  if (perfMode()) {
+    const t = H * 0.16;
+    ctx.fillStyle = `rgba(255,0,60,${Math.min(1, k) * 0.55})`;
+    ctx.fillRect(0, 0, W, t);
+    ctx.fillRect(0, H - t, W, t);
+    ctx.fillRect(0, t, t, H - 2 * t);
+    ctx.fillRect(W - t, t, t, H - 2 * t);
+    return;
+  }
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.95);
+  g.addColorStop(0, "rgba(255,0,60,0)");
+  g.addColorStop(1, `rgba(255,0,60,${k})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
 }
 
 function drawEffects() {
@@ -118,7 +137,7 @@ function drawEffects() {
   ctx.textBaseline = "middle";
   popups.forEach((p) => {
     ctx.globalAlpha = Math.min(1, p.life / 0.3);
-    ctx.font = `${p.size}px ${FONT}`;
+    ctx.font = fontPx(p.size);
     ctx.fillStyle = "#000";
     ctx.fillText(p.text, p.x + 3, p.y + 3);
     ctx.fillStyle = p.color;
@@ -138,13 +157,6 @@ function drawDebug() {
   crates.forEach((c) => c.alive && box(c, "#ffe14d"));
   platforms.forEach((p) => box(p, "#5aff7a"));
   gems.forEach((g) => box(g, "#ffffff"));
-  if (player.flameOn) {
-    const c = centerOf(player);
-    ctx.strokeStyle = "#ff9b21";
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, stats.flame.radius, 0, Math.PI * 2);
-    ctx.stroke();
-  }
   ctx.strokeStyle = "#ffffff";
   [...playerShots, ...enemyShots].forEach((s) => {
     ctx.beginPath();
@@ -155,7 +167,7 @@ function drawDebug() {
 
 // ------------------------------------------------------------------ HUD -----
 function hudText(text, x, y, size, color, align = "left", baseline = "top") {
-  ctx.font = `${size}px ${FONT}`;
+  ctx.font = fontPx(size);
   ctx.textAlign = align;
   ctx.textBaseline = baseline;
   ctx.fillStyle = "rgba(0,0,0,0.75)";
@@ -211,10 +223,12 @@ function drawHUD(time) {
   // Health + heat
   const lowHp = p.hp / stats.maxHp < 0.3;
   const hpColor = lowHp && Math.sin(time * 12) > 0 ? "#ff2f6d" : "#19f5ff";
-  drawIcon("portraits", 48, CH().portrait, 44, 22, 40);
-  hudText(`${CH().name}  LV ${progress.level}`, 94, 32, 24, "#ffe14d");
-  drawBar(44, 70, 440, 34, p.hp / stats.maxHp, p.ghostHp / stats.maxHp, hpColor);
-  hudText(`${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
+  drawIcon(isReady(IMG.portraits2) ? "portraits2" : "portraits", 48, CH().portrait, 44, 22, 40);
+  const team = coopActive(); // co-op: tag player 1's panel, show when they're down
+  hudText(`${team ? "P1 " : ""}${CH().name}  LV ${progress.level}`, 94, 32, 24, team ? coop.players[0].color : "#ffe14d");
+  const down = coopStatus(coop.players[0]);
+  drawBar(44, 70, 440, 34, down ? 0 : p.hp / stats.maxHp, down ? 0 : p.ghostHp / stats.maxHp, hpColor);
+  hudText(down || `${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
   // Lives: one chip per backup
   for (let i = 0; i < MAX_LIVES; i++) {
     const on = i < game.lives;
@@ -233,6 +247,7 @@ function drawHUD(time) {
   const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : res.color;
   drawBar(44, 120, 300, 18, p.heat / TUNING.heat.max, 0, heatColor);
   hudText(p.heatLocked ? `NO ${res.name}` : res.name, 360, 120, 18, heatColor);
+  hudText(passiveLine(), 460, 122, 15, "#c9b6ff"); // the IC's passive, as it grows with level
 
   // Active power-ups
   let ix = 44;
@@ -278,20 +293,22 @@ function drawHUD(time) {
   // Run timer / boss
   hudText(formatTime(game.time), VW / 2, 34, 40, "#ffffff", "center");
   const boss = game.boss;
-  if (boss && !boss.dead) {
+  if (boss && !boss.dead && boss.type === "nullptr") drawNullBar(boss, VW, time);
+  else if (boss && !boss.dead) {
     const name = BOSSES[boss.type].name.toUpperCase();
     const color = boss.type === "overseer" ? "#19f5ff" : "#ff2457";
     hudText(boss.enraged ? `${name} !!` : name, VW / 2, 92, 22, boss.enraged ? color : "#ffffff", "center");
     drawBar(VW / 2 - 320, 124, 640, 26, boss.hp / boss.maxHp, boss.ghostHp / boss.maxHp, color);
-  } else if (director.stage === 0 || director.stage === 2) {
+  } else if (director.stage === STAGE.start || director.stage === STAGE.interlude1 || director.stage === STAGE.interlude2) {
     const left = director.nextBossAt - game.time;
     const urgent = left < 10 && Math.sin(time * 10) > 0;
-    const label = director.stage === 0 ? "BOSS IN" : "FINAL BOSS IN";
+    const label = { [STAGE.start]: "BOSS IN", [STAGE.interlude1]: "NEXT BOSS IN", [STAGE.interlude2]: "FINAL BOSS IN" }[director.stage];
     hudText(`${label} ${formatTime(left)}`, VW / 2, 92, 20, urgent ? "#ff2457" : "#c9b6ff", "center");
   }
 
   // Kills (just under the pause / mute / fullscreen buttons)
   hudText(`KILLS ${game.kills}`, VW - 44, hudLayout.killsY / k, 22, "#ffffff", "right");
+  drawCoopHud(VW, time); // co-op: player 2's panel (or their join panel)
 
   drawHints(VW, H / k);
 
@@ -304,15 +321,16 @@ function drawHUD(time) {
   if (game.banner) {
     ctx.globalAlpha = clamp(game.banner.time / 0.4, 0, 1);
     // shrink long banners so they always fit the screen
-    ctx.font = `52px ${FONT}`;
+    ctx.font = fontPx(52);
     const size = Math.min(52, Math.floor((52 * (VW - 80)) / ctx.measureText(game.banner.text).width));
     hudText(game.banner.text, VW / 2, H / k / 2 - 180, size, game.banner.color || "#ff2457", "center", "middle");
     ctx.globalAlpha = 1;
   }
   drawBossCard(VW, H / k);
+  drawNullTear(VW, H / k);
   ctx.restore();
 
-  if (boss && !boss.dead && !onScreen(boss)) drawBossArrow(boss, time);
+  if (boss && !boss.dead && !boss.cloaked && !onScreen(boss)) drawBossArrow(boss, time);
   drawCinematic();
 }
 
@@ -336,28 +354,32 @@ function drawHints(VW, VH) {
   if (game.state !== "playing" || game.time > 10) return;
   const alpha = clamp((10 - game.time) / 1.5, 0, 1);
   ctx.globalAlpha = alpha;
-  if (touchMode) {
-    const right = settings.autoFire ? "AUTO-FIRE ON" : settings.touchAim === "tap" ? "TAP: FIRE   HOLD: RAPID FIRE" : "RIGHT STICK: AIM + FIRE";
+  const pad = typeof padHintRows === "function" ? padHintRows() : null; // gamepad.js: controller prompts while a pad is in use
+  if (touchMode && !pad) {
+    // with auto-fire on, the right stick still aims and fires (twin-stick)
+    const right = settings.touchAim === "tap" && !settings.autoFire ? "TAP: FIRE   HOLD: RAPID FIRE" : "RIGHT STICK: AIM + FIRE";
     hudText(`LEFT STICK: MOVE (FLICK UP: JUMP)   ${right}   CORNER: ${CH().special.label}`, VW / 2, VH - 150, 20, "#ffffff", "center");
   } else {
-    const box = { x: VW / 2 - 430, y: 250, w: 860, h: 200 };
+    const rows = pad || [
+      ["A D", "MOVE    W S  AIM"],
+      ["SPACE", "JUMP x2  (S+SPACE: DROP)"],
+      ["J", `${CH().primary.name.toUpperCase()} (L-CLICK)`],
+      ["K", `${CH().special.name.toUpperCase()} (R-CLICK)`],
+    ];
+    const box = { x: VW / 2 - 430, y: 250, w: 860, h: 40 + rows.length * 40 };
     ctx.fillStyle = "rgba(10,3,24,0.75)";
     ctx.fillRect(box.x, box.y, box.w, box.h);
     ctx.strokeStyle = "rgba(255,47,214,0.8)";
     ctx.lineWidth = 3;
     ctx.strokeRect(box.x, box.y, box.w, box.h);
-    if (isReady(IMG.wasd)) {
+    if (isReady(IMG.wasd) && !pad) {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(IMG.wasd, box.x + 24, box.y + 22, 145, 157);
     }
-    [
-      ["A D", "MOVE    W S  AIM"],
-      ["SPACE", "JUMP x2  (S+SPACE: DROP)"],
-      ["J", `${CH().primary.name.toUpperCase()} (L-CLICK)`],
-      ["K", `${CH().special.name.toUpperCase()} (R-CLICK)`],
-    ].forEach(([key, label], i) => {
-      hudText(key, box.x + 200, box.y + 26 + i * 40, 20, "#ff9b21");
-      hudText(label, box.x + 340, box.y + 26 + i * 40, 20, "#ffffff");
+    rows.forEach(([key, label], i) => {
+      const sym = pad && padIsSymbol(key); // ✕ ○ □ △ come from a fallback font: draw them bigger
+      hudText(key, box.x + (pad ? 40 : 200), box.y + 26 + i * 40 - (sym ? 7 : 0), sym ? 32 : 20, "#ff9b21");
+      hudText(label, box.x + (pad ? 240 : 340), box.y + 26 + i * 40, 20, "#ffffff");
     });
   }
   ctx.globalAlpha = 1;

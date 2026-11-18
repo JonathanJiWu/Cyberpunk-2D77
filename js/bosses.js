@@ -7,15 +7,17 @@
 //   - grounded movement (the same platform physics as the player)
 //   - shockwaves that roll along the ground (jump them)
 //   - speech bubbles
-// The Overseer lives in overseer.js, the final boss (the GOAT) in goat.js.
+// The Overseer lives in overseer.js, NULL in null.js and the final boss (the
+// GOAT) in goat.js.
 // =============================================================================
 
 const shockwaves = [];
 
 function makeBoss(type, w, h, x, y) {
-  const hp = BOSSES[type].hp;
+  const hp = BOSSES[type].hp * coopMul("bossHp"); // tougher against two players (coop.js)
   return {
     boss: true,
+    coopHp: coopMul("bossHp"),
     type,
     x,
     y,
@@ -34,6 +36,16 @@ function makeBoss(type, w, h, x, y) {
     hurt: 0,
     stun: 0,
     vulnT: 0,
+    // status effects from the IC kits (declared up front so the shape stays stable)
+    glitchT: 0,
+    knockT: 0,
+    bleedT: 0,
+    bleedDps: 0,
+    burnT: 0,
+    burnDps: 0,
+    bleedAcc: 0,
+    downed: null,
+    airFrom: 0,
     orbitCd: 0,
     hitCd: 0,
     burnTime: 0,
@@ -141,18 +153,20 @@ function bossState(e, state) {
   e.timer = 0;
 }
 
-// Touching a boss hurts (bosses don't care about Paine's flame)
+// Touching a boss hurts (bosses don't care about Paine's flame), whichever player
 function bossContact(e, damage) {
-  if (bossLocked() || e.contactCd > 0 || player.camo > 0) return;
-  if (!overlaps(e, player)) return;
-  const c = centerOf(e);
-  if (hurtPlayer(damage, c.x, c.y)) e.contactCd = 0.6;
+  eachTarget(() => {
+    if (bossLocked() || e.contactCd > 0 || player.camo > 0) return;
+    if (!overlaps(e, player)) return;
+    const c = centerOf(e);
+    if (hurtPlayer(damage, c.x, c.y, e)) e.contactCd = 0.6;
+  });
 }
 
 // ------------------------------------------------------------ Shockwaves ----
 // A wall of energy rolling along the ground (or a platform). Jump over it.
 function spawnShockwave(x, y, dir, opts = {}) {
-  shockwaves.push({ x, y, dir, speed: opts.speed || 760, life: opts.life || 1.1, h: opts.h || 64, damage: opts.damage || 14, color: opts.color || "#19f5ff", hit: false, t: 0 });
+  shockwaves.push({ owner: opts.owner || game.boss, x, y, dir, speed: opts.speed || 760, life: opts.life || 1.1, h: opts.h || 64, damage: opts.damage || 14, color: opts.color || "#19f5ff", hit: new Set(), t: 0 });
 }
 
 function updateShockwaves(dt) {
@@ -165,12 +179,15 @@ function updateShockwaves(dt) {
       continue;
     }
     if (Math.random() < 0.5) dust(s.x, s.y, 1, 0.8);
-    const p = player;
-    const pc = centerOf(p);
-    const feet = p.y + p.h;
-    if (!s.hit && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
-      if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y)) s.hit = true;
-    }
+    // it hits each player once (s.hit: the players it got)
+    eachTarget(() => {
+      const p = player;
+      const pc = centerOf(p);
+      const feet = p.y + p.h;
+      if (!s.hit.has(p) && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
+        if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y, s.owner)) s.hit.add(p);
+      }
+    });
   }
 }
 
@@ -232,6 +249,7 @@ function drawBossSpeech(e, color) {
 function drawBossCard(VW, VH) {
   const c = game.cinematic;
   if (!c || !c.title) return;
+  if (c.style === "nullptr") return drawNullCard(VW, VH, c); // NULL has its own
   const k = cinematicAmount();
   const slide = (1 - Math.min(1, (c.max - c.time) / 0.5)) * -500;
   const y = VH * 0.62;
@@ -252,9 +270,11 @@ function drawBossCard(VW, VH) {
 // Boss-fight odds and ends that run every frame
 function updateBossFx(dt) {
   updateShockwaves(dt);
+  updateNullFx(dt);
   if (game.cinematic && (game.cinematic.time -= dt) <= 0) game.cinematic = null;
   if (game.goatSky) game.goatSky = Math.min(1, game.goatSky + dt * 0.5);
 }
 function resetBossFx() {
   shockwaves.length = 0;
+  resetNull();
 }

@@ -26,7 +26,7 @@ const GOAT = {
 const meteors = []; // { x, t, delay } ground markers before a meteor drops
 
 function spawnGoat() {
-  director.stage = 3;
+  director.stage = STAGE.goat;
   const pc = centerOf(player);
   const side = pc.x < WORLD_W / 2 ? 1 : -1;
   const x = clamp(pc.x + side * 560 - GOAT.w / 2, 40, WORLD_W - GOAT.w - 40);
@@ -50,7 +50,7 @@ function goatDefeated(e) {
   enemyShots.length = 0;
   shockwaves.length = 0;
   meteors.length = 0;
-  player.invuln = Math.max(player.invuln, 3);
+  forEachPlayer(() => (player.invuln = Math.max(player.invuln, 3)));
   camera.shake = 30;
 }
 
@@ -118,7 +118,7 @@ function updateMeteors(dt) {
     m.t += dt;
     if (m.t >= m.delay) {
       meteors.splice(i, 1);
-      enemyShots.push({ x: m.x + rand(-40, 40), y: camera.y - 60, vx: rand(-60, 60), vy: 1500, r: 22, damage: GOAT.meteorDamage, kind: "meteor", angle: Math.PI / 2, life: 2 });
+      enemyShots.push({ owner: game.boss, x: m.x + rand(-40, 40), y: camera.y - 60, vx: rand(-60, 60), vy: 1500, r: 22, damage: GOAT.meteorDamage, kind: "meteor", angle: Math.PI / 2, life: 2 });
     }
   }
 }
@@ -190,7 +190,7 @@ function updateGoat(e, dt) {
           burst(e.facing > 0 ? e.x + e.w : e.x, ec.y, 26, "#ffe14d", 500);
           sfx.stomp.play({ rate: 0.5 });
           bossState(e, "dazed");
-          e.vulnT = 1.6;
+          e.vulnT = 1.3;
           e.vx = -e.facing * 300;
         } else if ((e.facing > 0 && ec.x > e.passX) || (e.facing < 0 && ec.x < e.passX)) {
           e.step = 2;
@@ -215,7 +215,7 @@ function updateGoat(e, dt) {
     case "dazed": {
       e.vx *= Math.exp(-6 * dt);
       contact = 0;
-      if (e.stateTime > 1.6) bossState(e, "stalk");
+      if (e.stateTime > 1.3) bossState(e, "stalk");
       break;
     }
     case "leap": {
@@ -263,7 +263,7 @@ function updateGoat(e, dt) {
           const m = mouthOf(e);
           const sweep = -0.35 + 0.85 * (0.5 - 0.5 * Math.cos((t / dur) * Math.PI * 2));
           const a = e.facing > 0 ? sweep : Math.PI - sweep;
-          enemyShots.push({ x: m.x, y: m.y, vx: Math.cos(a) * 580, vy: Math.sin(a) * 580, r: 18, damage: GOAT.breathDamage, kind: "fire", angle: a, life: 0.85 });
+          enemyShots.push({ owner: game.boss, x: m.x, y: m.y, vx: Math.cos(a) * 580, vy: Math.sin(a) * 580, r: 18, damage: GOAT.breathDamage, kind: "fire", angle: a, life: 0.85 });
         }
         if (Math.random() < 0.3) sfx.burn.play({ rate: 0.6 });
         if (t > dur) bossState(e, "stalk");
@@ -291,7 +291,10 @@ function updateGoat(e, dt) {
         camera.shake = Math.max(camera.shake, 26);
         ring(ec.x, ec.y, 500, "#ff2457");
         sfx.stomp.play({ rate: 0.35 });
-        if (Math.abs(pc.x - ec.x) < 600) player.vx = Math.sign(pc.x - ec.x || 1) * 900;
+        eachTarget(() => {
+          const c = centerOf(player);
+          if (Math.abs(c.x - ec.x) < 600) player.vx = Math.sign(c.x - ec.x || 1) * 900;
+        });
         if (e.phase >= 1) queueMeteors(6, 500);
       }
       if (e.stateTime > e.roarFor) bossState(e, "stalk");
@@ -339,7 +342,7 @@ function drawGoat(e, time) {
   });
   if (e.state === "charge" && e.step === 0) glow(c.x + e.facing * 70, e.y + 60, 50 + 20 * Math.sin(time * 30), "rgba(255,30,30,0.9)");
   if (e.state === "breath" && e.stateTime < 0.6) glow(mouthOf(e).x, mouthOf(e).y, 50 + 30 * Math.sin(time * 30), "rgba(255,160,40,0.9)");
-  glow(c.x, c.y, 260, e.phase === 2 ? "rgba(255,0,40,0.5)" : e.enraged ? "rgba(255,20,60,0.4)" : "rgba(255,120,40,0.25)");
+  decorGlow(c.x, c.y, 260, e.phase === 2 ? "rgba(255,0,40,0.5)" : e.enraged ? "rgba(255,20,60,0.4)" : "rgba(255,120,40,0.25)"); // its aura
   drawGoatBody(e.x, e.y, e.w, e.h, e.facing, goatFrame(e), e, time);
   if (e.state === "dazed") {
     for (let i = 0; i < 3; i++) {

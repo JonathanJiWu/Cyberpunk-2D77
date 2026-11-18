@@ -7,59 +7,64 @@
 
 // The player object IS its hitbox (x, y, w, h). The 32x48 sprite frame is
 // drawn 2.5x (80x120) around it.
-const player = {
-  char: "paine",
-  x: 200,
-  y: GROUND_Y - 104,
-  w: 44,
-  h: 104,
-  vx: 0,
-  vy: 0,
-  kbX: 0,
-  onGround: true,
-  standingOn: GROUND,
-  facing: 1,
-  frameX: 0,
-  frameY: 2,
-  animTime: 0,
-  moving: false,
-  jumps: 0,
-  jumped: false,
-  jumpCut: false,
-  coyote: 0,
-  jumpBuffer: 0,
-  dropTimer: 0,
-  hp: TUNING.player.maxHp,
-  ghostHp: TUNING.player.maxHp,
-  heat: TUNING.heat.start,
-  heatLocked: false,
-  flameOn: false,
-  invuln: 0,
-  shield: 0,
-  overdrive: 0,
-  zapCd: 0,
-  missileCd: 1,
-  chainCd: 1,
-  orbitAngle: 0,
-  // feel / animation
-  sx: 1,
-  sy: 1,
-  faceLock: 0,
-  fireAnim: 0,
-  fireAnimMax: 1,
-  flameScale: 0,
-  speech: null,
-  speechCd: 0,
-  trail: [],
-};
+// `player`, `stats`, `playerShots` and `missiles` are `let`: in local co-op
+// (coop.js) they point at whichever player a per-player system runs for.
+function makePlayerBody() {
+  return {
+    char: "paine",
+    x: 200,
+    y: GROUND_Y - 104,
+    w: 44,
+    h: 104,
+    vx: 0,
+    vy: 0,
+    kbX: 0,
+    onGround: true,
+    standingOn: GROUND,
+    facing: 1,
+    frameX: 0,
+    frameY: 2,
+    animTime: 0,
+    moving: false,
+    jumps: 0,
+    jumped: false,
+    jumpCut: false,
+    coyote: 0,
+    jumpBuffer: 0,
+    dropTimer: 0,
+    hp: TUNING.player.maxHp,
+    ghostHp: TUNING.player.maxHp,
+    heat: TUNING.heat.start,
+    heatLocked: false,
+    flameOn: false,
+    invuln: 0,
+    shield: 0,
+    overdrive: 0,
+    zapCd: 0,
+    missileCd: 1,
+    chainCd: 1,
+    orbitAngle: 0,
+    // feel / animation
+    sx: 1,
+    sy: 1,
+    faceLock: 0,
+    fireAnim: 0,
+    fireAnimMax: 1,
+    speech: null,
+    speechCd: 0,
+    trail: [],
+  };
+}
+let player = makePlayerBody();
 
-const playerShots = []; // energy balls
-const missiles = [];
+let playerShots = []; // energy balls
+let missiles = [];
 
 // --------------------------------------------------------------- Stats ------
 // Everything upgrades can change is derived from the upgrade levels here.
+// The upgrades belong to the team (shared in co-op); stats are per player.
 const upg = {}; // upgrade id -> level
-const stats = {};
+let stats = {};
 const lv = (id) => upg[id] || 0;
 const byLevel = (table, level) => table[Math.min(level, table.length - 1)];
 
@@ -90,37 +95,8 @@ function computeStats() {
     guard: f >= 4 ? 3.2 : 2,
     wave: f >= 6,
   };
-  // Sudo
-  stats.daemon = {
-    damage: 7 + (z >= 2 ? 3 : 0) + (z >= 7 ? 3 : 0),
-    radius: 80 * (z >= 3 ? 1.25 : 1) * (z >= 7 ? 1.2 : 1),
-    split: z >= 4,
-    cooldown: 0.5 * (z >= 5 ? 0.8 : 1) * cdMul,
-    slowMul: z >= 6 ? 0.35 : 0.5,
-    slowTime: z >= 6 ? 2.4 : 1.5,
-    chain: z >= 8,
-    speed: 760,
-  };
-  stats.overload = {
-    radius: 240 * (f >= 2 ? 1.15 : 1) * (f >= 5 ? 1.15 : 1),
-    damage: 18 + (f >= 2 ? 8 : 0) + (f >= 5 ? 12 : 0),
-    stun: f >= 3 ? 2.4 : 1.8,
-    cost: (f >= 4 ? 30 : 40) * costMul,
-    leak: f >= 6,
-  };
   stats.cdMul = cdMul;
-  stats.zap = {
-    damage: 6 + (z >= 2 ? 2 : 0) + (z >= 7 ? 3 : 0),
-    count: 1 + (z >= 3 ? 1 : 0) + (z >= 6 ? 1 : 0),
-    cooldown: 0.25 * (z >= 4 ? 0.8 : 1) * cdMul,
-    pierce: (z >= 5 ? 1 : 0) + (z >= 8 ? 1 : 0),
-    scale: z >= 8 ? 1.3 : 1,
-  };
-  stats.flame = {
-    radius: 105 * (1 + 0.12 * (f - 1)),
-    dps: 40 * (1 + 0.25 * (f - 1)),
-    drain: 26 * (1 - 0.08 * (f - 1)) * (1 - 0.06 * lv("sink")),
-  };
+  computeKitStats(z, f, cdMul, costMul); // Widow / Hackerman (kits.js)
   const o = lv("orbit");
   stats.orbit = {
     count: byLevel([0, 1, 2, 2, 3, 3, 4], o),
@@ -145,10 +121,16 @@ function computeStats() {
 }
 
 function resetPlayer() {
-  player.char = CHARACTERS[settings.character] ? settings.character : "paine";
   Object.keys(upg).forEach((k) => delete upg[k]);
   upg.zap = 1;
   upg.flame = 1;
+  freshPlayer(CHARACTERS[settings.character] ? settings.character : "paine");
+}
+
+// The current player's body and kit, fresh and at full HP, as IC `char`.
+// The team's upgrades are kept (co-op's player 2 joins with them).
+function freshPlayer(char) {
+  player.char = char;
   computeStats();
   Object.assign(player, {
     x: 200,
@@ -182,14 +164,17 @@ function resetPlayer() {
     faceLock: 0,
     fireAnim: 0,
     fireAngle: 0,
-    flameScale: 0,
     speech: null,
     speechCd: 0,
     combo: 0,
     dash: null,
     guard: 0,
     specialCd: 0,
-    firewallCd: 0,
+    draw: null, // the Widow's bow
+    releaseT: 0,
+    flameFlash: 0,
+    dilation: 0, // Hackerman's Time Dilation
+    dilationMax: 0,
     specialWasHeld: false,
     lowHpSaid: false,
     runDust: 0,
@@ -312,11 +297,11 @@ function updatePlayer(dt) {
     updateDash(dt);
     updateBlade(dt);
   } else if (p.char === "sudo") {
-    updateOverload(dt);
-    updateDaemon(dt);
+    updateDilation(dt);
+    updateEmitter(dt);
   } else {
-    updateFlame(dt);
-    updateZap(dt);
+    updateHeatWave(dt);
+    updateBow(dt);
   }
   updateAutoWeapons(dt);
   p.fireAnim = Math.max(0, p.fireAnim - dt);
@@ -344,75 +329,7 @@ function doJump(velocity, jumpsAfter) {
 }
 
 // The flame burns heat. Heat never refills by itself: deal or take damage.
-function updateFlame(dt) {
-  const p = player;
-  if (p.heatLocked && p.heat >= TUNING.heat.flameMin) p.heatLocked = false;
-  let wanted = flameHeld();
-  if (settings.autoFlame && !wanted && !p.heatLocked) {
-    // Light up when enemies get close and there's enough heat; keep burning
-    // while they stay close
-    const pc = centerOf(p);
-    const r = stats.flame.radius * (p.flameOn ? 1.25 : 1.05);
-    const close = enemies.some((e) => !e.dead && circleHitsBox(pc.x, pc.y, r, e)) || enemyShots.some((s) => Math.hypot(s.x - pc.x, s.y - pc.y) < r * 1.3);
-    wanted = close && (p.flameOn || p.heat >= 30);
-    p.autoFlaming = wanted;
-  }
-  const wasOn = p.flameOn;
-  p.flameOn = wanted && !p.heatLocked && p.heat > 0;
-  if (p.flameOn && !wasOn) {
-    // Ignition: a ring of fire bursts out
-    const pc = centerOf(p);
-    ring(pc.x, pc.y, stats.flame.radius * 1.3, "#ff9b21");
-    burst(pc.x, pc.y, 18, "#ff9b21", 420);
-    p.flameScale = 0.2;
-    if (Math.random() < 0.4) say("special");
-  } else if (!p.flameOn && wasOn) {
-    const pc = centerOf(p);
-    burst(pc.x, pc.y, 10, "#ffb35a", 200); // embers
-  }
-  p.flameScale = p.flameOn ? Math.min(1, p.flameScale + dt * 5) : 0;
-  if (p.flameOn) {
-    p.heat -= stats.flame.drain * dt;
-    if (p.heat <= 0) {
-      p.heat = 0;
-      p.flameOn = false;
-      p.heatLocked = true;
-      input.buttons.flame = false; // the touch toggle goes off too
-      popup("NO HEAT!", p.x + p.w / 2, p.y - 20, "#ff4b4b");
-    }
-  } else if (wanted && p.heatLocked && !p.warnedNoHeat) {
-    popup("NEED HEAT", p.x + p.w / 2, p.y - 20, "#ff9b21", 22);
-    p.warnedNoHeat = true;
-  }
-  if (!wanted) p.warnedNoHeat = false;
-  if (p.flameOn) sfx.flame.startLoop();
-  else sfx.flame.stopLoop();
-  if (!p.flameOn) return;
-
-  const pc = centerOf(p);
-  // The aura melts enemy bullets that fly into it (costs heat equal to the damage blocked)
-  const melt = stats.flame.radius * 0.9;
-  for (let i = enemyShots.length - 1; i >= 0; i--) {
-    const s = enemyShots[i];
-    if (s.kind === "meteor" || s.kind === "snipe" || s.kind === "fire") continue; // too big, too fast, or hellfire
-    if (Math.hypot(s.x - pc.x, s.y - pc.y) > melt + s.r) continue;
-    enemyShots.splice(i, 1);
-    burst(s.x, s.y, 5, "#ffb35a", 200);
-    p.heat = Math.max(0, p.heat - (s.damage || 8));
-  }
-  const r = stats.flame.radius;
-  enemies.forEach((e) => {
-    if (!circleHitsBox(pc.x, pc.y, r, e)) return;
-    const ec = centerOf(e);
-    const dx = ec.x - pc.x;
-    damageEnemy(e, stats.flame.dps * dt, { source: "flame", quiet: true, kbX: Math.sign(dx) * 900 * dt });
-    if (Math.random() < 0.25) burst(ec.x + rand(-20, 20), ec.y + rand(-20, 20), 1, "#ff9b21", 180);
-    sfx.burn.play();
-  });
-  crates.forEach((c) => c.alive && circleHitsBox(pc.x, pc.y, r, c) && damageCrate(c, 20 * dt));
-}
-
-// ---------------------------------------------------------- Energy ball -----
+// ----------------------------------------------------------- Aiming --------
 function holdAim() {
   const pc = centerOf(player);
   if (input.mouse.zap) return { x: input.mouse.x - pc.x, y: input.mouse.y - pc.y, assist: false };
@@ -430,7 +347,7 @@ function autoAim(range = 1150, projSpeed = TUNING.zap.speed) {
   let target = nearestEnemy(pc.x, pc.y, range, onScreen);
   // A boss takes priority, unless a minion is right on top of you
   const boss = game.boss;
-  if (boss && !boss.dead && target !== boss && onScreen(boss)) {
+  if (boss && !boss.dead && !boss.cloaked && target !== boss && onScreen(boss)) { // (NULL among its copies: no peeking)
     const bc = centerOf(boss);
     const tc = target && centerOf(target);
     const close = tc && Math.hypot(tc.x - pc.x, tc.y - pc.y) < 280;
@@ -442,16 +359,6 @@ function autoAim(range = 1150, projSpeed = TUNING.zap.speed) {
   const tx = c.x + (target.vx || 0) * t;
   const ty = c.y + (target.def && target.def.walker ? 0 : (target.vy || 0) * t);
   return { x: tx - pc.x, y: ty - (pc.y - 10), assist: false };
-}
-
-function updateZap(dt) {
-  const p = player;
-  p.zapCd -= dt;
-  if (p.zapCd > 0) return;
-  const aim = primaryAim(1150, TUNING.zap.speed);
-  if (!aim) return;
-  fireZap(aim.x, aim.y, aim.assist, aim.cone);
-  p.zapCd = stats.zap.cooldown * (p.overdrive > 0 ? 0.5 : 1);
 }
 
 function nearestEnemy(x, y, maxDist, filter) {
@@ -469,52 +376,9 @@ function nearestEnemy(x, y, maxDist, filter) {
   return best;
 }
 
+// The Widow's arrow release (kept as fireZap: "fire the primary toward ax, ay")
 function fireZap(ax, ay, assist, cone) {
-  const p = player;
-  const pc = centerOf(p);
-  const sy = pc.y - 10;
-  let len = Math.hypot(ax, ay) || 1;
-  ax /= len;
-  ay /= len;
-  if (assist) {
-    // Snap to the enemy closest to where we're aiming (within a cone)
-    let bestDot = Math.cos(cone || TUNING.zap.aimAssist);
-    for (const e of enemies) {
-      if (e.dead || !onScreen(e)) continue;
-      const c = centerOf(e);
-      const dx = c.x - pc.x;
-      const dy = c.y - sy;
-      const d = Math.hypot(dx, dy);
-      if (d > 1200 || d < 1) continue;
-      const dot = (dx * ax + dy * ay) / d;
-      if (dot > bestDot) {
-        bestDot = dot;
-        ax = dx / d;
-        ay = dy / d;
-      }
-    }
-  }
-  const z = stats.zap;
-  const base = Math.atan2(ay, ax);
-  faceToward(ax, base);
-  startAttackAnim(0.22);
-  const speed = TUNING.zap.speed * (z.scale > 1 ? 1.2 : 1);
-  for (let i = 0; i < z.count; i++) {
-    const a = base + (i - (z.count - 1) / 2) * TUNING.zap.spread;
-    playerShots.push({
-      x: pc.x + Math.cos(a) * 34,
-      y: sy + Math.sin(a) * 34,
-      vx: Math.cos(a) * speed,
-      vy: Math.sin(a) * speed,
-      r: TUNING.zap.radius * z.scale,
-      angle: a,
-      life: TUNING.zap.life,
-      damage: z.damage,
-      pierce: z.pierce,
-      hit: new Set(),
-    });
-  }
-  sfx.energy.play();
+  releaseArrows(ax, ay, assist, cone);
 }
 
 function updatePlayerShots(dt) {
@@ -523,13 +387,24 @@ function updatePlayerShots(dt) {
     s.x += s.vx * dt;
     s.y += s.vy * dt;
     s.life -= dt;
+    if (s.kind === "em") {
+      // EM waves grow taller as they travel
+      s.age += dt;
+      s.r = 26 + (stats.em.height - 26) * Math.min(1, s.age / 0.4);
+    }
     let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 200 || s.x < camera.x - 200 || s.x > camera.x + W + 200;
     if (!gone) {
       for (const e of enemies) {
         if (e.dead || s.hit.has(e) || !circleHitsBox(s.x, s.y, s.r, e)) continue;
-        if (s.orb) {
-          gone = true; // Sudo's glitch orb bursts on contact
-          break;
+        if (s.kind === "arrow" || s.kind === "em") {
+          if (s.kind === "arrow") arrowHit(s, e);
+          else emHit(s, e);
+          s.hit.add(e);
+          if (s.pierce-- <= 0) {
+            gone = true;
+            break;
+          }
+          continue;
         }
         damageEnemy(e, s.damage, { source: "zap", kbX: Math.sign(s.vx) * 160, fromX: s.x - s.vx });
         burst(s.x, s.y, 6, "#5fd8ff", 260);
@@ -543,16 +418,16 @@ function updatePlayerShots(dt) {
     }
     if (!gone) {
       for (const c of crates) {
-        if (c.alive && circleHitsBox(s.x, s.y, s.r, c)) {
+        if (c.alive && circleHitsBox(s.x, s.y, s.r, c) && !s.hit.has(c)) {
           damageCrate(c, s.damage);
-          gone = true;
+          s.hit.add(c);
+          if (s.kind !== "em") gone = true; // EM waves pass through
           break;
         }
       }
     }
     if (gone) {
-      if (s.orb) explodeOrb(s);
-      else if (s.y > GROUND_Y) burst(s.x, GROUND_Y, 4, "#5fd8ff", 160);
+      if (s.y > GROUND_Y) burst(s.x, GROUND_Y, 4, s.kind === "em" ? "#b06cff" : "#ff4a6a", 160);
       playerShots.splice(i, 1);
     }
   }
@@ -677,7 +552,8 @@ function shockStomp() {
 }
 
 // --------------------------------------------------------------- Damage -----
-function hurtPlayer(damage, fromX, fromY) {
+// src: the attacker (an enemy), so Ronin can reflect damage back at it
+function hurtPlayer(damage, fromX, fromY, src) {
   const p = player;
   if (p.invuln > 0 || game.state !== "playing") return false;
   const pc = centerOf(p);
@@ -685,17 +561,10 @@ function hurtPlayer(damage, fromX, fromY) {
     burst(pc.x, pc.y, 6, "#19f5ff", 200);
     return true; // blocked, but the attack is used up
   }
-  if (p.char === "sudo" && p.firewallCd <= 0) {
-    // Sudo's firewall eats one hit every 10 seconds
-    p.firewallCd = 10;
-    p.invuln = 0.5;
-    glyphBurst(pc.x, pc.y, 8);
-    popup("FIREWALL", pc.x, p.y - 20, "#5aff7a", 22);
-    sfx.zapHit.play({ rate: 1.8 });
-    return true;
-  }
+  const incoming = damage;
   damage *= stats.armorMul;
   if (p.guard > 0) damage *= 0.5; // Tetsu's guard stance
+  if (p.char === "tetsu") roninReflect(src, incoming);
   p.hp = Math.max(0, p.hp - damage);
   p.invuln = TUNING.player.hurtInvuln;
   gainHeat(damage * TUNING.heat.perDamageTaken);
@@ -703,11 +572,12 @@ function hurtPlayer(damage, fromX, fromY) {
   p.kbX = dir * TUNING.player.knockback;
   if (p.vy > -300) p.vy = -320;
   camera.shake = Math.max(camera.shake, 14);
-  game.hurtFlash = 0.35;
+  if (coop.active.id) gamepads.rumble(coop.active.slot, 0.45, 0.9, 180); // co-op player 2: their own pad (the red flash rumbles player 1's)
+  else game.hurtFlash = 0.35;
   burst(pc.x, pc.y, 12, "#ff2f6d", 360);
   damageNumber(damage, pc.x, p.y - 10, "#ff4b6e");
   sfx.damage.play();
-  vibrate(60);
+  if (!coop.active.id) vibrate(60); // (player 1's phone)
   onPlayerHurt(); // Sandevistan (easter egg)
   squash(1.15, 0.88);
   if (p.hp > 0 && p.hp / stats.maxHp < 0.3 && !p.lowHpSaid) {
@@ -731,7 +601,8 @@ function drawPlayer(time) {
   ctx.ellipse(cx, floor, 26 * Math.max(0.4, 1 - height / 600), 7, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (p.flameOn) drawFlameAura(cx, p.y + p.h / 2, bottom, time, true);
+  if (p.flameFlash > 0) glow(cx, p.y + p.h / 2, 120, "rgba(255,120,30,0.7)", p.flameFlash / 0.6); // her suit vents heat
+  if (p.char === "sudo" && p.dilation > 0) glow(cx, p.y + p.h / 2, 110, "rgba(90,255,122,0.4)");
   if (p.overdrive > 0) glow(cx, p.y + p.h / 2, 90, "rgba(255,225,77,0.45)");
 
   drawPlayerTrail(); // Sandevistan afterimages
@@ -749,6 +620,7 @@ function drawPlayer(time) {
   let alpha = blink ? 0.3 : 1;
   if (p.camo > 0) alpha = 0.18 + 0.08 * Math.sin(time * 20); // thermoptic camo
   ctx.globalAlpha = alpha;
+  if (!(p.camo > 0)) coopOutline(cx, bottom, time); // co-op: P1 / P2 outline colours
   if (!drawHeroSprite(cx, bottom, time)) {
     ctx.fillStyle = CH().color;
     ctx.fillRect(p.x, p.y, p.w, p.h);
@@ -762,7 +634,6 @@ function drawPlayer(time) {
   drawAttackFx(cx, time);
   drawHeroAura(cx, p.y + p.h / 2, time);
 
-  if (p.flameOn) drawFlameAura(cx, p.y + p.h / 2, bottom, time, false);
   if (p.shield > 0) {
     const a = p.shield < 1.5 && Math.floor(p.shield * 8) % 2 === 0 ? 0.3 : 0.8;
     ctx.strokeStyle = `rgba(25,245,255,${a})`;
@@ -774,6 +645,7 @@ function drawPlayer(time) {
   }
 
   drawSpeech();
+  coopTag(cx, p.y);
 
   // Orbit shards
   if (stats.orbit.count) {
@@ -799,20 +671,24 @@ function heroFrame() {
   const ch = CH();
   let img = IMG[ch.sprite.img];
   let tint = null;
-  const own = isReady(img);
-  if (!own) {
+  let own = isReady(img);
+  if (!own && ch.sprite.fallback && isReady(IMG[ch.sprite.fallback])) {
+    img = IMG[ch.sprite.fallback]; // an older sheet with the same layout
+    own = !!ch.sprite.fallbackSameLayout;
+  } else if (!own) {
     img = IMG.player; // until a hero's own sheet loads
     tint = ch.sprite.tint || null;
   }
   let sheet = img;
   let row = p.lookUp ? 3 : p.frameY;
   let fx = p.lookUp ? 0 : p.frameX;
-  if (p.fireAnim > 0 && !p.lookUp) {
+  const bowPose = p.char === "paine" && (p.draw || p.releaseT > 0);
+  if ((p.fireAnim > 0 || bowPose) && !p.lookUp) {
     const atk = ch.sprite.attack ? IMG[ch.sprite.attack] : own ? img : null;
     if (isReady(atk)) {
       sheet = atk;
       row = ch.sprite.attackRows[p.facing < 0 ? 0 : 1];
-      fx = Math.min(3, Math.floor((1 - p.fireAnim / p.fireAnimMax) * 4));
+      fx = bowPose ? bowFrame() : Math.min(3, Math.floor((1 - p.fireAnim / p.fireAnimMax) * 4));
     }
   }
   return { sheet, row, fx, tint };
@@ -841,11 +717,12 @@ function drawAttackFx(cx, time) {
   const hand = { x: cx + Math.cos(p.fireAngle || 0) * 40, y: p.y + p.h / 2 - 10 + Math.sin(p.fireAngle || 0) * 40 };
   const fresh = p.fireAnim > p.fireAnimMax - 0.09;
   if (p.char === "paine") {
-    if (fresh) {
-      glow(hand.x, hand.y, 46, "rgba(60,180,255,0.9)");
-      drawCell("fx", 0, 32, hand.x, hand.y, 56, 56, p.fireAngle);
-    } else if (p.onGround && !p.moving && p.heat >= 50 && !p.flameOn) {
-      glow(cx + p.facing * 24, p.y + 62, 16 + 3 * Math.sin(time * 18), "rgba(255,150,40,0.8)");
+    if (p.draw) {
+      // the drawn arrow's tip glows brighter as the string comes back
+      const k = Math.min(1, p.draw.t / stats.bow.draw);
+      glow(hand.x, hand.y, 16 + 26 * k, `rgba(255,60,90,${0.4 + 0.5 * k})`);
+    } else if (p.releaseT > 0.1) {
+      glow(hand.x, hand.y, 34, "rgba(255,200,210,0.8)");
     }
   } else if (p.char === "sudo") {
     if (p.fireAnim > 0) {
@@ -863,40 +740,6 @@ function drawAttackFx(cx, time) {
     }
   } else if (p.char === "tetsu" && p.onGround && !p.moving && p.fireAnim <= 0 && Math.sin(time * 0.9) > 0.95) {
     glow(cx - p.facing * 10, p.y + 20, 14, "rgba(160,250,255,0.9)"); // the blade gleams
-  }
-}
-
-function drawFlameAura(cx, cy, bottom, time, behind) {
-  const img = smallOr("fire");
-  const r = stats.flame.radius * (0.4 + 0.6 * player.flameScale);
-  const flick = 1 + Math.sin(time * 31) * 0.06 + Math.sin(time * 17) * 0.05;
-  ctx.imageSmoothingEnabled = true;
-  if (behind) {
-    glow(cx, cy, r * 1.5, "rgba(255,120,30,0.55)");
-    if (img) {
-      const w = 130 * (2 - flick);
-      const h = 180 * flick;
-      ctx.drawImage(img, cx - w / 2, bottom + 10 - h, w, h);
-    }
-    // ring of flames showing the burn radius
-    if (img) {
-      const n = 8;
-      for (let i = 0; i < n; i++) {
-        const a = time * 2.2 + (i / n) * Math.PI * 2;
-        const fx = cx + Math.cos(a) * r * 0.85;
-        const fy = cy + Math.sin(a) * r * 0.85;
-        const s = 0.8 + 0.2 * Math.sin(time * 20 + i);
-        ctx.globalAlpha = 0.8;
-        ctx.drawImage(img, fx - 18 * s, fy - 38 * s, 36 * s, 50 * s);
-      }
-      ctx.globalAlpha = 1;
-    }
-  } else if (img) {
-    ctx.globalAlpha = 0.45;
-    const w = 90 * flick;
-    const h = 115 * (2 - flick);
-    ctx.drawImage(img, cx - w / 2, bottom + 6 - h, w, h);
-    ctx.globalAlpha = 1;
   }
 }
 
@@ -922,14 +765,39 @@ function drawPlayerProjectiles() {
       }
       return;
     }
-    if (s.orb) {
-      glow(s.x, s.y, 44 * (s.r / 18), "rgba(90,255,122,0.7)");
-      ctx.fillStyle = "#e9ffef";
-      ctx.fillRect(s.x - 6, s.y - 6, 12, 12);
-      ctx.strokeStyle = "#5aff7a";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(s.x - 11 + rand(-2, 2), s.y - 11, 22, 22);
-      if (Math.random() < 0.3) glyphBurst(s.x, s.y, 1);
+    if (s.kind === "arrow") {
+      glow(s.x, s.y, s.piercing ? 40 : 26, s.piercing ? "rgba(255,255,255,0.8)" : "rgba(255,60,90,0.6)");
+      if (!drawCell("fx2", s.piercing ? 1 : 0, 32, s.x, s.y, 64, 64, s.angle)) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.angle);
+        ctx.fillStyle = "#f4f4ff";
+        ctx.fillRect(-26, -2, 40, 4);
+        ctx.fillStyle = s.piercing ? "#ffffff" : "#ff3b5c";
+        ctx.fillRect(12, -4, 10, 8);
+        ctx.restore();
+      }
+      return;
+    }
+    if (s.kind === "em") {
+      // a crescent of electromagnetic interference
+      const h = s.r * 2.2;
+      glow(s.x, s.y, s.r * 1.6, "rgba(176,108,255,0.45)");
+      if (!drawCell("fx2", 2, 32, s.x, s.y, h * 0.8, h, s.angle)) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.angle);
+        ctx.globalCompositeOperation = "lighter";
+        [["rgba(176,108,255,0.7)", 8], ["rgba(25,245,255,0.8)", 3]].forEach(([c, w], k) => {
+          ctx.strokeStyle = c;
+          ctx.lineWidth = w;
+          ctx.beginPath();
+          ctx.arc(-s.r * 0.6 - k * 8, 0, s.r, -1.1, 1.1);
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
+      if (Math.random() < 0.25) drawCell("fx2", 3, 32, s.x + rand(-10, 10), s.y + rand(-s.r, s.r), 28, 28, rand(0, 6));
       return;
     }
     glow(s.x, s.y, 55 * (s.r / 22), "rgba(40,160,255,0.5)");

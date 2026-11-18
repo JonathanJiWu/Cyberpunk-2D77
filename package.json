@@ -1,11 +1,103 @@
 {
   "name": "cyberpunk-2d77",
+  "productName": "Cyberpunk 2D77",
+  "version": "3.1.0",
   "private": true,
   "description": "Cyberpunk 2D77, a neon side-scrolling action game. No build step: open index.html.",
+  "author": "JonathanJiWu",
+  "license": "MIT",
+  "homepage": "https://jonathanjiwu.github.io/Cyberpunk-2D77/",
+  "repository": "github:JonathanJiWu/Cyberpunk-2D77",
+  "main": "desktop/main.js",
+  "desktopName": "cyberpunk-2d77.desktop",
   "scripts": {
-    "test": "node tests/game.test.cjs"
+    "test": "node tests/game.test.cjs",
+    "bench": "node tools/bench.cjs",
+    "desktop": "electron .",
+    "pack:linux": "electron-builder --linux dir --x64 --publish never",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg --x64 --publish never",
+    "test:electron": "npm run pack:linux && node tests/electron.test.cjs"
   },
   "devDependencies": {
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0",
     "playwright": "^1.63.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "build": {
+    "appId": "io.github.jonathanjiwu.cyberpunk2d77",
+    "productName": "Cyberpunk 2D77",
+    "copyright": "Copyright © 2021 JonathanJiWu",
+    "artifactName": "Cyberpunk-2D77-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "js/**/*",
+      "img/**/*",
+      "sound/**/*",
+      "fonts/**/*",
+      "desktop/**/*",
+      "!sound/Where+There+Is+No+Darkness.mp3",
+      "!img/BG2.jpg"
+    ],
+    "icon": "desktop/icon.png",
+    "asar": true,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "JonathanJiWu",
+        "repo": "Cyberpunk-2D77",
+        "releaseType": "release"
+      }
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "executableName": "cyberpunk-2d77",
+      "syncDesktopName": true,
+      "category": "Game;ActionGame",
+      "synopsis": "A neon side-scrolling action game",
+      "description": "A neon side-scrolling action game: survive the streets of Cyber City, level up, and defeat the Demon GOAT.",
+      "maintainer": "JonathanJiWu <noreply@github.com>"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Cyberpunk 2D77"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "public.app-category.action-games"
+    }
   }
 }

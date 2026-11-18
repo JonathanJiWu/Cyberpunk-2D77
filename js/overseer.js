@@ -25,11 +25,11 @@ const OVERSEER = {
   slamDamage: 24,
   beamDamage: 32,
   beamWidth: 30,
-  vent: [2.8, 2.2],
+  vent: [2.4, 1.9],
 };
 
 function spawnOverseer() {
-  director.stage = 1;
+  director.stage = STAGE.overseer;
   const pc = centerOf(player);
   const side = pc.x < WORLD_W / 2 ? 1 : -1;
   const x = clamp(pc.x + side * 520 - OVERSEER.w / 2, 40, WORLD_W - OVERSEER.w - 40);
@@ -44,16 +44,18 @@ function spawnOverseer() {
 }
 
 function overseerDefeated(e) {
-  director.stage = 2;
+  director.stage = STAGE.interlude1;
   director.nextBossAt = game.time + TUNING.boss.overseerDelay;
   game.boss = null;
   game.bossesDefeated = (game.bossesDefeated || 0) + 1;
   game.slowmo = { time: 1.2, scale: 0.3 };
-  game.banner = { text: "OVERSEER DOWN // SOMETHING BIGGER IS COMING", time: 3, color: "#19f5ff" };
+  game.banner = { text: "OVERSEER DOWN // NOTHING IS WATCHING YOU", time: 3, color: "#19f5ff" };
   music.setIntensity(1);
   shockwaves.length = 0;
-  player.hp = Math.min(stats.maxHp, player.hp + 30);
-  popup("+30 HP", player.x + player.w / 2, player.y - 30, "#ff2f6d", 26, 1.4);
+  eachTarget(() => {
+    player.hp = Math.min(stats.maxHp, player.hp + 30);
+    popup("+30 HP", player.x + player.w / 2, player.y - 30, "#ff2f6d", 26, 1.4);
+  });
   spawnPowerup(player.x + player.w / 2, player.y - 200);
 }
 
@@ -140,7 +142,7 @@ function updateOverseer(e, dt) {
         e.timer -= dt;
         if (e.timer <= 0 && e.step < shots) {
           const c = cannonOf(e);
-          if (!blind) fireEnemyShot(c.x, c.y, { kind: "laser", damage: OVERSEER.burstDamage, speed: OVERSEER.burstSpeed, radius: 13 });
+          if (!blind) fireEnemyShot(c.x, c.y, { kind: "laser", damage: OVERSEER.burstDamage, speed: OVERSEER.burstSpeed, radius: 13 }, undefined, 1, e);
           burst(c.x, c.y, 4, "#19f5ff", 200);
           e.vx -= e.facing * 60; // recoil
           e.step++;
@@ -252,7 +254,7 @@ function updateOverseer(e, dt) {
         }
         const k = Math.min(1, (e.stateTime - charge) / sweep);
         e.beam.angle = e.beam.from + (e.beam.to - e.beam.from) * k;
-        if (!blind && !bossLocked() && beamHitsFrom(eye, e.beam.angle, OVERSEER.beamWidth)) hurtPlayer(OVERSEER.beamDamage, eye.x, eye.y);
+        if (!bossLocked()) eachTarget(() => !(player.camo > 0) && beamHitsFrom(eye, e.beam.angle, OVERSEER.beamWidth) && hurtPlayer(OVERSEER.beamDamage, eye.x, eye.y, e));
         if (Math.random() < 0.5) {
           const gx = eye.x + Math.cos(e.beam.angle) * 900;
           const gy = Math.min(GROUND_Y, eye.y + Math.sin(e.beam.angle) * 900);
@@ -356,7 +358,7 @@ function drawOverseer(e, time) {
     });
     ctx.restore();
   }
-  glow(c.x, c.y, 200, e.enraged ? "rgba(255,30,70,0.35)" : "rgba(25,245,255,0.25)");
+  decorGlow(c.x, c.y, 200, e.enraged ? "rgba(255,30,70,0.35)" : "rgba(25,245,255,0.25)"); // its aura (the tells have their own glows)
   const img = IMG.overseerAvatar;
   const s = OVERSEER.scale;
   const dw = 64 * s;

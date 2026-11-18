@@ -75,6 +75,15 @@ loadImage("legend", "img/legend.png"); // 5 frames of 64x64
 loadImage("hardware", "img/hardware.png"); // 8 cells of 64x40
 loadImage("overseerAvatar", "img/overseer-avatar.png"); // 14 frames of 64x96
 loadImage("goatFinal", "img/goat-final.png"); // 14 frames of 96x96
+// v3.1: the Cyber Widow, Hackerman, new landings/portraits, kit effects,
+// hardware XP pickups and the NULL boss
+loadImage("widow", "img/widow.png"); // 6 rows x 4 frames of 32x48 (rows 4/5: bow shot)
+loadImage("hackerman", "img/hackerman.png"); // same layout (rows 4/5: EM projector)
+loadImage("heroLanding2", "img/hero-landing2.png"); // rows: widow, tetsu, hackerman
+loadImage("portraits2", "img/portraits2.png"); // 3 portraits of 48x48
+loadImage("fx2", "img/fx2.png"); // 8 cells of 32x32: arrows, EM, glitch, bleed, heat, reflect
+loadImage("xpHardware", "img/xp-hardware.png"); // rows RAM / NVMe / CPU x 4 shine frames
+loadImage("nullBoss", "img/null.png"); // 14 frames of 64x96
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64
@@ -95,7 +104,8 @@ loadImage("wasd", "img/wasd.png");
 loadImage("fire", "img/fire.png");
 loadImage("blueFlame", "img/blue-flame.png");
 
-// fire.png and blue-flame.png are ~900px wide but drawn tiny; shrink them once.
+// fire.png and blue-flame.png are ~900px wide but drawn tiny; shrink them once
+// (and let the full-size decoded images go: ~7 MB of memory).
 const SMALL = {};
 function prescale(name, width) {
   const img = IMG[name];
@@ -107,6 +117,7 @@ function prescale(name, width) {
     g.imageSmoothingQuality = "high";
     g.drawImage(img, 0, 0, c.width, c.height);
     SMALL[name] = c;
+    IMG[name] = c;
   };
   if (isReady(img)) make();
   else img.addEventListener("load", make);
@@ -115,12 +126,66 @@ prescale("fire", 160);
 prescale("blueFlame", 160);
 const smallOr = (name) => SMALL[name] || (isReady(IMG[name]) ? IMG[name] : null);
 
+// ------------------------------------------------------- Performance mode ---
+// settings.perfMode (the switch is in the settings menu, see js/display.js):
+// fewer particles, no decorative glows, glitch ghosting or weather detail, a
+// simpler backdrop and a lower internal resolution. Enemies, bullets,
+// telegraphs and the HUD look the same.
+function perfMode() {
+  return typeof settings !== "undefined" && settings.perfMode === true;
+}
+const PARTICLE_CAP = 260; // particles alive at once
+const PERF_PARTICLE_CAP = 90; // ...in Performance mode
+const particleCap = () => (perfMode() ? PERF_PARTICLE_CAP : PARTICLE_CAP);
+
+// "rgba(r,g,b,a)" -> [r, g, b, a] (null for anything else)
+function parseRgba(color) {
+  const m = /^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/.exec(color);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])] : null;
+}
+
 // ----------------------------------------------------------- Draw helpers ---
-// Scratch canvas used to tint sprite frames (hit flashes, enrage, telegraphs)
-const tintCanvas = document.createElement("canvas");
-tintCanvas.width = 96;
-tintCanvas.height = 96;
-const tintCtx = tintCanvas.getContext("2d");
+// Tinted copies of sprite frames (hit flashes, stuns, telegraphs, ghosts) are
+// cached, so a tint costs one drawImage instead of repainting a scratch canvas
+// (and the browser re-uploading it) on every draw. Tints whose alpha animates
+// are bucketed to 1/40 steps, which looks the same.
+const tintCache = new Map(); // tint -> Map(image -> Map(frame -> canvas))
+const tintNames = new Map(); // tint as given -> bucketed tint
+let tintPixels = 0;
+const TINT_CACHE_PIXELS = 1 << 21; // ~8 MB of tinted frames, then start over
+function tintedFrame(img, sx, sy, sw, sh, tint) {
+  let name = tintNames.get(tint);
+  if (name === undefined) {
+    const c = parseRgba(tint);
+    name = c ? `rgba(${c[0]},${c[1]},${c[2]},${Math.round(clamp(c[3], 0, 1) * 40) / 40})` : tint;
+    if (tintNames.size > 400) tintNames.clear(); // animated tints: don't grow forever
+    tintNames.set(tint, name);
+  }
+  let byImage = tintCache.get(name);
+  if (!byImage) tintCache.set(name, (byImage = new Map()));
+  let frames = byImage.get(img);
+  if (!frames) byImage.set(img, (frames = new Map()));
+  const key = sx + 4096 * (sy + 4096 * (sw + 1024 * sh));
+  let c = frames.get(key);
+  if (!c) {
+    if (tintPixels + sw * sh > TINT_CACHE_PIXELS) {
+      tintCache.clear();
+      tintPixels = 0;
+      return tintedFrame(img, sx, sy, sw, sh, tint);
+    }
+    c = document.createElement("canvas");
+    c.width = sw;
+    c.height = sh;
+    const g = c.getContext("2d");
+    g.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    g.globalCompositeOperation = "source-atop";
+    g.fillStyle = name;
+    g.fillRect(0, 0, sw, sh);
+    frames.set(key, c);
+    tintPixels += sw * sh;
+  }
+  return c;
+}
 
 // Draw one frame of a sprite sheet, optionally mirrored and/or tinted.
 function drawFrame(img, sx, sy, sw, sh, dx, dy, dw, dh, tint, flip) {
@@ -128,13 +193,7 @@ function drawFrame(img, sx, sy, sw, sh, dx, dy, dw, dh, tint, flip) {
   ctx.imageSmoothingEnabled = false;
   let src = img;
   if (tint) {
-    tintCtx.globalCompositeOperation = "source-over";
-    tintCtx.clearRect(0, 0, sw, sh);
-    tintCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-    tintCtx.globalCompositeOperation = "source-atop";
-    tintCtx.fillStyle = tint;
-    tintCtx.fillRect(0, 0, sw, sh);
-    src = tintCanvas;
+    src = tintedFrame(img, sx, sy, sw, sh, tint);
     sx = sy = 0;
   }
   if (flip) {
@@ -151,6 +210,11 @@ function drawFrame(img, sx, sy, sw, sh, dx, dy, dw, dh, tint, flip) {
 
 // Soft additive glow. Gradients are cached as small canvases because creating
 // a gradient for every projectile every frame is slow on phones.
+//   glowSprite(color): the sprite with the colour's own alpha baked in.
+//   glow(): draws the colour at full strength with its alpha as globalAlpha
+//   (it looks the same), so colours built on the fly with an animated alpha
+//   share one sprite; an animated hue is bucketed to 5 degree steps. Before,
+//   each new colour string made (and kept) a new canvas every frame.
 const glowCache = new Map();
 function glowSprite(color) {
   let c = glowCache.get(color);
@@ -167,15 +231,76 @@ function glowSprite(color) {
   }
   return c;
 }
+const glowColors = new Map(); // colour as given -> { sprite, alpha }
+function glowEntry(color) {
+  let entry = glowColors.get(color);
+  if (entry) return entry;
+  let base = color;
+  let alpha = 1;
+  const rgba = parseRgba(color);
+  const hsla = !rgba && /^hsla\(\s*([\d.]+)\s*,([^,]+),([^,]+),\s*([\d.]+)\s*\)$/.exec(color);
+  if (rgba) {
+    base = `rgb(${Math.round(rgba[0])},${Math.round(rgba[1])},${Math.round(rgba[2])})`;
+    alpha = clamp(rgba[3], 0, 1);
+  } else if (hsla) {
+    base = `hsl(${(Math.round(Number(hsla[1]) / 5) * 5) % 360},${hsla[2].trim()},${hsla[3].trim()})`;
+    alpha = clamp(Number(hsla[4]), 0, 1);
+  }
+  entry = { sprite: glowSprite(base), alpha };
+  if (glowColors.size > 400) glowColors.clear();
+  glowColors.set(color, entry);
+  return entry;
+}
 function glow(x, y, radius, color, alpha = 1) {
+  const entry = glowEntry(color);
   const prevOp = ctx.globalCompositeOperation;
   const prevAlpha = ctx.globalAlpha;
   ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = prevAlpha * alpha;
+  ctx.globalAlpha = prevAlpha * alpha * entry.alpha;
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(glowSprite(color), x - radius, y - radius, radius * 2, radius * 2);
+  ctx.drawImage(entry.sprite, x - radius, y - radius, radius * 2, radius * 2);
   ctx.globalCompositeOperation = prevOp;
   ctx.globalAlpha = prevAlpha;
+}
+// A glow that is only decoration (street lamps, signs, platform under-glow,
+// boss auras): skipped in Performance mode
+function decorGlow(x, y, radius, color, alpha) {
+  if (!perfMode()) glow(x, y, radius, color, alpha);
+}
+
+// A vertical gradient as a 1-pixel-wide strip, stretched over the area when
+// drawn: much cheaper than filling a big gradient every frame (a full-screen
+// gradient fill costs several ms without a GPU). stops: [[offset, color], ...]
+const stripCache = new Map();
+function gradientStrip(key, stops, height = 256) {
+  let c = stripCache.get(key);
+  if (!c) {
+    c = document.createElement("canvas");
+    c.width = 1;
+    c.height = height;
+    const g = c.getContext("2d");
+    const grad = g.createLinearGradient(0, 0, 0, height);
+    stops.forEach(([at, color]) => grad.addColorStop(at, color));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 1, height);
+    stripCache.set(key, c);
+  }
+  return c;
+}
+function drawStrip(strip, x, y, w, h) {
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(strip, x, y, w, h);
+}
+
+// "22px Press Start 2P..." strings, built once per size (FONT is in render.js)
+const fontCache = new Map();
+function fontPx(size) {
+  let f = fontCache.get(size);
+  if (!f) {
+    if (fontCache.size > 64) fontCache.clear();
+    fontCache.set(size, (f = `${size}px ${FONT}`));
+  }
+  return f;
 }
 
 // Draw a 16x16 (or other size) cell from a horizontal strip sheet, centred.
@@ -200,28 +325,38 @@ const camera = { x: 0, y: 0, shake: 0 }; // y goes negative when you climb
 
 // ---------------------------------------------------------------- Effects ---
 const particles = [];
+const particlePool = []; // spent particles, reused by burst() and dust()
 const popups = []; // floating text (damage numbers, pickups)
 const rings = []; // expanding shockwaves
 const arcs = []; // lightning bolts
 
+// A particle from the pool (same fields, in the same order, as the literals
+// some effects push straight onto particles)
+function makeParticle(x, y, vx, vy, life, size, color) {
+  const p = particlePool.pop();
+  if (!p) return { x, y, vx, vy, life, size, color };
+  p.x = x;
+  p.y = y;
+  p.vx = vx;
+  p.vy = vy;
+  p.life = life;
+  p.size = size;
+  p.color = color;
+  return p;
+}
+
 function burst(x, y, count, color, speed, size = 1) {
-  for (let i = 0; i < count && particles.length < 260; i++) {
+  const cap = particleCap();
+  if (cap !== PARTICLE_CAP) count = Math.ceil(count / 2); // Performance mode: half as many
+  for (let i = 0; i < count && particles.length < cap; i++) {
     const a = Math.random() * Math.PI * 2;
     const s = speed * rand(0.3, 1);
-    particles.push({
-      x,
-      y,
-      vx: Math.cos(a) * s,
-      vy: Math.sin(a) * s - 80,
-      life: rand(0.25, 0.6),
-      size: rand(4, 9) * size,
-      color,
-    });
+    particles.push(makeParticle(x, y, Math.cos(a) * s, Math.sin(a) * s - 80, rand(0.25, 0.6), rand(4, 9) * size, color));
   }
 }
 
 function popup(text, x, y, color, size = 26, life = 0.9) {
-  if (popups.length > 45) popups.shift();
+  if (popups.length > (perfMode() ? 24 : 45)) popups.shift();
   popups.push({ text, x, y, color, size, life, max: life });
 }
 
@@ -253,10 +388,16 @@ function arc(points, color = "#9ffcff") {
 }
 
 function updateEffects(dt) {
+  // Spent particles are swapped out (they are drawn additively, so the order
+  // doesn't show) and reused; Performance mode also trims to its cap
+  const cap = particleCap();
+  while (particles.length > cap) particlePool.push(particles.pop());
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     if ((p.life -= dt) <= 0) {
-      particles.splice(i, 1);
+      const last = particles.pop();
+      if (last !== p) particles[i] = last;
+      if (particlePool.length < PARTICLE_CAP) particlePool.push(p);
       continue;
     }
     p.x += p.vx * dt;

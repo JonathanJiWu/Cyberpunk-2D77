@@ -34,13 +34,14 @@ const TUNING = {
   spawn: {
     startRate: 0.75, // enemies per second at the start
     ratePerSecond: 0.012, // how much faster spawning gets every second
-    maxRate: 3.2,
+    maxRate: 3.5,
     maxAlive: 40,
     hpGrowth: 1 / 100, // enemy HP multiplier grows by this much per second
   },
   boss: {
     at: 150, // seconds into the run when the Overseer shows up (boss HP is in database.js)
-    overseerDelay: 40, // the final boss (the GOAT) arrives this long after the Overseer falls
+    overseerDelay: 35, // NULL arrives this long after the Overseer falls...
+    nullDelay: 35, // ...and the final boss (the GOAT) this long after NULL
   },
 };
 

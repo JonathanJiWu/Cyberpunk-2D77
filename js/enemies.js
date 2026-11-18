@@ -1,15 +1,18 @@
 "use strict";
 // =============================================================================
-// Enemies: the spawn director (difficulty curve + the two-boss run), minion AI
-// (melee, ranged, ninja dashes, bombers, shielded enforcers, snipers), status
-// effects (slow / stun / vulnerable), elites, enemy shots and the Demon Goat.
-// The Overseer (second boss) is in overseer.js; enemy stats in database.js.
+// Enemies: the spawn director (difficulty curve + the three-boss run), minion
+// AI (melee, ranged, ninja dashes, bombers, shielded enforcers, snipers),
+// status effects (slow / stun / vulnerable), elites and enemy shots. The
+// bosses are in overseer.js, null.js and goat.js; enemy stats in database.js.
 // =============================================================================
 
 const enemies = [];
 const enemyShots = [];
-// stage: 0 before the goat, 1 goat fight, 2 interlude, 3 Overseer fight
-const director = { acc: 0, stage: 0, nextBossAt: 0, firstSpawn: 1.5 };
+// The run, in stages: the Overseer, an interlude, NULL, an interlude, then the
+// GOAT (final boss). Odd stages are boss fights.
+const STAGE = { start: 0, overseer: 1, interlude1: 2, nullptr: 3, interlude2: 4, goat: 5 };
+const director = { acc: 0, stage: STAGE.start, nextBossAt: 0, firstSpawn: 1.5 };
+const bossFight = () => director.stage % 2 === 1;
 
 const onScreen = (e) => e.x + e.w > camera.x && e.x < camera.x + W && e.y + e.h > camera.y && e.y < camera.y + H;
 
@@ -17,15 +20,17 @@ function resetEnemies() {
   enemies.length = 0;
   enemyShots.length = 0;
   director.acc = 0;
-  director.stage = 0;
+  director.stage = STAGE.start;
   director.nextBossAt = TUNING.boss.at;
   director.firstSpawn = 1.5; // (respawns push this back; a new run starts fresh)
+  director.squadAt = 50; // the first coordinated squad
+  director.lastSquad = null;
 }
 
 // ------------------------------------------------------------- Spawning -----
 // Elites (bigger, gold-glowing, tougher, more XP) show up later in the run
 function eliteChance(t) {
-  return t > 200 ? 0.12 : t > 120 ? 0.06 : 0;
+  return t > 300 ? 0.16 : t > 200 ? 0.13 : t > 110 ? 0.07 : 0;
 }
 
 function spawnEnemy(type, x, y, opts = {}) {
@@ -33,7 +38,7 @@ function spawnEnemy(type, x, y, opts = {}) {
   const elite = opts.elite !== undefined ? opts.elite : Math.random() < eliteChance(game.time);
   const mul = elite ? 2.2 : 1;
   const size = elite ? 1.15 : 1;
-  const hp = def.hp * (1 + game.time * TUNING.spawn.hpGrowth) * mul;
+  const hp = def.hp * (1 + game.time * TUNING.spawn.hpGrowth) * mul * coopMul("enemyHp");
   const e = {
     type,
     def,
@@ -57,6 +62,16 @@ function spawnEnemy(type, x, y, opts = {}) {
     slowT: 0,
     slowMul: 1,
     vulnT: 0,
+    // status effects from the IC kits (declared up front so the shape stays stable)
+    glitchT: 0,
+    knockT: 0,
+    bleedT: 0,
+    bleedDps: 0,
+    burnT: 0,
+    burnDps: 0,
+    bleedAcc: 0,
+    downed: null,
+    airFrom: 0,
     orbitCd: 0,
     hitCd: 0,
     jumpCd: rand(0.5, 1.5),
@@ -87,23 +102,71 @@ function spawnAtEdge(type) {
 
 const countAlive = (type) => enemies.reduce((n, e) => n + (!e.dead && e.type === type ? 1 : 0), 0);
 
+// ---------------------------------------------------------------- Squads ----
+// Every so often (from 0:55) a coordinated group arrives together, announced
+// on screen. Each has a readable shape and a counter, so positioning and
+// builds matter more than raw numbers.
+function spawnAt(type, side, offset = 0) {
+  const def = ENEMY_TYPES[type];
+  const x = clamp(side < 0 ? camera.x - def.w - 60 - offset : camera.x + W + 60 + offset, 0, WORLD_W - def.w);
+  const y = def.walker ? surfaceBelow(x + def.w / 2, player.y - 180) - def.h : camera.y + rand(160, 520);
+  return spawnEnemy(type, x, y);
+}
+const edgeSide = () => (camera.x < 200 ? 1 : camera.x > WORLD_W - W - 200 ? -1 : Math.random() < 0.5 ? -1 : 1);
+const SQUADS = [
+  // ninjas from both sides at once: jump the crossing dashes
+  { id: "pincer", name: "PINCER", from: 55, make: () => [-1, 1].forEach((side) => [0, 90].forEach((o) => spawnAt("ninja", side, o))) },
+  // a wyrm with a drone screen: kill the escorts or tank the crossfire
+  { id: "escort", name: "DRONE ESCORT", from: 70, make: () => {
+      const side = edgeSide();
+      spawnAt("dragon", side, 60);
+      [0, 70, 140].forEach((o) => spawnAt("drone", side, o));
+    } },
+  // bombers dive from the sky in a line: keep moving
+  { id: "bombing", name: "BOMBING RUN", from: 95, make: () => {
+      for (let i = 0; i < 4; i++) spawnEnemy("bomber", camera.x + W * (0.2 + i * 0.2), camera.y - 120 - i * 60);
+    } },
+  // an enforcer shields two snipers: flank it, stun it, or break the guard
+  { id: "wall", name: "SHIELD WALL", from: 120, make: () => {
+      const side = edgeSide();
+      spawnAt("enforcer", side);
+      spawnAt("sniper", side, 180);
+      spawnAt("sniper", side, 300);
+    } },
+];
+
+function updateSquads(t) {
+  if (t < director.squadAt || enemies.length > TUNING.spawn.maxAlive - 8) return;
+  const options = SQUADS.filter((q) => t >= q.from && q.id !== director.lastSquad);
+  if (!options.length) return;
+  const q = options[Math.floor(Math.random() * options.length)];
+  director.lastSquad = q.id;
+  q.make();
+  game.toast = { text: `INCOMING: ${q.name}`, time: 2.2 };
+  director.squadAt = t + Math.max(12, 28 - t / 25) + rand(-3, 3); // more often as the run goes on
+}
+
 // The difficulty curve: spawning speeds up over time, new enemy types join
-// as the run goes on (ENEMY_TYPES[].from), and two bosses punctuate it:
-// the Overseer at 2:30, then the GOAT (final boss) after an interlude.
+// as the run goes on (ENEMY_TYPES[].from), and three bosses punctuate it:
+// the Overseer at 2:30, NULL after an interlude, then after another one the
+// GOAT (final boss).
 function updateDirector(dt) {
   const S = TUNING.spawn;
   const t = game.time;
-  if (director.stage === 0 && t >= director.nextBossAt) spawnOverseer();
-  if (director.stage === 2 && t >= director.nextBossAt) spawnGoat();
+  if (director.stage === STAGE.start && t >= director.nextBossAt) spawnOverseer();
+  if (director.stage === STAGE.interlude1 && t >= director.nextBossAt) spawnNull();
+  if (director.stage === STAGE.interlude2 && t >= director.nextBossAt) spawnGoat();
   // Boss fights are one-on-one: nothing else spawns
-  if (director.stage === 1 || director.stage === 3) return;
+  if (bossFight()) return;
   if (t < director.firstSpawn) return;
+  updateSquads(t);
   let rate = Math.min(S.maxRate, S.startRate + t * S.ratePerSecond);
-  if (director.stage === 2) rate *= 1.15; // the calm before... no calm
+  if (director.stage !== STAGE.start) rate *= 1.3; // the calm before... no calm
+  rate *= coopMul("spawnRate"); // two players: more of everything (coop.js)
   director.acc += rate * dt;
   while (director.acc >= 1) {
     director.acc -= 1;
-    if (enemies.length >= S.maxAlive) {
+    if (enemies.length >= S.maxAlive * coopMul("maxAlive")) {
       director.acc = 0;
       break;
     }
@@ -115,22 +178,52 @@ function updateDirector(dt) {
 }
 
 // --------------------------------------------------------------- Update -----
-function updateEnemies(dt) {
-  const pc = centerOf(player);
+function updateEnemies(dtAll) {
   for (const e of enemies) {
     if (e.dead) continue;
-    // New faces go into the database the first time they're on screen
-    if (onScreen(e) && discover(e.type)) {
-      const name = e.boss ? BOSSES[e.type].name : e.def.name;
-      game.toast = { text: `DATABASE: NEW ENTRY // ${name.toUpperCase()}`, time: 2.4 };
+    // `player` is its target while it thinks: in co-op, the nearest player (coop.js)
+    withPlayer(coopTargetFor(e), () => updateEnemy(e, dtAll));
+  }
+
+  // Keep enemies from stacking into one blob
+  for (let i = 0; i < enemies.length; i++) {
+    const a = enemies[i];
+    if (a.dead || a.boss) continue;
+    for (let j = i + 1; j < enemies.length; j++) {
+      const b = enemies[j];
+      if (b.dead || b.boss || !overlaps(a, b)) continue;
+      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 40 * dtAll * 4;
+      a.x += push;
+      b.x -= push;
     }
-    e.vulnT = Math.max(0, e.vulnT - dt);
-    if (e.boss) {
-      if (e.type === "overseer") updateOverseer(e, dt);
-      else updateGoat(e, dt);
-      continue;
-    }
+  }
+}
+
+function updateEnemy(e, dtAll) {
+  const pc = centerOf(player);
+  // bleeding / burning tick here; a glitched enemy only gets every third frame
+  const dt = enemyStatus(e, dtAll);
+  if (e.dead) return;
+  // New faces go into the database the first time they're on screen
+  if (onScreen(e) && discover(e.type)) {
+    const name = e.boss ? BOSSES[e.type].name : e.def.name;
+    game.toast = { text: `DATABASE: NEW ENTRY // ${name.toUpperCase()}`, time: 2.4 };
+  }
+  e.vulnT = Math.max(0, e.vulnT - dt);
+  if (e.boss) {
+    if (e.type === "overseer") updateOverseer(e, dt);
+    else if (e.type === "nullptr") updateNull(e, dt);
+    else updateGoat(e, dt);
+    return;
+  }
+  // Minions
+  {
     const def = e.def;
+    if (!def.walker && e.downed) {
+      e.hurt -= dtAll;
+      updateDowned(e, dtAll);
+      return;
+    }
     e.hurt -= dt;
     e.orbitCd -= dt;
     e.hitCd -= dt;
@@ -171,7 +264,9 @@ function updateEnemies(dt) {
         e.vy += e.kbY;
         e.kbY = 0;
       }
-      moveBody(e, dt, 2700, 1500);
+      if (e.onGround) e.airFrom = e.y;
+      const landed = moveBody(e, dt, 2700, 1500);
+      if (landed && e.knockT > 0 && e.airFrom !== undefined) fallDamage(e, e.y - e.airFrom);
       if (e.type === "enforcer") e.facing = dx > 0 ? 1 : -1; // the shield always faces you
       else if (Math.abs(e.vx) > 20) e.facing = e.vx > 0 ? 1 : -1;
     } else if (def.kind === "melee") {
@@ -183,7 +278,7 @@ function updateEnemies(dt) {
       e.y += (e.vy + e.kbY) * dt + Math.sin(game.time * 2.5 + e.bob) * 25 * dt;
       e.facing = dx > 0 ? 1 : -1;
     } else if (def.kind === "bomber") {
-      if (updateBomber(e, dt, dx, dy, d, stunned || blind, sm)) continue;
+      if (updateBomber(e, dt, dx, dy, d, stunned || blind, sm)) return;
     } else {
       // Ranged flyers (drones, wyrms, snipers) keep their distance and shoot
       const side = ec.x < pc.x ? -1 : 1;
@@ -207,7 +302,7 @@ function updateEnemies(dt) {
         if (e.charge > 0) {
           e.charge -= dt;
           if (e.charge <= 0 && !stunned) {
-            fireEnemyShot(ec.x + e.facing * 20, ec.y, def.shot, undefined, e.dmgMul);
+            fireEnemyShot(ec.x + e.facing * 20, ec.y, def.shot, undefined, e.dmgMul, e);
             e.shotCd = rand(def.shot.cooldown[0], def.shot.cooldown[1]);
           }
         } else if (e.shotCd <= 0 && !stunned && !blind) {
@@ -222,29 +317,19 @@ function updateEnemies(dt) {
     if (!def.walker) e.y = clamp(e.y, WORLD_TOP + 40, GROUND_Y - e.h - 10);
     e.anim += dt * def.sheet.fps * sm;
 
-    // Body contact
-    if (!stunned && !blind && e.hitCd <= 0 && !player.flameOn && overlaps(e, player)) {
-      if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y)) {
-        e.hitCd = 0.9;
-        e.kbX = -Math.sign(dx) * 300;
-      }
+    // Body contact: whoever it runs into (either player in co-op)
+    if (!stunned && e.hitCd <= 0) {
+      eachTarget(() => {
+        if (e.hitCd > 0 || player.camo > 0 || player.flameOn || !overlaps(e, player)) return;
+        if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
+          e.hitCd = 0.9;
+          e.kbX = -Math.sign(dx) * 300;
+        }
+      });
     }
 
     // Enemies left far behind just leave
     if (Math.abs(pc.x - ec.x) > 2600 || Math.abs(pc.y - ec.y) > 1900) e.dead = e.despawned = true;
-  }
-
-  // Keep enemies from stacking into one blob
-  for (let i = 0; i < enemies.length; i++) {
-    const a = enemies[i];
-    if (a.dead || a.boss) continue;
-    for (let j = i + 1; j < enemies.length; j++) {
-      const b = enemies[j];
-      if (b.dead || b.boss || !overlaps(a, b)) continue;
-      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 40 * dt * 4;
-      a.x += push;
-      b.x -= push;
-    }
   }
 }
 
@@ -333,7 +418,7 @@ function explodeBomber(e) {
   burst(c.x, c.y, 10, "#ffe14d", 300);
   camera.shake = Math.max(camera.shake, 10);
   sfx.stomp.play({ rate: 0.8 });
-  if (circleHitsBox(c.x, c.y, B.radius, player)) hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y);
+  eachTarget(() => circleHitsBox(c.x, c.y, B.radius, player) && hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y, e));
   // the blast hurts other enemies too
   enemies.forEach((o) => {
     if (o !== e && !o.dead && circleHitsBox(c.x, c.y, B.radius, o)) damageEnemy(o, 30, { source: "blast" });
@@ -378,26 +463,34 @@ function wanderTarget(e, ec, dt) {
   return e.wander;
 }
 
-function fireEnemyShot(x, y, shot, angle, dmgMul = 1) {
+function fireEnemyShot(x, y, shot, angle, dmgMul = 1, owner = null) {
   const pc = centerOf(player);
   const a = angle !== undefined ? angle : Math.atan2(pc.y - y, pc.x - x);
-  enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4 });
+  enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4, owner });
   sfx.enemyShot.play({ rate: shot.kind === "laser" ? 1.6 : shot.kind === "snipe" ? 2.2 : 0.55 });
 }
 
 function updateEnemyShots(dt) {
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
-    s.x += s.vx * dt;
-    s.y += s.vy * dt;
+    if (!s) continue; // a hit just now cleared the list (e.g. Ronin's reflection killed a boss)
+    const frozen = somePlayer(() => player.dilation > 0 && stats.dilation.freezeShots && Math.hypot(s.x - player.x - player.w / 2, s.y - player.y - player.h / 2) < 220);
+    if (!frozen) {
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+    }
     s.life -= dt;
     let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 300 || s.x < camera.x - 300 || s.x > camera.x + W + 300;
-    if (!gone && circleHitsBox(s.x, s.y, s.r, player) && player.invuln <= 0) {
-      hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy);
-      gone = true;
+    // a shot hits whichever player it reaches first (either one in co-op)
+    if (!gone) {
+      eachTarget(() => {
+        if (gone || !circleHitsBox(s.x, s.y, s.r, player) || player.invuln > 0) return;
+        hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy, s.owner);
+        gone = true;
+      });
     }
     if (gone) {
-      const color = s.kind === "laser" || s.kind === "snipe" ? "#ff2f6d" : s.kind === "ring" ? "#19f5ff" : "#ff9b21";
+      const color = s.color || (s.kind === "laser" || s.kind === "snipe" ? "#ff2f6d" : s.kind === "ring" ? "#19f5ff" : "#ff9b21");
       burst(s.x, Math.min(s.y, GROUND_Y), 6, color, 200);
       enemyShots.splice(i, 1);
     }
@@ -405,10 +498,13 @@ function updateEnemyShots(dt) {
 }
 
 // ------------------------------------------------------- Damage & death -----
-const SHIELD_BLOCKS = new Set(["zap", "orb", "blade", "missile", "chain"]);
+const SHIELD_BLOCKS = new Set(["zap", "orb", "arrow", "em", "blade", "missile", "chain"]);
+// Damage that doesn't come from the player's attacks (no Time Dilation bonus)
+const NOT_PLAYER_DAMAGE = new Set(["fall", "bleed", "reflect", "blast", "test"]);
 
 function damageEnemy(e, amount, opts = {}) {
   if (e.dead || amount <= 0) return;
+  if (e.type === "nullptr" && nullIntercept(e)) return; // NULL's copies pop instead
   // Enforcer shields block most damage from the front
   if (e.def && e.def.shielded && !(e.stun > 0) && SHIELD_BLOCKS.has(opts.source) && opts.fromX !== undefined) {
     const fromFront = Math.sign(opts.fromX - (e.x + e.w / 2)) === e.facing;
@@ -425,17 +521,17 @@ function damageEnemy(e, amount, opts = {}) {
   // Bosses are huge melee targets: Tetsu's blade and dash do less to them
   if (e.boss && (opts.source === "blade" || opts.source === "blade-heavy" || opts.source === "dash")) amount *= 0.55;
   if (e.vulnT > 0) amount *= 1.5; // hacked: takes extra damage
+  if (player.dilation > 0 && player.char === "sudo" && !NOT_PLAYER_DAMAGE.has(opts.source)) amount *= stats.dilation.dmgMul;
+  if (opts.knock || Math.abs(opts.kbX || 0) >= 250) e.knockT = 1.5; // knocked off a ledge? fall damage
   e.hp -= amount;
   e.hurt = 0.08;
   // Heat is earned by dealing damage - but not with the flame itself
-  if (opts.source !== "flame") gainHeat(amount * TUNING.heat.perDamageDealt);
+  if (opts.source !== "flame" && opts.source !== "heat") gainHeat(amount * TUNING.heat.perDamageDealt);
   const resist = e.boss ? 0.1 : e.def && e.def.shielded ? 0.4 : 1;
   if (opts.kbX) e.kbX += opts.kbX * resist;
   if (opts.kbY) e.kbY += opts.kbY * resist;
   const c = centerOf(e);
   if (!opts.quiet) damageNumber(amount, c.x, e.y - 6, opts.source === "chain" ? "#9ffcff" : e.vulnT > 0 ? "#5aff7a" : "#ffffff");
-  // Sudo's overload, fully upgraded: hacked enemies leak XP when hit
-  if (e.stun > 0 && player.char === "sudo" && stats.overload.leak && Math.random() < 0.12) spawnGem(c.x, c.y, 1);
   if (e.hp <= 0) killEnemy(e);
 }
 
@@ -450,6 +546,7 @@ function killEnemy(e) {
     burst(c.x, c.y, 40, "#ffe14d", 500);
     camera.shake = 24;
     if (e.type === "overseer") overseerDefeated(e);
+    else if (e.type === "nullptr") nullDefeated(e);
     else goatDefeated(e);
     return;
   }
@@ -482,6 +579,7 @@ function drawEnemies(time) {
     if (e.dead) continue;
     if (e.boss) {
       if (e.type === "overseer") drawOverseer(e, time);
+      else if (e.type === "nullptr") drawNull(e, time);
       else drawGoat(e, time);
       continue;
     }
@@ -515,10 +613,29 @@ function drawEnemies(time) {
     const img = isReady(IMG[s.img]) ? IMG[s.img] : IMG[s.fallback];
     const sy = s.flip ? 0 : (e.facing < 0 ? s.rowLeft : s.rowRight) * s.fh;
     const flip = s.flip && e.facing < 0;
-    const glitching = drawGlitch(img, frame * s.fw, sy, s.fw, s.fh, dx, dy, dw, dh, flip, e.bob);
+    // shot down by an arrow: tumbling out of the sky
+    const tumbling = e.downed && !e.downed.landed;
+    if (e.downed) {
+      ctx.save();
+      ctx.translate(cx, e.y + e.h / 2);
+      ctx.rotate(tumbling ? e.downed.spin : 0.6);
+      ctx.translate(-cx, -(e.y + e.h / 2));
+    }
+    let glitching = drawGlitch(img, frame * s.fw, sy, s.fw, s.fh, dx, dy, dw, dh, flip, e.bob);
+    if (e.glitchT > 0) {
+      // System Glitch: RGB-split ghosts (not in Performance mode) and a jittering body
+      glitching += rand(-9, 9);
+    }
+    if (e.glitchT > 0 && !perfMode()) {
+      ctx.globalAlpha = 0.45;
+      drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx - 8, dy, dw, dh, "rgba(255,0,80,0.9)", flip);
+      drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + 8, dy, dw, dh, "rgba(0,255,220,0.9)", flip);
+    }
     ctx.globalAlpha = e.def.alpha || 1;
     const ok = drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + glitching, dy, dw, dh, tint, flip);
     ctx.globalAlpha = 1;
+    if (e.downed) ctx.restore();
+    if (e.bleedT > 0 && Math.random() < 0.3) drawCell("fx2", 5, 32, cx + rand(-e.w / 3, e.w / 3), e.y + rand(0, e.h), 26, 26, 0);
     if (!ok) {
       ctx.fillStyle = e.def.kind === "melee" ? "#ff2fd6" : e.def.kind === "bomber" ? "#ff9b21" : "#19f5ff";
       ctx.fillRect(e.x, e.y, e.w, e.h);
@@ -565,7 +682,7 @@ function drawSniperSight(e) {
 }
 
 function drawGlitch(img, sx, sy, sw, sh, dx, dy, dw, dh, flip, phase) {
-  if (!isReady(img)) return 0;
+  if (!isReady(img) || perfMode()) return 0; // Performance mode: no ghosting
   const g = (game.time * 0.8 + phase * 3.1) % 3.2;
   if (g > 0.14) return 0;
   const split = 6 + 6 * Math.sin(g * 90);
@@ -582,6 +699,7 @@ function drawEnemyShots() {
   const flame = smallOr("fire");
   ctx.imageSmoothingEnabled = true;
   enemyShots.forEach((s) => {
+    if (s.kind === "shuriken") return drawShuriken(s); // NULL's
     if (s.kind === "laser") {
       glow(s.x, s.y, 40, "rgba(255,47,109,0.6)");
       if (!drawCell("projectiles", 2, 16, s.x, s.y, 44, 44, s.angle)) {

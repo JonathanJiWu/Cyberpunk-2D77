@@ -9,8 +9,8 @@
 //     (levels, upgrades, lives and resource carry over).
 // =============================================================================
 
-const MAX_LIVES = 3;
-const intro = { active: false, phase: "", t: 0, vx: 0, vy: 0, kind: "drop" };
+const MAX_LIVES = 3; // in co-op, the team's shared pool
+let intro = { active: false, phase: "", t: 0, vx: 0, vy: 0, kind: "drop" }; // per player in co-op (coop.js)
 const LANDING_ROWS = { paine: 0, tetsu: 1, sudo: 2 };
 
 // --------------------------------------------------------------- The drop ---
@@ -19,6 +19,8 @@ function startIntro(kind = "drop") {
   intro.active = true;
   intro.kind = kind;
   intro.t = 0;
+  // glitched out this long before the drop ("join": co-op player 2 dropping in)
+  intro.downFor = kind === "join" ? 0.35 : coopActive() ? COOP.respawnDelay : 1.3;
   p.flameOn = false;
   p.dash = null;
   p.vx = p.vy = 0;
@@ -68,8 +70,10 @@ function updateIntro(dt) {
       break;
     case "down": // dead: glitched out, waiting for the backup to load
       p.hidden = true;
-      if (intro.t > 1.3) {
+      if (intro.t > intro.downFor) {
         p.hidden = false;
+        const x = coopDropX(); // co-op: next to the partner
+        if (x !== null) p.x = x;
         p.y = camera.y - p.h - 60;
         intro.phase = "leap";
         intro.t = 0;
@@ -90,7 +94,7 @@ function updateIntro(dt) {
       if (intro.t > 1.0) {
         intro.active = false;
         p.vy = 0;
-        say(intro.kind === "drop" ? "start" : "respawn", null, true);
+        say(intro.kind === "respawn" ? "respawn" : "start", null, true);
       }
       break;
   }
@@ -112,8 +116,11 @@ function heroLanding() {
   dust(cx, ground, 30, 2.2);
   burst(cx, ground - 20, 26, CH().color, 520);
   camera.shake = Math.max(camera.shake, 20);
-  game.hurtFlash = 0;
-  game.landFlash = 0.25;
+  if (coop.active.id) gamepads.rumble(coop.active.slot, 1, 0.6, 320); // co-op player 2's own pad
+  else {
+    game.hurtFlash = 0;
+    game.landFlash = 0.25;
+  }
   sfx.stomp.play({ rate: 0.7 });
   vibrate([30, 20, 60]);
   enemies.forEach((e) => {
@@ -127,12 +134,13 @@ function heroLanding() {
 
 // What the hero sheet should show during the drop (or null)
 function introFrame() {
-  if (!intro.active || !isReady(IMG.heroLanding)) return null;
+  const sheet = isReady(IMG.heroLanding2) ? IMG.heroLanding2 : IMG.heroLanding;
+  if (!intro.active || !isReady(sheet)) return null;
   let fx;
   if (intro.phase === "leap") fx = 0;
   else if (intro.phase === "land") fx = intro.t < 0.12 ? 1 : intro.t < 0.75 ? 2 : 3;
   else return null;
-  return { sheet: IMG.heroLanding, row: LANDING_ROWS[player.char] || 0, fx, tint: null, flip: player.facing < 0 };
+  return { sheet, row: LANDING_ROWS[player.char] || 0, fx, tint: null, flip: player.facing < 0 };
 }
 
 // ------------------------------------------------------------------ Lives ---
@@ -156,7 +164,8 @@ function playerDown() {
     sfx.damage.play({ rate: 0.6 });
     vibrate(160);
     const line = HUMOR.respawn[Math.floor(Math.random() * HUMOR.respawn.length)];
-    game.banner = { text: `${line} // ${game.lives} ${game.lives === 1 ? "LIFE" : "LIVES"} LEFT`, time: 2.6, color: "#ffe14d" };
+    const who = coopActive() ? `${coop.active.label} DOWN // ` : "";
+    game.banner = { text: `${who}${line} // ${game.lives} ${game.lives === 1 ? "LIFE" : "LIVES"} LEFT`, time: 2.6, color: "#ffe14d" };
     // give the player room: clear shots, push minions back
     enemyShots.length = 0;
     enemies.forEach((e) => {
@@ -175,17 +184,22 @@ function playerDown() {
     startIntro("respawn");
     return;
   }
+  if (coopKnockOut()) return; // co-op: out until the team gets a life back, while the partner fights on
   game.lives = 0;
   lose();
 }
 
 // ---------------------------------------------------------------- Hot-swap --
+// For the bound player: in co-op, coop.js binds player 2 when their pad clicked
 function switchCharacter(id) {
   if (!CHARACTERS[id] || id === player.char) return;
   const p = player;
   const ratio = p.hp / stats.maxHp;
-  settings.character = id;
-  applySettings();
+  if (coop.active.id) coop.seat.char = id;
+  else {
+    settings.character = id;
+    applySettings();
+  }
   p.char = id;
   p.flameOn = false;
   p.dash = null;
@@ -202,5 +216,5 @@ function switchCharacter(id) {
   ring(pc.x, pc.y, 160, CH().color);
   p.speechCd = 0;
   say("start", null, true);
-  game.banner = { text: `HOT-SWAP // ${CH().name} DEPLOYED`, time: 1.6, color: CH().color };
+  game.banner = { text: `${coopActive() ? coop.active.label + " " : ""}HOT-SWAP // ${CH().name} DEPLOYED`, time: 1.6, color: CH().color };
 }
