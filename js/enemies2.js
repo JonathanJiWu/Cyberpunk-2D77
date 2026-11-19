@@ -980,7 +980,7 @@ function frame2(e) {
     case "monolith":
       return e.state === "slamWind" ? 4 : e.state === "slam" ? 5 : e.state === "chargeWind" || e.state === "charge" ? 6 : Math.abs(e.vx) > 15 ? 1 + (Math.floor(e.anim) % 2) : 3;
     case "hotfix":
-      return e.tether1 ? 4 + (Math.floor(e.anim) % 2) : Math.floor(e.anim) % 4;
+      return e.tether1 && !e.downed ? 4 + (Math.floor(e.anim) % 2) : Math.floor(e.anim) % 4;
     default:
       return e.pulseT < 0.45 ? 3 : Math.abs(e.vx) > 20 ? 1 + (Math.floor(e.anim) % 2) : 0;
   }
@@ -1118,7 +1118,7 @@ function drawEnemies2Back(time) {
     const e = enemies[i];
     if (e.dead || !e.def.v2) continue;
     if (e.type === "ratelimiter") drawField2(e, time);
-    else if (e.type === "hotfix") {
+    else if (e.type === "hotfix" && !e.downed) {
       if (e.tether1) drawTether2(e, e.tether1, time);
       if (e.tether2) drawTether2(e, e.tether2, time);
     }
