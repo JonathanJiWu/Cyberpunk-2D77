@@ -14,6 +14,7 @@
 const CHARACTERS = {
   paine: {
     name: "PAINE",
+    bust: "img/bust-paine.png", // 192x240 select-screen bust (tools/art_ics.py)
     title: "Cyber Widow",
     color: "#ff2457",
     portrait: 0,
@@ -74,6 +75,7 @@ const CHARACTERS = {
   },
   tetsu: {
     name: "TETSU",
+    bust: "img/bust-tetsu.png", // 192x240 select-screen bust (tools/art_ics.py)
     title: "Chrome Ronin",
     color: "#ff2457",
     portrait: 1,
@@ -135,6 +137,7 @@ const CHARACTERS = {
 
   sudo: {
     name: "SUDO",
+    bust: "img/bust-sudo.png", // 192x240 select-screen bust (tools/art_ics.py)
     title: "Hackerman",
     color: "#5aff7a",
     portrait: 2,

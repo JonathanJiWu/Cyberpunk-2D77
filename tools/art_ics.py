@@ -227,7 +227,7 @@ def shade(m, N, AO, T, S):
         # reflect the view ray: bright sky, a dark horizon band, a dim street
         ry = 2 * N[:, 2] * N[:, 1]
         rx = 2 * N[:, 2] * N[:, 0]
-        env = np.where(ry > 0.5, 1.0, np.where(ry > 0.18, 0.78, np.where(ry > -0.1, 0.14, 0.5 - 0.15 * np.clip(-ry, 0, 1))))
+        env = np.where(ry > 0.55, 0.9, np.where(ry > 0.16, 0.66, np.where(ry > -0.04, 0.1, 0.56 - 0.25 * np.clip(-ry, 0, 1))))
         env = env - 0.12 * np.clip(rx, 0, 1)
         v = np.clip(0.62 * env + 0.38 * v, 0, 1) * (1 - 0.5 * m.ao * AO)
     if m.kind == "hair" and S is not None:
@@ -688,11 +688,12 @@ def materials():
     M["p_neon"] = Mat([RED], kind="flat", lineable=False, outline="#3a0414")
     # --- Tetsu: mirror chrome, black under-suit, electric-blue trim and optic
     M["t_chrome"] = Mat(["#15172a", "#2a2e48", "#474d6e", "#6f7699", "#a3aacb", "#d6dbf2", "#ffffff"], kind="chrome",
-                        th=[0.12, 0.27, 0.44, 0.62, 0.8, 0.95], rim=["#2d6fd6", BLUE], outline="#07081a", line="#0d0f22", ao=0.7)
+                        th=[0.14, 0.3, 0.47, 0.66, 0.84, 0.97], rim=["#2d6fd6", BLUE], outline="#07081a", line="#0d0f22", ao=0.7,
+                        bounce="#1d3f86")
     M["t_dark"] = Mat(["#0a0a12", "#13131f", "#1d1d2d", "#2a2a3f", "#3b3b55"], kind="leather", sheen=0.7, gloss=30,
                       hi="#56567a", rim=["#1d4a99", BLUE], outline="#040408", line="#040408")
     M["t_trim"] = Mat(["#0b2a66", "#1f5fc2", BLUE, "#a6d4ff"], th=[0.2, 0.5, 0.82], rim=["#cfe8ff"], outline="#05122e")
-    M["t_cloth"] = Mat(["#0a1124", "#121d3a", "#1b2b54", "#273d70", "#36528c"], th=[0.14, 0.34, 0.6, 0.86],
+    M["t_cloth"] = Mat(["#07080f", "#0d1020", "#151a30", "#1f2742", "#2c3758"], th=[0.14, 0.34, 0.6, 0.86],
                        rim=["#1f5fc2", BLUE], outline="#04070f", line="#04070f")
     M["t_glow"] = Mat([BLUE], kind="flat", lineable=False, outline="#05122e")
     M["t_glowhot"] = Mat(["#dff0ff"], kind="flat", lineable=False, outline="#05122e")
@@ -1037,7 +1038,7 @@ def paine_bust_finish(R, m, B, H):
 def tetsu_bust():
     m = Model()
     B = Frame(face_left(30), (4, 0, 0))
-    H = B.sub(rot_y(math.radians(14)) @ rot_z(math.radians(-2)), (8, 166, 0))
+    H = B.sub(rot_y(math.radians(14)) @ rot_z(math.radians(-3)), (10, 150, 0))
     ch, dk, tr, cl = MAT["t_chrome"], MAT["t_dark"], MAT["t_trim"], MAT["t_cloth"]
     hc = lambda P: (P - H.T) @ H.R / H.s
     bc = body_coords(B)
@@ -1062,9 +1063,10 @@ def tetsu_bust():
         hp.ell(H, (30, 10, 11 * zs), (6, 4, 11), ch, k=4)  # brow plates
     flare = m.part(2)
     for zs in (-1, 1):  # side flares, a nod to a samurai helmet
-        flare.box(H, (-2, 10, 33 * zs), (17, 15, 2.5), ch, R=rot_y(0.35 * zs) @ rot_x(-0.55 * zs) @ rot_z(-0.25), rr=2)
+        flare.box(H, (-4, 6, 35 * zs), (16, 13, 2.5), ch, R=rot_y(0.45 * zs) @ rot_x(-0.6 * zs) @ rot_z(-0.3), rr=2)
+        flare.box(H, (-4, 4.5, 35.8 * zs), (16.5, 13, 1.6), tr, R=rot_y(0.45 * zs) @ rot_x(-0.6 * zs) @ rot_z(-0.3), rr=1.2)
     vis = m.part(3)
-    vis.box(H, (30.5, 1.5, 0), (5.5, 3.4, 19), MAT["t_visor"], R=rot_y(0.0), rr=1.6)
+    vis.box(H, (30.5, 1.5, 0), (5.5, 3.4, 19), MAT["t_visor"], rr=1.6)
     crest = m.part(4)
     crest.box(H, (-8, 50, 0), (22, 3.6, 1.6), ch, R=rot_z(math.radians(16)), rr=1.4)
     crest.box(H, (14, 44, 0), (5, 4, 2.6), tr, R=rot_z(math.radians(30)), rr=1.2, k=1)
@@ -1072,41 +1074,47 @@ def tetsu_bust():
     def neck_paint(P, n, mats):
         Q = bc(P)
         out = mats.copy()
-        out[np.mod(Q[:, 1], 6.0) < 1.4] = MAT["t_dark"].id
+        out[np.mod(Q[:, 1], 5.0) < 1.2] = MAT["t_dark"].id
         return out
 
     nk = m.part(5, paint=neck_paint)
-    nk.cone(B, (0, 96, 0), (6, 140, 0), 16, 14, MAT["t_cloth"])
-    # scarf: a ring around the neck, tails streaming back
-    sc = m.part(6)
-    sc.cone(B, (-3, 104, 0), (-1, 122, 0), 28, 25, cl)
-    sc.ell(B, (6, 104, 0), (26, 10, 30), cl, k=8)
-    chain(sc, B, [(-22, 116, 12), (-44, 108, 16), (-62, 94, 20), (-76, 74, 22), (-84, 54, 22)], [10, 10, 9, 7.5, 5], cl, k=5)
+    nk.cone(B, (0, 96, 0), (6, 126, 0), 15, 13, MAT["t_cloth"])
 
-    def plate_paint(edge_y):
-        def f(P, n, mats):
-            Q = bc(P)
-            out = mats.copy()
-            out[(Q[:, 1] < edge_y + 2.2) & (mats == ch.id)] = tr.id
-            return out
-        return f
+    def scarf_paint(P, n, mats):
+        Q = bc(P)
+        out = mats.copy()
+        out[np.abs(Q[:, 1] - 106.5) < 1.2] = tr.id
+        return out
 
-    T = m.part(7)
-    T.ell(B, (0, 46, 0), (44, 60, 56), ch)
-    T.ell(B, (30, 62, 0), (14, 26, 30), ch, k=10)  # the chest plate's keel
-    T.cone(B, (-6, 0, 0), (-6, 30, 0), 46, 48, dk, k=6)
-    # pauldrons: three stacked chrome lames per shoulder, blue edges
+    # a dark scarf wrapped at the base of the neck, tails streaming back
+    sc = m.part(6, paint=scarf_paint)
+    sc.cone(B, (-3, 98, 0), (-1, 113, 0), 27, 24, cl)
+    chain(sc, B, [(-22, 108, 12), (-44, 100, 18), (-62, 86, 22), (-74, 66, 22), (-80, 48, 20)], [9, 9, 8, 6.5, 4], cl, k=5)
+    def chest_paint(P, n, mats):
+        Q = bc(P)
+        out = mats.copy()
+        out[(np.abs(Q[:, 2]) < 1.3) & (Q[:, 0] > 36) & (Q[:, 1] > 36) & (Q[:, 1] < 80)] = MAT["t_glow"].id
+        return out
+
+    T = m.part(7, paint=chest_paint)
+    T.ell(B, (0, 40, 0), (44, 58, 52), ch)
+    T.ell(B, (30, 58, 0), (14, 26, 26), ch, k=10)  # the chest plate's keel
+    T.cone(B, (-6, 0, 0), (-6, 26, 0), 46, 48, dk, k=6)
+    # pauldrons: two heavy chrome lames per shoulder, blue under-edges
     for zs in (-1, 1):
-        for i, (y, rz, rx) in enumerate(((94, 30, 32), (82, 33, 34), (70, 35, 34))):
-            pp = m.part(8 + i, paint=plate_paint(y - 18 + i * 1.5))
-            pp.ell(B, (-4, y, (58 + 5 * i) * zs), (rx, 20, rz), ch, R=rot_x(0.28 * zs))
-        arm = m.part(11)
-        arm.cone(B, (-6, 60, 64 * zs), (-8, 0, 66 * zs), 22, 20, dk)
+        for i, (y, z, tilt) in enumerate(((92, 56, 0.32), (76, 64, 0.5))):
+            Rp = rot_x(tilt * zs) @ rot_z(0.08)
+            lame = m.part(8 + i * 2)
+            lame.ell(B, (-4, y, z * zs), (34, 10, 27), ch, R=Rp)
+            edge = m.part(9 + i * 2)
+            edge.ell(B, (-4, y - 3, (z + 1) * zs), (34.5, 8.5, 27.5), tr, R=Rp)
+        arm = m.part(12)
+        arm.cone(B, (-6, 62, 62 * zs), (-8, 0, 64 * zs), 21, 19, dk)
     # the monoblade on his back: hilt and guard over the near shoulder
-    sw = m.part(12)
-    sw.cone(B, (-30, 118, -34), (-38, 196, -28), 4.2, 3.8, dk)
-    sw.ell(B, (-30.5, 121, -33.5), (9, 2.2, 9), ch, R=rot_z(0.1))
-    sw.ell(B, (-38.5, 199, -28), (4.6, 4.6, 4.6), MAT["t_glow"], k=1)
+    sw = m.part(13)
+    sw.cone(B, (-30, 140, -34), (-36, 184, -28), 4.2, 3.8, dk)
+    sw.ell(B, (-30.5, 143, -33.5), (9, 2.2, 9), ch, R=rot_z(0.1))
+    sw.ell(B, (-36.4, 187, -28), (4.6, 4.6, 4.6), MAT["t_glow"], k=1)
     return m, B, H
 
 
@@ -1119,13 +1127,12 @@ def tetsu_bust_finish(R, m, B, H):
     F = TETSU_FACE
     # one live optic behind the visor (near side), the other dark
     x, y, _ = proj(R, H, (36.5, 1.5, -10.5))
-    for yy in range(int(y) - 1, int(y) + 2):
-        for xx in range(int(x) - 9, int(x) + 8):
-            if 0 <= yy < R.h and 0 <= xx < R.w and MATS[R.mat[yy, xx]] is MAT["t_visor"]:
-                R.img[yy, xx] = F["halo"] if abs(xx - x) > 4 else F["glow"]
-    disc(R, x, y, 3.2, 2.6, F["glow"])
-    disc(R, x, y, 1.6, 1.2, F["core"])
-    put(R, x - 5, y, F["core"])
+    for xx in range(int(x) - 12, int(x) + 10):
+        if 0 <= xx < R.w and MATS[R.mat[int(y), xx]] is MAT["t_visor"]:
+            R.img[int(y), xx] = F["halo"]
+    disc(R, x, y, 5.5, 4.2, F["halo"])
+    disc(R, x, y, 4.0, 3.0, F["glow"])
+    disc(R, x - 0.5, y - 0.3, 2.2, 1.6, F["core"])
     x2, y2, _ = proj(R, H, (36.5, 1.5, 10.5))
     disc(R, x2, y2, 1.3, 1.6, pal("#0b2a66"))
     # an old cut across the far cheek plate
@@ -1141,6 +1148,7 @@ def sudo_bust():
     # the slouch: head pushed forward and down, a nervous tilt
     H = B.sub(rot_y(math.radians(18)) @ rot_z(math.radians(-7)) @ rot_x(math.radians(5)), (18, 150, 0))
     sk = MAT["s_skin"]
+    bc = body_coords(B)
     head = m.part(1)
     human_head(head, H, sk, jaw=1.03, chin=0.92, nose=1.1, cheek=1.1)
     head.cone(B, (2, 92, 0), (14, 128, 0), 16, 15, sk, k=6)
@@ -1154,14 +1162,18 @@ def sudo_bust():
     def cap_s(Q):
         return np.arctan2(Q[:, 1] - crown[1], Q[:, 0] - crown[0]) * 14.0
 
-    hair.ell(H, (-6, 12, 0), (45, 44, 38), hm, tan=cap_tan, sfn=cap_s)
+    hair.ell(H, (-6, 13, 0), (47, 46, 40), hm, tan=cap_tan, sfn=cap_s)
     hair.plane(H, (30, 26, 0), (1, -1.0, 0), k=3)
-    tufts = [((14, 40, -12), (34, 56, -24), 10), ((2, 46, 6), (14, 68, 12), 10), ((-12, 44, -14), (-18, 66, -30), 10),
-             ((-24, 36, 10), (-46, 52, 20), 10), ((-30, 22, -20), (-54, 28, -36), 9), ((22, 36, 16), (42, 44, 32), 8),
-             ((-36, 4, 8), (-56, -6, 16), 8), ((26, 34, -6), (44, 20, -14), 8), ((30, 30, 8), (44, 14, 14), 7),
-             ((20, 40, -26), (34, 30, -38), 7)]
-    for a_, b_, r_ in tufts:
-        chain(hair, H, [a_, b_], [r_, 1.6], hm, k=7, sw=1.8)
+    # messy clumps going every which way, a few falling over the forehead
+    tufts = [((18, 40, -14), (32, 50, -22), (42, 44, -30)), ((6, 46, 2), (18, 58, 6), (30, 58, 2)),
+             ((-10, 46, -12), (-16, 58, -22), (-12, 64, -32)), ((-22, 40, 10), (-36, 50, 16), (-44, 56, 10)),
+             ((-30, 26, -18), (-46, 30, -28), (-56, 24, -36)), ((20, 38, 16), (34, 44, 26), (44, 38, 32)),
+             ((-34, 8, 10), (-48, 2, 16), (-54, -8, 18)), ((26, 34, -4), (38, 26, -8), (43, 14, -10)),
+             ((28, 32, 8), (40, 22, 12), (43, 10, 13)), ((22, 38, -22), (34, 32, -32), (37, 20, -38)),
+             ((-4, 46, 18), (-12, 56, 30), (-8, 58, 40)), ((-36, 20, -4), (-52, 20, -6), (-60, 10, -4)),
+             ((8, 44, -24), (14, 52, -36), (22, 48, -44)), ((-20, 42, -2), (-30, 56, -6), (-30, 64, -14))]
+    for a_, m_, b_ in tufts:
+        chain(hair, H, [a_, m_, b_], [8.5, 5, 1.4], hm, k=6, sw=1.8)
     # headphones around the neck
     hpn = m.part(3, paint=None)
     pl = MAT["s_plastic"]
@@ -1185,7 +1197,14 @@ def sudo_bust():
         ds.cone(B, (30, 96, 9 * zs), (38, 62, 11 * zs), 1.6, 1.4, MAT["s_white"])
         ds.ell(B, (38.5, 59, 11 * zs), (2.2, 3.4, 2.2), MAT["s_metal"], k=0.5)
     # backpack battery peeking over the shoulders, straps, the cable
-    bp = m.part(7)
+    def pack_paint(P, n, mats):
+        Q = bc(P)
+        out = mats.copy()
+        bars = (Q[:, 2] < -40) & (np.abs(Q[:, 0] + 46) < 9) & (np.mod(Q[:, 0] + 46 + 9, 6.0) < 3.0) & (Q[:, 1] > 104) & (Q[:, 1] < 126)
+        out[bars] = MAT["s_led"].id
+        return out
+
+    bp = m.part(7, paint=pack_paint)
     bp.box(B, (-46, 104, 0), (16, 32, 48), pl, rr=7)
     for zs in (-1, 1):
         st = m.part(8)
@@ -1202,7 +1221,7 @@ SUDO_FACE = {"white": pal("#f4ece6"), "white_sh": pal("#c4aea6"), "iris": pal("#
              "nose_hi": pal("#ffe6cf")}
 
 
-def glasses(R, H, col, lens_r=9.5, glare_near=True):
+def glasses(R, H, col, lens_r=11.0, glare_near=True):
     """Big round glasses: thick frames, the near lens flaring with screen glare."""
     centres = []
     for side in (-1, 1):
@@ -1244,12 +1263,18 @@ def sudo_bust_finish(R, m, B, H):
         pts = [proj(R, H, (face_x((4 + 15 * t) * side, 10) + 1.5, 12.5 - 3.5 * t, (4 + 15 * t) * side))[:2] for t in np.linspace(0, 1, 10)]
         brow(R, pts, 2.4, pal("#45210f"), pal("#6e3716"))
     paint_nose(R, H, F, nose=1.1)
-    paint_lips(R, H, F, width=10.0, smirk=1.0, open_=3.0, y=-22.5, up_h=1.2, lo_h=1.6)
+    paint_lips(R, H, F, width=11.5, smirk=1.2, open_=3.6, y=-22.0, up_h=1.2, lo_h=1.6)
     glasses(R, H, {"frame": pal("#120d18"), "glare": pal("#c8ffd2"), "glare_hi": pal("#ffffff")})
     # a nervous bead of sweat
     x, y, _ = proj(R, H, (14, 20, -30))
     stamp(R, x, y, [".a.", "aba", "bcb", ".b."], {"a": pal("#d4ffff"), "b": pal("#7fd8ff"), "c": pal("#ffffff")})
     R.outline()
+
+
+def make_bust(name):
+    R, m, B, H = render_bust(globals()[name + "_bust"])
+    globals()[name + "_bust_finish"](R, m, B, H)
+    return R.to_image()
 
 
 def render_bust(build):
@@ -1259,3 +1284,36 @@ def render_bust(build):
     R.shade(ao_radius=4 * BUST_SS, smooth=BUST_SS)
     R.reduce()
     return R, m, B, H
+
+
+# ================================================================= main =====
+def build_all(only):
+    out = {}
+    if "busts" in only:
+        for name in ("paine", "tetsu", "sudo"):
+            out["bust-%s.png" % name] = make_bust(name)
+    for key, fn in (("sheets", "make_sheets"), ("landing", "make_landing"), ("portraits", "make_portraits")):
+        if key in only and fn in globals():
+            out.update(globals()[fn]())
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    ap.add_argument("--only", default="busts,sheets,landing,portraits", help="comma list: busts,sheets,landing,portraits")
+    ap.add_argument("--preview", default=None, help="also write enlarged previews into this folder")
+    args = ap.parse_args()
+    out = build_all(set(args.only.split(",")))
+    for fn, im in out.items():
+        im.save(os.path.join(IMG_DIR, fn))
+        print("wrote img/%s %dx%d" % (fn, im.width, im.height))
+        if args.preview:
+            os.makedirs(args.preview, exist_ok=True)
+            bg = Image.new("RGBA", im.size, (30, 18, 48, 255))
+            bg.alpha_composite(im)
+            k = 2 if im.width >= 192 else 4
+            bg.resize((im.width * k, im.height * k), Image.NEAREST).save(os.path.join(args.preview, fn))
+
+
+if __name__ == "__main__":
+    main()
