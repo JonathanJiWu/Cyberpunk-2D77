@@ -21,6 +21,7 @@ function render(time) {
   drawCrates();
   drawPickups(time);
   drawEnemies(time);
+  drawNavDebug(); // ?navdebug: the platform graph and every enemy's route
   drawGoatDeath(time);
   drawNullFx(time);
   drawShockwaves(time);

@@ -74,12 +74,14 @@ function spawnEnemy(type, x, y, opts = {}) {
     airFrom: 0,
     orbitCd: 0,
     hitCd: 0,
-    jumpCd: rand(0.5, 1.5),
     shotCd: def.shot ? rand(def.shot.cooldown[0], def.shot.cooldown[1]) : 0,
     dashCd: rand(1, 2),
     bob: rand(0, Math.PI * 2),
     onGround: false,
     standingOn: null,
+    dropTimer: 0,
+    nav: null, // walkers: the route through the platforms (nav.js)
+    forcedTarget: null, // who it goes after instead of the player (see enemyTarget)
   };
   if (def.walker) e.y = y - (e.h - def.h); // keep elites standing on the surface
   enemies.push(e);
@@ -93,9 +95,10 @@ function spawnAtEdge(type) {
   let side = Math.random() < 0.5 ? -1 : 1;
   if (side < 0 && leftX < 0) side = 1;
   if (side > 0 && rightX > WORLD_W - def.w) side = -1;
+  // Walkers appear on a floor near the player's height with a route to them
+  // (nav.js); flyers somewhere in the visible sky
+  if (def.walker && navSpawnSpot(type, side, 0)) return spawnEnemy(type, navSpot.x, navSpot.y);
   const x = clamp(side < 0 ? leftX : rightX, 0, WORLD_W - def.w);
-  // Walkers appear on a surface at about the player's height (the street, or
-  // the rooftops when you're up high); flyers somewhere in the visible sky
   const y = def.walker ? surfaceBelow(x + def.w / 2, player.y - 180) - def.h : camera.y + rand(140, 620);
   spawnEnemy(type, x, y);
 }
@@ -108,6 +111,7 @@ const countAlive = (type) => enemies.reduce((n, e) => n + (!e.dead && e.type ===
 // builds matter more than raw numbers.
 function spawnAt(type, side, offset = 0) {
   const def = ENEMY_TYPES[type];
+  if (def.walker && navSpawnSpot(type, side, offset)) return spawnEnemy(type, navSpot.x, navSpot.y);
   const x = clamp(side < 0 ? camera.x - def.w - 60 - offset : camera.x + W + 60 + offset, 0, WORLD_W - def.w);
   const y = def.walker ? surfaceBelow(x + def.w / 2, player.y - 180) - def.h : camera.y + rand(160, 520);
   return spawnEnemy(type, x, y);
@@ -182,25 +186,41 @@ function updateEnemies(dtAll) {
   for (const e of enemies) {
     if (e.dead) continue;
     // `player` is its target while it thinks: in co-op, the nearest player (coop.js)
-    withPlayer(coopTargetFor(e), () => updateEnemy(e, dtAll));
+    if (coop.players.length < 2) updateEnemy(e, dtAll);
+    else withPlayer(coopTargetFor(e), () => updateEnemy(e, dtAll));
   }
 
-  // Keep enemies from stacking into one blob
+  // Keep walkers from stacking into one blob: only ones standing on the same
+  // floor shove each other, and never off its edge (flyers spread out in
+  // their own steering, see navSpread)
   for (let i = 0; i < enemies.length; i++) {
     const a = enemies[i];
-    if (a.dead || a.boss) continue;
+    if (a.dead || a.boss || !a.def.walker || !a.onGround) continue;
     for (let j = i + 1; j < enemies.length; j++) {
       const b = enemies[j];
-      if (b.dead || b.boss || !overlaps(a, b)) continue;
-      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 40 * dtAll * 4;
-      a.x += push;
-      b.x -= push;
+      if (b.dead || b.boss || !b.def.walker || !b.onGround || b.standingOn !== a.standingOn || !overlaps(a, b)) continue;
+      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 160 * dtAll;
+      navShove(a, push);
+      navShove(b, -push);
     }
   }
 }
 
+// Who an enemy is after: a body with {x, y, w, h, vx, vy, onGround,
+// standingOn} (camo > 0 on a player means it can't be seen). By default the
+// bound `player`: in co-op the nearest live one (updateEnemies binds it).
+// Movement, aiming and the despawn check go through here, so a later feature
+// can point an enemy at another body with e.forcedTarget (Hackerman's EMP
+// will turn enemies on a "compromised" one; contact damage and enemy shots
+// still only hit players: see the notes at the end of nav.js).
+function enemyTarget(e) {
+  const t = e.forcedTarget;
+  return t && !t.dead ? t : player;
+}
+
 function updateEnemy(e, dtAll) {
-  const pc = centerOf(player);
+  const target = enemyTarget(e);
+  const pc = centerOf(target);
   // bleeding / burning tick here; a glitched enemy only gets every third frame
   const dt = enemyStatus(e, dtAll);
   if (e.dead) return;
@@ -234,7 +254,7 @@ function updateEnemy(e, dtAll) {
     const stunned = e.stun > 0;
     const ec = centerOf(e);
     // Thermoptic camo (easter egg): enemies lose you and wander around
-    const blind = player.camo > 0;
+    const blind = target.camo > 0;
     const tgt = blind ? wanderTarget(e, ec, dt) : pc;
     const dx = tgt.x - ec.x;
     const dy = tgt.y - ec.y;
@@ -243,55 +263,60 @@ function updateEnemy(e, dtAll) {
     let contactMul = 1;
 
     if (def.walker) {
-      e.jumpCd -= dt;
       e.dashCd -= dt;
-      let want = stunned || Math.abs(dx) < 12 ? 0 : Math.sign(dx) * def.speed * sm;
-      if (e.type === "ninja") want = updateNinja(e, dt, dx, dy, want, stunned || blind);
+      // The route through the platforms (nav.js): run to the take-off point,
+      // jump, drop or grapple to the next floor, then chase on your floor
+      let want = stunned || e.windup > 0 ? 0 : navWalker(e, dt, target, blind ? tgt : null);
+      const steering = navAirborne(e); // (a planned jump steers at full speed)
+      if (!steering) want *= sm;
+      const busy = stunned || blind || navBusy(e);
+      if (e.type === "ninja") want = updateNinja(e, dt, dx, dy, want, busy);
       if (e.type === "enforcer") {
-        want = updateEnforcer(e, dt, dx, dy, want, stunned || blind);
+        want = updateEnforcer(e, dt, dx, dy, want, busy);
         if (e.bash > 0) contactMul = 1.3;
       }
       if (e.dashT > 0) contactMul = 1;
-      const accel = e.dashT > 0 || e.bash > 0 ? 1 : Math.min(1, 8 * dt);
+      const accel = e.dashT > 0 || e.bash > 0 || steering ? 1 : Math.min(1, 8 * dt);
       e.vx += (want - e.vx) * accel;
-      const playerAbove = !blind && player.y + player.h < e.y + e.h - 90;
-      if (!stunned && e.onGround && e.jumpCd <= 0 && playerAbove && Math.abs(dx) < 340 && !(e.windup > 0)) {
-        e.vy = -rand(980, 1180);
-        e.jumpCd = rand(1, 2);
-      }
       e.x += e.kbX * dt;
       if (e.kbY < 0) {
         e.vy += e.kbY;
         e.kbY = 0;
       }
       if (e.onGround) e.airFrom = e.y;
-      const landed = moveBody(e, dt, 2700, 1500);
+      const landed = navMoveWalker(e, dt);
       if (landed && e.knockT > 0 && e.airFrom !== undefined) fallDamage(e, e.y - e.airFrom);
       if (e.type === "enforcer") e.facing = dx > 0 ? 1 : -1; // the shield always faces you
       else if (Math.abs(e.vx) > 20) e.facing = e.vx > 0 ? 1 : -1;
     } else if (def.kind === "melee") {
-      // Reapers drift straight at you through everything
+      // Reapers drift straight at you through everything (spread out a little)
       const sp = stunned ? 0 : def.speed * sm;
-      e.vx += ((dx / d) * sp - e.vx) * steer;
-      e.vy += ((dy / d) * sp - e.vy) * steer;
+      navSpread(e);
+      e.vx += ((dx / d) * sp + navFlock.x * 150 - e.vx) * steer;
+      e.vy += ((dy / d) * sp + navFlock.y * 150 - e.vy) * steer;
       e.x += (e.vx + e.kbX) * dt;
       e.y += (e.vy + e.kbY) * dt + Math.sin(game.time * 2.5 + e.bob) * 25 * dt;
       e.facing = dx > 0 ? 1 : -1;
     } else if (def.kind === "bomber") {
       if (updateBomber(e, dt, dx, dy, d, stunned || blind, sm)) return;
     } else {
-      // Ranged flyers (drones, wyrms, snipers) keep their distance and shoot
+      // Ranged flyers (drones, wyrms, snipers) keep their distance and shoot.
+      // Each keeps its own spot (slot) so a squad doesn't share one point.
       const side = ec.x < pc.x ? -1 : 1;
-      const high = e.type === "dragon" ? 330 : e.type === "sniper" ? 400 : 250;
-      const tx = blind ? tgt.x : pc.x + side * def.keepDistance;
-      const ty = blind ? tgt.y : pc.y - high + Math.sin(game.time * 1.4 + e.bob) * 70;
+      const slot = e.bob / (Math.PI * 2);
+      const high = (e.type === "dragon" ? 330 : e.type === "sniper" ? 400 : 250) * (0.85 + 0.3 * slot);
+      const tx = blind ? tgt.x : pc.x + side * def.keepDistance * (0.85 + 0.3 * ((slot * 7.3) % 1));
+      // (near the top of the city it can't get above you: it hovers beside you)
+      const ty = blind ? tgt.y : Math.max(pc.y - high + Math.sin(game.time * 1.4 + e.bob) * 70, WORLD_TOP + 70 + e.h / 2);
       const ddx = tx - ec.x;
       const ddy = ty - ec.y;
       const dd = Math.hypot(ddx, ddy) || 1;
       const holdStill = e.aimT > 0;
       const sp = stunned || holdStill ? 0 : Math.min(def.speed * sm, dd * 2.5);
-      e.vx += ((ddx / dd) * sp - e.vx) * steer;
-      e.vy += ((ddy / dd) * sp - e.vy) * steer;
+      const fk = stunned || holdStill ? 0 : 260;
+      navSpread(e);
+      e.vx += ((ddx / dd) * sp + navFlock.x * fk - e.vx) * steer;
+      e.vy += ((ddy / dd) * sp + navFlock.y * fk - e.vy) * steer;
       e.x += (e.vx + e.kbX) * dt;
       e.y += (e.vy + e.kbY) * dt;
       e.facing = dx > 0 ? 1 : -1;
@@ -328,8 +353,13 @@ function updateEnemy(e, dtAll) {
       });
     }
 
-    // Enemies left far behind just leave
+    // Enemies left far behind just leave (and so does a walker hopelessly
+    // stuck off screen: the director sends another)
     if (Math.abs(pc.x - ec.x) > 2600 || Math.abs(pc.y - ec.y) > 1900) e.dead = e.despawned = true;
+    else if (e.nav && e.nav.lost > NAV.rescue && !onScreen(e)) {
+      e.dead = e.despawned = true;
+      navStats.rescues++;
+    }
   }
 }
 
@@ -396,8 +426,9 @@ function updateBomber(e, dt, dx, dy, d, busy, sm) {
     return false;
   }
   const sp = busy ? 0 : (d < 420 ? 480 : e.def.speed) * sm;
-  e.vx += ((dx / d) * sp - e.vx) * steer;
-  e.vy += ((dy / d) * sp - e.vy) * steer;
+  navSpread(e);
+  e.vx += ((dx / d) * sp + navFlock.x * 200 - e.vx) * steer;
+  e.vy += ((dy / d) * sp + navFlock.y * 200 - e.vy) * steer;
   e.x += (e.vx + e.kbX) * dt;
   e.y += (e.vy + e.kbY) * dt;
   e.facing = dx > 0 ? 1 : -1;
@@ -430,7 +461,7 @@ function explodeBomber(e) {
 function updateSniper(e, dt, busy, sm) {
   const def = e.def;
   const ec = centerOf(e);
-  const pc = centerOf(player);
+  const pc = centerOf(enemyTarget(e));
   if (busy) {
     e.aimT = 0;
     return;
@@ -439,7 +470,7 @@ function updateSniper(e, dt, busy, sm) {
     e.aimT -= dt * sm;
     if (e.aimT > 0.25) e.aimAngle = Math.atan2(pc.y - ec.y, pc.x - ec.x); // tracks, then locks
     if (e.aimT <= 0) {
-      fireEnemyShot(ec.x, ec.y, def.shot, e.aimAngle, e.dmgMul);
+      fireEnemyShot(ec.x, ec.y, def.shot, e.aimAngle, e.dmgMul, e); // (the sniper owns its shot: Ronin reflects it back)
       e.firedT = 0.2;
       e.shotCd = rand(def.shot.cooldown[0], def.shot.cooldown[1]);
     }
@@ -464,7 +495,7 @@ function wanderTarget(e, ec, dt) {
 }
 
 function fireEnemyShot(x, y, shot, angle, dmgMul = 1, owner = null) {
-  const pc = centerOf(player);
+  const pc = centerOf(owner ? enemyTarget(owner) : player);
   const a = angle !== undefined ? angle : Math.atan2(pc.y - y, pc.x - x);
   enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4, owner });
   sfx.enemyShot.play({ rate: shot.kind === "laser" ? 1.6 : shot.kind === "snipe" ? 2.2 : 0.55 });
@@ -632,6 +663,7 @@ function drawEnemies(time) {
       drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + 8, dy, dw, dh, "rgba(0,255,220,0.9)", flip);
     }
     ctx.globalAlpha = e.def.alpha || 1;
+    if (e.nav) drawNavLine(e); // the enforcer's grapple
     const ok = drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + glitching, dy, dw, dh, tint, flip);
     ctx.globalAlpha = 1;
     if (e.downed) ctx.restore();
