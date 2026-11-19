@@ -21,6 +21,7 @@ function render(time) {
   drawCrates();
   drawPickups(time);
   drawEnemies(time);
+  drawNavDebug(); // ?navdebug: the platform graph and every enemy's route
   drawGoatDeath(time);
   drawNullFx(time);
   drawShockwaves(time);
@@ -193,6 +194,11 @@ function drawBar(x, y, w, h, frac, ghostFrac, color) {
   ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
 }
 
+// Pixel size of one square cell in each icon sheet (most are 24x24). The
+// v3.1 kit icons live on fx2, whose cells are 32x32 like fx.
+const ICON_CELL = { fx: 32, fx2: 32, pickups: 16 };
+const iconCell = (sheet) => ICON_CELL[sheet] || 24;
+
 function drawIcon(sheet, size, cell, x, y, s) {
   if (!drawCell(sheet, cell, size, x + s / 2, y + s / 2, s, s)) {
     ctx.fillStyle = "#3d3560";
@@ -225,29 +231,40 @@ function drawHUD(time) {
   const hpColor = lowHp && Math.sin(time * 12) > 0 ? "#ff2f6d" : "#19f5ff";
   drawIcon(isReady(IMG.portraits2) ? "portraits2" : "portraits", 48, CH().portrait, 44, 22, 40);
   const team = coopActive(); // co-op: tag player 1's panel, show when they're down
-  hudText(`${team ? "P1 " : ""}${CH().name}  LV ${progress.level}`, 94, 32, 24, team ? coop.players[0].color : "#ffe14d");
+  const nameText = `${team ? "P1 " : ""}${CH().name}  LV ${progress.level}`;
+  hudText(nameText, 94, 32, 24, team ? coop.players[0].color : "#ffe14d");
+  // Narrow screens (phones, where the HUD is scaled up) have no room for the
+  // boss bar between the left panel and the right edge: see the boss block
+  const narrow = VW < 1500;
+  ctx.font = fontPx(24);
+  const livesX = narrow ? 94 + ctx.measureText(nameText).width + 18 : 504;
+  const livesY = narrow ? 32 : 72; // (top of the chips)
+  const chip = narrow ? 0.8 : 1;
   const down = coopStatus(coop.players[0]);
   drawBar(44, 70, 440, 34, down ? 0 : p.hp / stats.maxHp, down ? 0 : p.ghostHp / stats.maxHp, hpColor);
   hudText(down || `${Math.ceil(p.hp)}/${stats.maxHp}`, 58, 77, 22, "#ffffff");
   // Lives: one chip per backup
   for (let i = 0; i < MAX_LIVES; i++) {
     const on = i < game.lives;
-    const lx = 504 + i * 34;
+    const lx = livesX + i * 34 * chip;
+    const cy = livesY + 15 * chip;
     ctx.fillStyle = on ? CH().color : "rgba(255,255,255,0.15)";
     ctx.beginPath();
-    ctx.moveTo(lx + 13, 72);
-    ctx.lineTo(lx + 26, 87);
-    ctx.lineTo(lx + 13, 102);
-    ctx.lineTo(lx, 87);
+    ctx.moveTo(lx + 13 * chip, livesY);
+    ctx.lineTo(lx + 26 * chip, cy);
+    ctx.lineTo(lx + 13 * chip, livesY + 30 * chip);
+    ctx.lineTo(lx, cy);
     ctx.closePath();
     ctx.fill();
-    if (on) glow(lx + 13, 87, 18, "rgba(255,255,255,0.35)");
+    if (on) glow(lx + 13 * chip, cy, 18 * chip, "rgba(255,255,255,0.35)");
   }
   const res = CH().resource;
   const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : res.color;
   drawBar(44, 120, 300, 18, p.heat / TUNING.heat.max, 0, heatColor);
-  hudText(p.heatLocked ? `NO ${res.name}` : res.name, 360, 120, 18, heatColor);
-  hudText(passiveLine(), 460, 122, 15, "#c9b6ff"); // the IC's passive, as it grows with level
+  const resLabel = p.heatLocked ? `NO ${res.name}` : res.name;
+  hudText(resLabel, 360, 120, 18, heatColor);
+  ctx.font = fontPx(18);
+  hudText(passiveLine(), Math.max(460, 360 + ctx.measureText(resLabel).width + 18), 122, 15, "#c9b6ff"); // (ends before the boss bar at x 640) // the IC's passive, as it grows with level
 
   // Active power-ups
   let ix = 44;
@@ -285,7 +302,7 @@ function drawHUD(time) {
     const level = lv(u.id);
     if (!level) return;
     const icon = upgradeInfo(u).icon;
-    drawIcon(icon.sheet, icon.sheet === "fx" ? 32 : 24, icon.cell, ux, uy, 44);
+    drawIcon(icon.sheet, iconCell(icon.sheet), icon.cell, ux, uy, 44);
     hudText(String(level), ux + 40, uy + 30, 14, "#ffe14d", "right");
     ux += 50;
   });
@@ -293,6 +310,11 @@ function drawHUD(time) {
   // Run timer / boss
   hudText(formatTime(game.time), VW / 2, 34, 40, "#ffffff", "center");
   const boss = game.boss;
+  // (on narrow screens the whole boss block moves to the bottom edge, below
+  // the action and between the touch sticks)
+  const bossDy = narrow ? H / k - 194 : 0;
+  ctx.save();
+  ctx.translate(0, bossDy);
   if (boss && !boss.dead && boss.type === "nullptr") drawNullBar(boss, VW, time);
   else if (boss && !boss.dead) {
     const name = BOSSES[boss.type].name.toUpperCase();
@@ -303,8 +325,11 @@ function drawHUD(time) {
     const left = director.nextBossAt - game.time;
     const urgent = left < 10 && Math.sin(time * 10) > 0;
     const label = { [STAGE.start]: "BOSS IN", [STAGE.interlude1]: "NEXT BOSS IN", [STAGE.interlude2]: "FINAL BOSS IN" }[director.stage];
-    hudText(`${label} ${formatTime(left)}`, VW / 2, 92, 20, urgent ? "#ff2457" : "#c9b6ff", "center");
+    ctx.restore(); // the countdown stays up top, under the run timer
+    ctx.save();
+    hudText(`${label} ${formatTime(left)}`, VW / 2, narrow ? 80 : 92, narrow ? 16 : 20, urgent ? "#ff2457" : "#c9b6ff", "center");
   }
+  ctx.restore();
 
   // Kills (just under the pause / mute / fullscreen buttons)
   hudText(`KILLS ${game.kills}`, VW - 44, hudLayout.killsY / k, 22, "#ffffff", "right");
@@ -328,6 +353,7 @@ function drawHUD(time) {
   }
   drawBossCard(VW, H / k);
   drawNullTear(VW, H / k);
+  drawCoopJoin(VW, H / k, time); // co-op: player 2's IC select, over everything
   ctx.restore();
 
   if (boss && !boss.dead && !boss.cloaked && !onScreen(boss)) drawBossArrow(boss, time);
@@ -358,7 +384,8 @@ function drawHints(VW, VH) {
   if (touchMode && !pad) {
     // with auto-fire on, the right stick still aims and fires (twin-stick)
     const right = settings.touchAim === "tap" && !settings.autoFire ? "TAP: FIRE   HOLD: RAPID FIRE" : "RIGHT STICK: AIM + FIRE";
-    hudText(`LEFT STICK: MOVE (FLICK UP: JUMP)   ${right}   CORNER: ${CH().special.label}`, VW / 2, VH - 150, 20, "#ffffff", "center");
+    hudText(`LEFT STICK: MOVE (FLICK UP: JUMP)`, VW / 2, VH - 176, 20, "#ffffff", "center");
+    hudText(`${right}   CORNER: ${CH().special.label}`, VW / 2, VH - 150, 20, "#ffffff", "center");
   } else {
     const rows = pad || [
       ["A D", "MOVE    W S  AIM"],

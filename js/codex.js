@@ -1,8 +1,8 @@
 "use strict";
 // =============================================================================
-// Menus built from the database: the Individual Contributor cards and the
-// DATABASE screen (ICs, enemies, bosses and skills). Enemies and bosses
-// stay locked until you've met them.
+// Menus built from the database: the DATABASE screen (ICs, enemies, bosses
+// and skills) and the helpers the IC select (js/select.js) shares. Enemies
+// and bosses stay locked until you've met them.
 // =============================================================================
 
 // Draw one sprite cell onto a small canvas (waits for the image if needed)
@@ -50,46 +50,18 @@ function statBar(label, value, color) {
   return row;
 }
 
+// IC base stats as bar fractions. Each range spans what the ICs actually
+// have, so the three read differently (armor is 0.1-0.5: a fraction blocked).
+const IC_STAT_RANGE = { hp: [40, 160], armor: [0, 0.6], speed: [340, 500], jump: [700, 1300] };
+function icStatFrac(ch, key) {
+  const [lo, hi] = IC_STAT_RANGE[key];
+  return clamp((ch[key] - lo) / (hi - lo), 0.06, 1);
+}
+
 function portraitCanvas(ch, size) {
   const sheet = isReady(IMG.portraits2) ? "portraits2" : "portraits";
   return isReady(IMG[sheet]) ? spriteCanvas(sheet, ch.portrait * 48, 0, 48, 48, size) : spriteCanvas(CHARACTERS.paine.sprite.img, 0, 0, 32, 48, size);
 }
-
-// ------------------------------------------------------- Character select ---
-const charSelectEl = document.getElementById("char-select");
-function renderCharSelect() {
-  charSelectEl.textContent = "";
-  CHARACTER_ORDER.forEach((id) => {
-    const ch = CHARACTERS[id];
-    const card = el("button", "char-card");
-    card.type = "button";
-    card.setAttribute("role", "radio");
-    card.setAttribute("aria-checked", String(settings.character === id));
-    card.style.setProperty("--c", ch.color);
-    card.append(portraitCanvas(ch, 72));
-    const info = el("span", "char-info");
-    info.append(el("span", "char-name", ch.name), el("span", "char-title", ch.title));
-    info.append(statBar("HP", ch.hp / 160, "#ff2f6d"), statBar("ARMOR", ch.armor / 0.25, "#19f5ff"));
-    info.append(el("span", "char-kit", `${ch.primary.name} + ${ch.special.name}`));
-    card.append(info);
-    if (coop.seat && coop.seat.char === id) card.append(el("span", "char-p2", "P2")); // co-op: player 2's pick
-    card.addEventListener("click", () => {
-      if (coopPickChar(id)) {
-        // clicked with player 2's pad: their IC (hot-swapped if they're in a run)
-      } else if (game.state === "paused") switchCharacter(id); // hot-swap mid-run
-      else {
-        settings.character = id;
-        applySettings();
-      }
-      renderCharSelect();
-    });
-    charSelectEl.append(card);
-  });
-}
-renderCharSelect();
-// Portraits load after the menu is built: refresh once they arrive
-if (IMG.portraits) IMG.portraits.addEventListener("load", renderCharSelect);
-if (IMG.portraits2) IMG.portraits2.addEventListener("load", renderCharSelect);
 
 // ---------------------------------------------------------------- Codex -----
 const codexEl = document.getElementById("codex");
@@ -129,7 +101,7 @@ function renderCodex() {
       card.append(portraitCanvas(ch, 96));
       const info = el("div", "codex-info");
       info.append(el("h3", "", `${ch.name} // ${ch.title}`));
-      info.append(statBar("HP", ch.hp / 160, "#ff2f6d"), statBar("ARMOR", ch.armor / 0.25, "#19f5ff"), statBar("SPEED", ch.speed / 480, "#ffe14d"));
+      info.append(statBar("HP", icStatFrac(ch, "hp"), "#ff2f6d"), statBar("ARMOR", icStatFrac(ch, "armor"), "#19f5ff"), statBar("SPEED", icStatFrac(ch, "speed"), "#ffe14d"));
       info.append(el("p", "codex-kit", `PRIMARY: ${ch.primary.name}. ${ch.primary.desc[0]}`));
       info.append(el("p", "codex-kit", `SPECIAL (${ch.resource.name}): ${ch.special.name}. ${ch.special.desc[0]}`));
       info.append(el("p", "codex-kit", `PASSIVE: ${ch.passive}`));
@@ -196,7 +168,7 @@ function skillEntry(name, icon, desc, tag, color) {
   const card = entry(false);
   card.classList.add("skill");
   card.style.setProperty("--c", color);
-  const size = icon.sheet === "fx" ? 32 : 24;
+  const size = iconCell(icon.sheet); // (render.js)
   card.append(spriteCanvas(icon.sheet, icon.cell * size, 0, size, size, 56));
   const info = el("div", "codex-info");
   info.append(el("h3", "", `${name} // ${tag}`));

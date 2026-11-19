@@ -15,8 +15,9 @@
 //   Per player: the body, HP, resource, stats (the shared upgrades on that
 //     player's IC), input, the drop, projectiles and effects.
 // Joining: an unassigned pad pressing Start / A (gamepad.js onJoinRequest).
-// In a run, a small panel lets player 2 pick an IC, then they drop in; on the
-// menus they are "ready" and drop in with player 1 when the run starts.
+// In a run, the world holds still while player 2 picks an IC on a big join
+// screen (drawCoopJoin), then they drop in; on the menus they are "ready"
+// and drop in with player 1 when the run starts.
 // =============================================================================
 
 // Tuned with bot runs (both players on auto-fire and auto special): with these,
@@ -28,7 +29,7 @@ const COOP = {
   enemyHp: 1.25, // ...with this much more HP
   bossHp: 1.4, // (1.6 made boss fights drag: each player gets about half a solo player's time on the boss)
   respawnDelay: 3, // s a downed player waits before dropping back in
-  joinTimeout: 12, // s the join panel waits before dropping player 2 in anyway
+  joinTimeout: 15, // s the join screen waits before dropping player 2 in anyway
   leashX: W - 260, // the farthest apart (centre to centre) the two can be...
   leashY: H - 330, // ...horizontally and vertically, so both stay on screen
   warpAfter: 1.5, // s too far apart vertically: the higher one is pulled down
@@ -227,6 +228,7 @@ function coopDrop(ctx, runStart) {
       resetChrome(player);
     }
     player.hidden = false;
+    if (!runStart) padSound("uiSelect");
     if (runStart) {
       // off the same rooftop as player 1, a beat later
       startIntro("drop");
@@ -234,6 +236,18 @@ function coopDrop(ctx, runStart) {
       intro.t = -0.3;
     } else startIntro("join");
   });
+  if (!runStart && game.coopOutLeft) {
+    // they left while out of lives: back in the queue for one (coopUpdate
+    // revives them, spending it, as soon as the team has a life to spare)
+    game.coopOutLeft = false;
+    ctx.out = true;
+    withPlayer(ctx, () => {
+      intro.active = false;
+      player.hp = 0;
+      player.hidden = true;
+    });
+    game.banner = { text: `${ctx.label} IS STILL OUT // GRAB A LIFE TO BRING THEM BACK`, time: 2.6, color: ctx.color };
+  }
 }
 
 // A context's run state goes; the seat (and pad) stay for the next run
@@ -243,6 +257,7 @@ function coopReset() {
   P1().out = false;
   P1().joining = null;
   game.coopRun = false;
+  game.coopOutLeft = false;
 }
 
 // startGame(): player 2 drops in alongside player 1
@@ -258,6 +273,9 @@ function coopStartRun() {
 function coopLeave() {
   if (!coop.seat) return;
   const ctx = coop.players[1];
+  // leaving while knocked out doesn't buy a free comeback: a mid-run re-join
+  // still waits for (and spends) a life, see coopDrop
+  if (ctx && ctx.out && inRun()) game.coopOutLeft = true;
   coop.seat = null;
   gamepads.release(1);
   if (ctx) {
@@ -363,13 +381,27 @@ function coopJoinPanelInput(ctx, pad) {
 }
 
 // ------------------------------------------------------------- Each frame ---
-// Before the players move: the join panel's clock, respawns, a lost pad
+// Mid-run, the world holds still while player 2 picks on the join screen
+// (main.js update() skips the frame). Its clock runs on: when it runs out
+// they drop in with the IC on show. Their pad going away cancels the join.
+function coopJoinHold(dt) {
+  const ctx = coop.players.length > 1 && coop.players.find((c) => c.joining);
+  if (!ctx) return false;
+  if (gamepads.slots[1] === null || gamepads.slots[1] === undefined) {
+    coopLeave();
+    return false;
+  }
+  if ((ctx.joining.t += dt) <= COOP.joinTimeout) return true;
+  coopDrop(ctx);
+  return false;
+}
+
+// Before the players move: respawns, a lost pad
 function coopUpdate(dt) {
   if (coop.players.length < 2) return;
   coop.players.forEach((ctx) => {
     ctx.prevX = ctx.player.x;
     const p = ctx.player;
-    if (ctx.joining && (ctx.joining.t += dt) > COOP.joinTimeout) coopDrop(ctx);
     if (ctx.out) {
       p.hidden = true;
       p.invuln = Math.max(p.invuln, 1);
@@ -531,27 +563,17 @@ function coopPadLabel(button) {
 // Player 2's HUD: a compact panel top right (or the join panel)
 function drawCoopHud(VW, time) {
   const ctx2 = coop.players[1];
-  if (!ctx2) return;
+  if (!ctx2 || ctx2.joining) return; // (picking an IC: drawCoopJoin)
   const x = VW - 44 - 400;
   const y = 176;
   withPlayer(ctx2, (c) => {
     const p = player;
     ctx.fillStyle = "rgba(10,3,24,0.72)";
-    ctx.fillRect(x - 12, y - 12, 424, c.joining ? 150 : 144);
+    ctx.fillRect(x - 12, y - 12, 424, 144);
     ctx.strokeStyle = c.color;
     ctx.lineWidth = 3;
-    ctx.strokeRect(x - 12, y - 12, 424, c.joining ? 150 : 144);
+    ctx.strokeRect(x - 12, y - 12, 424, 144);
     const sheet = isReady(IMG.portraits2) ? "portraits2" : "portraits";
-    if (c.joining) {
-      const ch = CHARACTERS[c.joining.char] || CHARACTERS.paine;
-      hudText("PLAYER 2 // JOIN", x, y, 18, c.color);
-      drawIcon(sheet, 48, ch.portrait, x, y + 30, 56);
-      hudText(`< ${ch.name} >`, x + 72, y + 38, 22, ch.color);
-      hudText(ch.title.toUpperCase(), x + 72, y + 68, 12, "#c9b6ff");
-      const left = Math.ceil(COOP.joinTimeout - c.joining.t);
-      hudText(`${coopPadLabel("A")}: DROP IN  ${coopPadLabel("B")}: LEAVE  ${left}`, x, y + 104, 14, "#ffffff");
-      return;
-    }
     const ch = CH();
     drawIcon(sheet, 48, ch.portrait, x, y, 40);
     hudText(`P2 ${ch.name}`, x + 50, y + 10, 20, c.color);
@@ -563,6 +585,163 @@ function drawCoopHud(VW, time) {
     hudText(res.name, x + 254, y + 84, 14, res.color);
     hudText(passiveLine(), x, y + 108, 12, "#c9b6ff");
   });
+}
+
+// Text cut to a width, with an ellipsis (canvas)
+function fitText(text, maxW, size) {
+  ctx.font = fontPx(size);
+  if (ctx.measureText(text).width <= maxW) return text;
+  let s = text;
+  while (s.length > 1 && ctx.measureText(s + "…").width > maxW) s = s.slice(0, -1);
+  return s.trimEnd() + "…";
+}
+
+// Pixel art at a whole number of canvas pixels per art pixel when it fits
+// (crisp), else just scaled down to fit (tiny screens). Bottom-centred in the box.
+function drawJoinArt(art, bx, by, bw, bh) {
+  const dev = renderScale * hudLayout.scale; // canvas pixels per HUD unit
+  const fit = Math.min(bw / art.w, bh / art.h);
+  const n = Math.floor(fit * dev);
+  const k = n >= 1 ? n / dev : fit;
+  const w = art.w * k;
+  const h = art.h * k;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(art.img, Math.round(bx + (bw - w) / 2), Math.round(by + bh - h), w, h);
+}
+
+// Player 2's IC select mid-run (the world holds still behind it): the three
+// ICs with their busts, the picked one's kit, the prompts and the clock
+function drawCoopJoin(VW, VH, time) {
+  const c = coop.players.length > 1 && coop.players.find((x) => x.joining);
+  if (!c) return;
+  const j = c.joining;
+  const pick = CHARACTERS[j.char] || CHARACTERS.paine;
+  const pf = pick.profile || {};
+  ctx.fillStyle = "rgba(5,1,12,0.8)";
+  ctx.fillRect(0, 0, VW, VH);
+  const w = Math.min(VW - 80, 1500);
+  const h = Math.min(VH - 50, 880);
+  const x = Math.round((VW - w) / 2);
+  const y = Math.round((VH - h) / 2);
+  ctx.fillStyle = "rgba(14,5,32,0.97)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = c.color;
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x, y, w, h);
+  // header: who is picking, and the clock
+  const left = Math.max(0, COOP.joinTimeout - j.t);
+  hudText("PLAYER 2 // CHOOSE YOUR INDIVIDUAL CONTRIBUTOR", x + 32, y + 28, Math.min(26, Math.floor((w - 330) / 46)), c.color);
+  hudText(`DROP IN ${Math.ceil(left)}`, x + w - 32, y + 28, 22, "#ffffff", "right");
+  drawBar(x + w - 252, y + 66, 220, 8, left / COOP.joinTimeout, 0, c.color);
+  // the three ICs: the one on show lit in its colour, the others dimmed
+  const pad = 32;
+  const gap = 22;
+  const top = y + 100;
+  const cardH = Math.round(clamp(h - 100 - 60 - 250, 170, h * 0.52));
+  const cw = (w - pad * 2 - gap * 2) / 3;
+  CHARACTER_ORDER.forEach((id, i) => {
+    const ch = CHARACTERS[id];
+    const on = id === j.char;
+    const cx = Math.round(x + pad + i * (cw + gap));
+    const rgb = hexRgb(ch.color);
+    ctx.globalAlpha = on ? 1 : 0.45;
+    ctx.fillStyle = `rgba(${rgb},${on ? 0.22 : 0.08})`;
+    ctx.fillRect(cx, top, cw, cardH);
+    if (on) {
+      const pulse = 0.5 + 0.5 * Math.sin(time * 5);
+      ctx.fillStyle = `rgba(${rgb},${0.1 + pulse * 0.08})`;
+      ctx.fillRect(cx, top, cw, cardH * 0.7);
+    }
+    const art = icBustArt(id);
+    if (art) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cx, top, cw, cardH - 92);
+      ctx.clip();
+      drawJoinArt(art, cx + 10, top + 10, cw - 20, cardH - 102);
+      ctx.restore();
+    }
+    ctx.fillStyle = "rgba(8,2,20,0.92)";
+    ctx.fillRect(cx, top + cardH - 92, cw, 92);
+    hudText(ch.name, cx + 18, top + cardH - 80, 30, ch.color);
+    hudText(fitText(ch.title.toUpperCase(), cw - 36, 15), cx + 18, top + cardH - 40, 15, "#ffffff");
+    ctx.lineWidth = on ? 5 : 2;
+    ctx.strokeStyle = on ? ch.color : "rgba(255,255,255,0.25)";
+    ctx.strokeRect(cx, top, cw, cardH);
+    if (id === P1().player.char) {
+      ctx.fillStyle = COOP.colors[0];
+      ctx.fillRect(cx, top, 52, 30);
+      hudText("P1", cx + 26, top + 15, 16, "#14051f", "center", "middle");
+    }
+    if (on) {
+      // the cursor: arrows either side of the pick
+      const bob = Math.sin(time * 8) * 4;
+      hudText("◀", cx - 6 + bob, top + cardH / 2, 26, c.color, "right", "middle");
+      hudText("▶", cx + cw + 6 - bob, top + cardH / 2, 26, c.color, "left", "middle");
+    }
+    ctx.globalAlpha = 1;
+  });
+  // the pick's kit: role and difficulty, personality, weapon, special, passive
+  const dy = top + cardH + 22;
+  const tx = x + pad;
+  const tw = w - pad * 2;
+  const role = [pf.role, pf.difficulty ? `DIFFICULTY ${DIFFICULTY[pf.difficulty]}` : "", `${pick.resource.name} POWERS THE SPECIAL`].filter(Boolean).join("  //  ");
+  hudText(fitText(role, tw, 16), tx, dy, 16, pick.color);
+  if (pf.personality) hudText(fitText(pf.personality, tw, 15), tx, dy + 30, 15, "#f1dcff");
+  const sg = pick.special.guide || {};
+  const rows = [
+    [pick.primary.icon, "WEAPON", pick.primary.name, pf.weapon || pick.primary.desc[0]],
+    [pick.special.icon, "SPECIAL", pick.special.name, sg.what ? `${sg.what}. ${sg.edge}.` : pick.special.desc[0]],
+  ];
+  if (pf.passive) rows.push([pf.passive.icon, "PASSIVE", passiveName(pick), pf.passive.text]);
+  const rowH = clamp((y + h - 64 - (dy + 62)) / rows.length, 34, 58);
+  const lines = rowH >= 44 ? 2 : 1;
+  rows.forEach(([icon, kind, name, text], i) => {
+    const ry = dy + 62 + i * rowH;
+    const cell = icon.sheet === "fx" || icon.sheet === "fx2" ? 32 : 24;
+    drawIcon(icon.sheet, cell, icon.cell, tx, ry - 4, 32);
+    hudText(kind, tx + 48, ry, 14, pick.color);
+    hudText(name.toUpperCase(), tx + 170, ry, 16, "#ffffff");
+    wrapText(text, tw - 470, 14, lines).forEach((line, n) => hudText(line, tx + 450, ry + 1 + n * 21, 14, "#c9b6ff"));
+  });
+  // the prompts, on player 2's own pad (✕ ○ come from a fallback font: bigger)
+  const prompts = [["◀ ▶", "CHOOSE"], [coopPadLabel("A"), "DROP IN"], [coopPadLabel("B"), "LEAVE"]];
+  const size = (key) => (/[✕○□△]/.test(key) ? 30 : 18);
+  const widthOf = ([key, label]) => {
+    ctx.font = fontPx(size(key));
+    const kw = ctx.measureText(key).width;
+    ctx.font = fontPx(18);
+    return kw + 14 + ctx.measureText(label).width;
+  };
+  let px = x + w / 2 - (prompts.reduce((sum, p) => sum + widthOf(p), 0) + 60 * (prompts.length - 1)) / 2;
+  prompts.forEach((p) => {
+    const [key, label] = p;
+    const kw = widthOf(p) - 14 - ctx.measureText(label).width;
+    hudText(key, px, y + h - 31, size(key), c.color, "left", "middle");
+    hudText(label, px + kw + 14, y + h - 31, 18, "#ffffff", "left", "middle");
+    px += widthOf(p) + 60;
+  });
+}
+
+// Text in up to n lines of a width (canvas); the last one ends in … if cut
+function wrapText(text, maxW, size, n) {
+  ctx.font = fontPx(size);
+  const words = String(text).split(" ");
+  const out = [];
+  let line = "";
+  while (words.length && out.length < n) {
+    const next = line ? line + " " + words[0] : words[0];
+    if (ctx.measureText(next).width <= maxW || !line) {
+      line = next;
+      words.shift();
+    } else {
+      out.push(line);
+      line = "";
+    }
+  }
+  if (line && out.length < n) out.push(line);
+  if (words.length) out[out.length - 1] = fitText(out[out.length - 1] + " " + words.join(" "), maxW, size);
+  return out;
 }
 
 // --------------------------------------------------------------- Hooks ------
