@@ -32,9 +32,9 @@ Full details are in **[PATCH_NOTES.md](PATCH_NOTES.md)**.
 
 | IC | HP | Primary | Special (resource) | Style |
 |---|---|---|---|---|
-| **PAINE** // Cyber Widow | 110 | Cyber Bow | Flame On (HEAT) | Precision archer. Draw and release heavy arrows that knock enemies back and have a chance to pierce (15%, +2% per level). They shoot flyers out of the sky, and enemies knocked off ledges take fall damage. Bosses can't be shoved but bleed. Flame On is a radial heat wave from her heat-proof suit: it shoves, burns and melts bullets, on a short cooldown. |
-| **TETSU** // Chrome Ronin | 150, blocks 25% of damage | Monoblade | Iaido Dash (FOCUS) | Melee. A three-hit combo with a 360° shield-breaking finisher; swings parry bullets. The dash slices through everything and leaves him guarded. **Mirror Steel** reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). From level 8 reflections stagger; from level 16 they splash to two more enemies. |
-| **SUDO** // Hackerman | 80 | EM Projector | Time Dilation (RAM) | Electronic warfare. A hacked EM wave projector, wired to his laptop and a backpack battery, fires waves that pass through everything and slow it. **System Glitch**: each hit has a 15%+ chance to make the whole area stutter. Time Dilation is bullet time: the world slows to a crawl while he moves at full speed and hits 40%+ harder, in a rain of green code. |
+| **PAINE** // Cyber Widow | 110, blocks 30% of damage | Cyber Bow | Flame On (HEAT) | Precision archer. Draw and release one heavy arrow at a time: it knocks enemies back and usually pierces (15% + 2% per level + the bow's 60-80% bonus, max 90%). Arrows shoot flyers out of the sky, and enemies knocked off ledges take fall damage. Bosses can't be shoved but bleed. Flame On is a radial heat wave from her heat-proof suit: it shoves, burns and melts bullets, on a short cooldown. |
+| **TETSU** // Chrome Ronin | 150, blocks 50% of damage | Monoblade | Iaido Dash (FOCUS) | Melee. A three-hit combo with a 360° shield-breaking finisher; swings parry bullets. The dash slices through everything and leaves him guarded. **Mirror Steel** reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). From level 8 reflections stagger minions; from level 16 they splash to two more enemies. The Monoblade and the dash are weaker on bosses. |
+| **SUDO** // Hackerman | 80, blocks 10% of damage | EM Projector | Time Dilation (RAM) | Electronic warfare. A hacked EM wave projector, wired to his laptop and a backpack battery, fires tall waves that pass through everything and slow it. **System Glitch**: each hit has a 15%+ chance to make the whole area stutter. Time Dilation is bullet time: the world slows to a crawl while he moves at full speed and hits 40%+ harder, in a rain of green code. |
 
 Each IC has their own:
 - sprite, attack animations and hero landing;
@@ -122,7 +122,7 @@ These are on the start and pause menus and remembered between visits.
 | Loadout | The two starting skills you pick on the pre-drop screen. |
 | Auto-fire | Your primary attack fires on its own at the nearest enemy, leading moving targets. It prefers a boss unless a minion is right on top of you. Aiming yourself overrides it. |
 | Manual aim (touch) | Twin-stick or Tap, when auto-fire is off. |
-| Auto special | When you have enough of your resource: Paine's flame lights when enemies or bullets get close, Tetsu dashes into nearby enemies, and Sudo hacks crowds of 3+ (or a boss). |
+| Auto special | When you have enough of your resource: Paine's Flame On fires when enemies or bullets get close, Tetsu dashes into nearby enemies, and Sudo's Time Dilation kicks in against crowds, bullet storms or a boss when he's hurt. It waits while a boss makes its entrance. |
 | Music | Darksynth (generated) or Original. |
 | Music / SFX volume | Sliders from 0 to 100. M or the speaker button still mutes everything. |
 | Rumble | Controller rumble on hits and hero landings. Shown while a pad is in use. |
@@ -140,7 +140,7 @@ These are on the start and pause menus and remembered between visits.
 | Aim | W / S or ↑ / ↓ (combine with A / D for diagonals) |
 | Jump | Space (again in the air to double jump; S + Space drops through a platform) |
 | Primary attack | J (hold to keep attacking) or left click (aims at the cursor) |
-| Special | K or right click. Paine: hold for the flame. Tetsu: dash. Sudo: overload at the cursor (or the biggest crowd). |
+| Special | K or right click: Paine's Flame On, Tetsu's Iaido Dash, Sudo's Time Dilation. |
 | Level-up cards | 1 / 2 / 3, arrows + Enter, or click. **R** rerolls (3 per run). |
 | Pause | P or Esc. The pause menu has Respec and the IC hot-swap. |
 | Mute | M |
@@ -153,7 +153,7 @@ These are on the start and pause menus and remembered between visits.
 | Left stick (left half of the screen) | Run. Flick up to jump, and again in the air to double jump. Hold down on a platform to drop through. |
 | Twin-stick (right half) | A second stick: push it in a direction to aim and fire that way. |
 | Tap (right half) | Tap to fire toward that exact spot. Keep your finger down to rapid-fire, and drag to aim. |
-| SPECIAL (bottom-right corner) | FLAME, DASH or HACK. Paine's flame toggles on and off with a tap. The ring shows your heat, focus or RAM. |
+| SPECIAL (bottom-right corner) | FLAME ON, DASH or SLOW-MO. The ring shows your heat, focus or RAM. |
 
 ## Controllers
 Plug in a pad (USB or Bluetooth) and press any button. A toast confirms it (**CONTROLLER CONNECTED: Xbox**) and every prompt switches to that pad's buttons. It uses the standard Gamepad API, so it works the same in Chrome, Edge and the Electron app.
@@ -169,7 +169,7 @@ Plug in a pad (USB or Bluetooth) and press any button. A toast confirms it (**CO
 | Jump (again in the air to double jump) | A | ✕ | 1 |
 | Drop through a platform | Down + A | Down + ✕ | Down + 1 |
 | Primary attack | RT (or RB, X) | R2 (or R1, □) | R2 (or R1, 3) |
-| Special (hold for Paine's flame) | LT (or LB, B) | L2 (or L1, ○) | L2 (or L1, 2) |
+| Special | LT (or LB, B) | L2 (or L1, ○) | L2 (or L1, 2) |
 | Aim and fire that way | Right stick | Right stick | Right stick |
 | Pause and resume | MENU | OPTIONS | START |
 | DATABASE (from menus) | VIEW | SHARE | SELECT |
