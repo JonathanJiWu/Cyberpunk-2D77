@@ -27,7 +27,8 @@ function resetKits() {
 // --------------------------------------------------------------- Stats ------
 const playerLevel = () => (typeof progress === "undefined" ? 1 : progress.level);
 // Values that grow with your level (shown on the HUD and in the DATABASE)
-const pierceChance = () => Math.min(0.65, 0.15 + 0.02 * (playerLevel() - 1) + (stats.bow ? stats.bow.pierceBonus : 0));
+// (cap raised 0.65 -> 0.9 so the balance sheet's +60-80% bow bonus still grows with level)
+const pierceChance = () => Math.min(0.9, 0.15 + 0.02 * (playerLevel() - 1) + (stats.bow ? stats.bow.pierceBonus : 0));
 const reflectPct = () => Math.min(0.4, 0.15 + 0.01 * (playerLevel() - 1));
 const glitchChance = () => Math.min(0.45, 0.15 + 0.012 * (playerLevel() - 1));
 const glitchRadius = () => Math.min(280, 150 + 5 * (playerLevel() - 1));
@@ -36,12 +37,16 @@ const glitchTime = () => Math.min(1.1, 0.55 + 0.02 * (playerLevel() - 1));
 // Called from computeStats(): z = primary level, f = special level
 function computeKitStats(z, f, cdMul, costMul) {
   stats.bow = {
+    // (balance sheet, 2026-11-19: one heavy arrow at every level; slower
+    // draws early; a big pierce bonus)
     damage: 15 + (z >= 2 ? 5 : 0) + (z >= 5 ? 6 : 0) + (z >= 8 ? 8 : 0),
-    draw: 0.42 * (z >= 4 ? 0.8 : 1) * cdMul,
-    arrows: 1 + (z >= 3 ? 1 : 0) + (z >= 6 ? 1 : 0),
+    draw: byLevel([0.5, 0.5, 0.5, 0.5, 0.4, 0.4, 0.4, 0.35, 0.33], z) * cdMul,
+    arrows: 1,
     knock: 400 * (z >= 7 ? 1.4 : 1),
     bleed: 6 + (z >= 5 ? 4 : 0),
-    pierceBonus: z >= 8 ? 0.15 : 0,
+    bleedTime: z >= 6 ? 6 : 4, // level 6: bosses bleed 50% longer
+    speed: z >= 3 ? 2125 : 1700, // level 3: arrows fly 25% faster
+    pierceBonus: byLevel([0.6, 0.6, 0.6, 0.6, 0.7, 0.7, 0.7, 0.8, 0.8], z),
   };
   stats.heatwave = {
     radius: 300 * (1 + 0.12 * (f - 1)),
@@ -51,15 +56,16 @@ function computeKitStats(z, f, cdMul, costMul) {
     echo: f >= 6,
   };
   stats.em = {
-    damage: 7 + (z >= 2 ? 3 : 0) + (z >= 7 ? 4 : 0),
-    cooldown: 0.5 * (z >= 4 ? 0.8 : 1) * cdMul,
+    // (balance sheet, 2026-11-19: slower but much taller waves)
+    damage: 7 + (z >= 2 ? 3 : 0) + (z >= 7 ? 6 : 0),
+    cooldown: byLevel([0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.6, 0.6, 0.6], z) * cdMul,
     waves: 1 + (z >= 3 ? 1 : 0) + (z >= 6 ? 1 : 0),
     range: 640 * (z >= 5 ? 1.25 : 1),
-    height: 70 * (z >= 5 ? 1.3 : 1),
+    height: byLevel([100, 100, 100, 110, 120, 125, 130, 135, 140], z),
     slow: z >= 8 ? 0.45 : 0.6,
   };
   stats.dilation = {
-    duration: 3 + 0.4 * (f - 1),
+    duration: byLevel([1.5, 1.5, 1.5, 1.5, 2, 2, 2.5], f), // (balance sheet: short and sharp)
     cost: (f >= 3 ? 34 : 45) * costMul,
     scale: f >= 4 ? 0.18 : 0.25,
     dmgMul: 1.4 + 0.08 * (f - 1),
@@ -144,7 +150,7 @@ function releaseArrows(ax, ay, assist, cone) {
   for (let i = 0; i < n; i++) {
     const aa = a + (i - (n - 1) / 2) * 0.09;
     const pierce = Math.random() < pierceChance();
-    playerShots.push({ x: pc.x + Math.cos(aa) * 40, y: sy + Math.sin(aa) * 40, vx: Math.cos(aa) * 1700, vy: Math.sin(aa) * 1700, r: 12, angle: aa, life: 1.1, damage: B.damage, pierce: pierce ? 3 : 0, piercing: pierce, hit: new Set(), kind: "arrow" });
+    playerShots.push({ x: pc.x + Math.cos(aa) * 40, y: sy + Math.sin(aa) * 40, vx: Math.cos(aa) * B.speed, vy: Math.sin(aa) * B.speed, r: 12, angle: aa, life: 1.1, damage: B.damage, pierce: pierce ? 3 : 0, piercing: pierce, hit: new Set(), kind: "arrow" });
   }
   p.vx -= Math.cos(a) * 60; // a little recoil
   camera.shake = Math.max(camera.shake, 2);
@@ -157,7 +163,7 @@ function arrowHit(s, e) {
   if (e.boss) {
     // bosses don't budge, but they bleed
     damageEnemy(e, s.damage, { source: "arrow", fromX: s.x - s.vx });
-    applyDot(e, "bleed", stats.bow.bleed, 4);
+    applyDot(e, "bleed", stats.bow.bleed, stats.bow.bleedTime);
   } else {
     damageEnemy(e, s.damage, { source: "arrow", kbX: dir * stats.bow.knock, kbY: -140, fromX: s.x - s.vx, knock: true });
     if (!e.dead && !e.def.walker) downEnemy(e, dir);

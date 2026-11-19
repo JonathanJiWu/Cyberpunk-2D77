@@ -1683,7 +1683,7 @@ const fastForward = (page, seconds, bot) =>
       input.mouse.y = pc.y;
       input.mouse.zap = true;
       let facing = [];
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 40; i++) { // one full bow draw (0.5s at level 1)
         update(1 / 60);
         facing.push(player.facing);
       }
@@ -1756,7 +1756,7 @@ const fastForward = (page, seconds, bot) =>
     });
     assert(r.drawing && r.drawTime > 0.3, "no bow draw before the shot: " + JSON.stringify(r));
     assert(r.knockedBack, "the arrow did not hit and knock back: " + JSON.stringify(r));
-    assert(r.pierce[0] === 0.15 && r.pierce[1] > 0.3, "pierce chance does not grow: " + r.pierce);
+    assert(Math.abs(r.pierce[0] - 0.75) < 1e-9 && r.pierce[1] > r.pierce[0] && r.pierce[1] <= 0.9, "pierce chance does not grow (15% + 60% bow bonus at level 1, max 90%): " + r.pierce);
     assert(r.downed && r.fell.landed && r.fell.fallDamage > 20, "flyer was not shot down with fall damage: " + JSON.stringify(r));
     assert(r.boss.bleeding && r.boss.bled && r.boss.moved === 0, "boss bleed / knockback immunity: " + JSON.stringify(r.boss));
     assert(r.wave.fired && r.wave.shotGone, "Flame On did not fire or burn the bullet: " + JSON.stringify(r.wave));
@@ -2911,7 +2911,7 @@ const fastForward = (page, seconds, bot) =>
     for (let i = 1; i <= 5; i++) await touch(cdp, "touchMove", [{ ...L, x: L.x - i * 14 }, { ...R, x: R.x + i * 14 }]); // run left, aim right
     await page.waitForTimeout(250);
     await page.evaluate(() => (__angles.length = 0));
-    await page.waitForTimeout(1100); // two bow draws
+    await page.waitForTimeout(1400); // two bow draws (0.5s each at level 1)
     const r = await page.evaluate(() => ({ angles: __angles.slice(), x: player.x, vx: player.vx, facing: player.facing }));
     await touch(cdp, "touchEnd", [L, R]);
     assert(r.angles.length >= 2 && r.angles.every((a) => Math.abs(a) < 15), "the twin-stick did not aim right under auto-fire: " + r.angles.map(Math.round).join(","));

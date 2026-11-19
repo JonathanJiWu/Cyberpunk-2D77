@@ -90,7 +90,7 @@ function computeStats() {
   };
   stats.dash = {
     damage: 26 + (f >= 2 ? 8 : 0) + (f >= 5 ? 12 : 0),
-    distance: 380 * (f >= 2 ? 1.15 : 1) * (f >= 5 ? 1.15 : 1),
+    distance: byLevel([380, 380, 437, 437, 437, 480, 490], f), // (balance sheet: levels 5-6 trimmed)
     cost: (f >= 3 ? 26 : 35) * costMul,
     guard: f >= 4 ? 3.2 : 2,
     wave: f >= 6,
