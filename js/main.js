@@ -60,6 +60,7 @@ function updateCamera(dt) {
 // Per-player systems run once per player with the globals bound to them
 // (coop.js); with one player that is simply player 1, as it always was.
 function update(dt) {
+  if (coopJoinHold(dt)) return; // co-op: the world holds still while player 2 picks an IC
   game.time += dt;
   updateWorld(dt, game.time);
   refreshMouseWorld();
@@ -84,7 +85,7 @@ function update(dt) {
     updateMissiles(dt);
   });
   updateEnemyShots(edt);
-  updateBossFx(edt);
+  updateBossFx(edt, dt);
   updateGoatDeath(dt);
   updatePickups(dt);
   sweepDead();
@@ -125,6 +126,7 @@ function pauseGame() {
   if (game.state !== "playing") return;
   setState("paused");
   sfx.flame.stopLoop();
+  synth.stop("dilationLoop"); // (resumeGame starts it again if a dilation is still running)
   music.pause();
 }
 
@@ -132,6 +134,7 @@ function resumeGame() {
   if (game.state !== "paused") return;
   forEachPlayer(() => clearInput());
   setState("playing");
+  if (somePlayer(() => player.dilation > 0)) synth.loop("dilationLoop");
   music.play();
 }
 
@@ -139,6 +142,7 @@ function endRun(won) {
   game.won = won;
   game.overTime = 0;
   sfx.flame.stopLoop();
+  forEachPlayer(() => resetKitState()); // a Time Dilation still running ends with the run (kits.js)
   clearInput();
   levelUpEl.hidden = true;
   setState("over");
@@ -289,6 +293,7 @@ function handleMenuKey(e) {
     return true;
   }
   if (overlay.hidden) return false;
+  if (charSelectKey(e)) return true; // arrows between the IC tiles (select.js)
   if (e.code === "Enter" || e.code === "Space") {
     const el = document.activeElement;
     if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret") || el.classList.contains("char-card") || el.id === "codex-btn" || el.id === "respec-btn" || el.id === "overlay-btn-2" || el.id === "coop-join-btn" || el.id === "coop-leave-btn")) return true; // let it click

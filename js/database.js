@@ -39,7 +39,7 @@ const CHARACTERS = {
         "Draw 20% faster; +10% pierce chance.",
         "+6 damage; bosses bleed harder.",
         "Bosses bleed 50% longer.",
-        "40% more knockback; draw faster; +10% pierce chance.",
+        "40% more knockback; draw faster.",
         "+8 damage; draw faster.",
       ],
       guide: { role: "OFFENSE", what: "Heavy arrows: draw, then release", edge: "Big hits, knockback, downs flyers", mechanic: "Falls off ledges deal damage", note: "One arrow per draw: aim it" },
@@ -81,14 +81,14 @@ const CHARACTERS = {
     bust: "img/bust-tetsu.png", // 192x240 select-screen bust (tools/art_ics.py)
     art: { img: "tetsu3", fw: 80, fh: 120, idle: 4, air: 5, fx: { gleam: [-7, -94] } },
     title: "Chrome Ronin",
-    color: "#ff2457",
+    color: "#4da6ff",
     portrait: 1,
-    sprite: { img: "tetsu", fallback: "player", attackRows: [4, 5], tint: "rgba(255,40,80,0.35)" },
+    sprite: { img: "tetsu", fallback: "player", attackRows: [4, 5], tint: "rgba(60,140,255,0.35)" },
     hp: 150,
     armor: 0.5,
     speed: 430,
     jump: 1000,
-    resource: { name: "FOCUS", color: "#5aff7a", gain: 0.75 },
+    resource: { name: "FOCUS", color: "#ffd84d", gain: 0.75 },
     primary: {
       id: "zap",
       name: "Monoblade",
@@ -104,7 +104,7 @@ const CHARACTERS = {
         "Every second swing is a finisher.",
         "Huge reach and +5 damage.",
       ],
-      guide: { role: "OFFENSE", what: "A three-hit monoblade combo", edge: "Arc hits, parries bullets", mechanic: "3rd swing: 360° shield-breaker", note: "Melee range: pair with armor/HP" },
+      guide: { role: "OFFENSE", what: "A three-hit monoblade combo", edge: "Arc hits, parries bullets", mechanic: "3rd swing: 360° shield-breaker", note: "Melee range; weaker on bosses" },
     },
     special: {
       id: "flame",
@@ -123,7 +123,7 @@ const CHARACTERS = {
       ],
       guide: { role: "MOBILITY", what: "A slicing dash through foes", edge: "Invulnerable while dashing", mechanic: "Guard halves damage after", note: "Costs focus; weaker on bosses" },
     },
-    passive: "Mirror Steel: reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). Level 8: reflections stagger. Level 16: they splash to 2 nearby enemies. Heavy chrome: 150 HP, blocks 25% of damage.",
+    passive: "Mirror Steel: reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). Level 8: reflections stagger minions. Level 16: they splash to 2 nearby enemies. Heavy chrome: 150 HP, blocks 50% of damage.",
     quotes: {
       start: ["Steel remembers.", "Walk with me.", "I am the blade.", "One cut. Zero regressions."],
       levelUp: ["Sharper.", "Stronger steel.", "The path continues.", "Refactored."],
@@ -204,6 +204,44 @@ const CHARACTERS = {
 };
 
 const CHARACTER_ORDER = ["paine", "tetsu", "sudo"];
+
+// ------------------------------------------------------ IC dossiers ------
+// What the character select (js/select.js) shows about each IC: who they are,
+// how they play and what makes their kit different. difficulty: 1-3.
+// passive: a short line and an icon for the passive named in `passive` above.
+CHARACTERS.paine.profile = {
+  role: "MARKSMAN",
+  difficulty: 2,
+  personality: "Cool, precise and dry as a server room. Never wastes a word or an arrow.",
+  background: "A corporate spy until she read the files she was stealing. Now she freelances against her old employers, one exposed secret at a time.",
+  weapon: "One heavy arrow per draw: it pierces, knocks back and shoots flyers out of the sky.",
+  passive: { icon: { sheet: "fx2", cell: 5 }, text: "Arrows knock back, drop flyers (they take fall damage) and make bosses bleed." },
+  playstyle: "Keep your distance and make every arrow count. When they close in, Flame On clears the room.",
+  mechanics: ["Hold fire to draw: the arrow flies at full draw", "Knock enemies off ledges for fall damage", "Flame On shoves enemies and burns bullets"],
+  resource: "Builds as you deal and take damage. Flame On spends it.",
+};
+CHARACTERS.tetsu.profile = {
+  role: "MELEE TANK",
+  difficulty: 1,
+  personality: "Quiet, patient, unbreakable. Speaks rarely and never swings without a plan.",
+  background: "Corporate security until his employer called his last job an acceptable loss. Rebuilt in chrome, he now guards the people the towers forgot.",
+  weapon: "A three-hit combo that ends in a spinning finisher. Every swing knocks enemy shots away.",
+  passive: { icon: { sheet: "fx2", cell: 7 }, text: "A share of every hit you take is reflected at the attacker." },
+  playstyle: "Walk into the crowd. Parry the shots, cut a path with the dash, and let Mirror Steel punish every hit.",
+  mechanics: ["3rd swing spins 360° and breaks shields", "Untouchable mid-dash, half damage for 2 s after", "Heavy chrome: the most HP and armor"],
+  resource: "Builds as you deal and take damage. Iaido Dash spends it.",
+};
+CHARACTERS.sudo.profile = {
+  role: "CROWD CONTROL",
+  difficulty: 3,
+  personality: "Wired, chatty and fearless online. One bad joke away from a breakthrough.",
+  background: "Jacked into the city's security net on a dare and found out who it really watches. Now he leaks what he finds and fries whatever they send after him.",
+  weapon: "Tall EM waves that pass through everything in a line and slow it down.",
+  passive: { icon: { sheet: "fx2", cell: 3 }, text: "EM hits can glitch an area: enemies in it stutter like a lagging stream." },
+  playstyle: "Stay back, keep moving and hit whole lines at once. Save RAM for Time Dilation when the screen fills up.",
+  mechanics: ["Waves pierce and slow every enemy they cross", "Time Dilation: the world crawls, you hit 40% harder", "Glass cannon: the lowest HP and armor"],
+  resource: "Builds as you deal and take damage. Time Dilation spends it.",
+};
 
 // ------------------------------------------------------------- Enemies ------
 // w/h is the hitbox. sheet describes how to cut the sprite sheet
@@ -329,7 +367,7 @@ const ENEMY_TYPES = {
     maxAlive: 2,
     from: 110,
     weight: 1.5,
-    desc: "Heavy riot mech. Its shield blocks shots from the front: hit it from behind, from above, or with fire and explosions.",
+    desc: "Heavy riot mech. Its shield blocks shots from the front: hit it from behind, from above, or with fire and explosions. Hauls itself up onto rooftops with a grapple line.",
     lore: "Riot control unit. Its training data was a decade of protests. It learned the wrong lessons.",
   },
   sniper: {
@@ -427,7 +465,7 @@ const SKILL_GUIDE = {
   orbit: { role: "OFFENSE", what: "Orbiting shards cut foes", edge: "Hands-free crowd shredder", mechanic: "More shards, faster spin", note: "Short reach: stay close" },
   missile: { role: "OFFENSE", what: "Fires homing missiles", edge: "Never misses its target", mechanic: "Splash blast, 3 a volley", note: "Slow reload: add Overclock" },
   stomp: { role: "OFFENSE", what: "Landing fires a shockwave", edge: "Knocks whole crowds back", mechanic: "Triggers on jump landings", note: "Only if you keep jumping" },
-  chain: { role: "OFFENSE", what: "Lightning arcs foe to foe", edge: "Hits packs, needs no aim", mechanic: "Jumps to up to 6 enemies", note: "Weak vs a lone boss" },
+  chain: { role: "OFFENSE", what: "Lightning arcs foe to foe", edge: "Hits packs, needs no aim", mechanic: "Hits up to 7 enemies", note: "Weak vs a lone boss" },
   heart: { role: "DEFENSE", what: "+20 max HP, heals 20", edge: "Survive boss combos", mechanic: "Heals on every install", note: "Pairs with Nano Armor" },
   legs: { role: "MOBILITY", what: "Run faster, jump higher", edge: "Outrun swarms and lasers", mechanic: "+8% speed per level", note: "More air for Shock Stomp" },
   magnet: { role: "UTILITY", what: "Pulls XP in from afar", edge: "Faster level-ups", mechanic: "+40% pickup range a level", note: "No damage: invest early" },

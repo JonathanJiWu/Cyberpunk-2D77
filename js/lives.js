@@ -153,6 +153,7 @@ function resetLives() {
 // HP hit zero: roll back to the last stable build, or game over
 function playerDown() {
   if (intro.active) return;
+  resetKitState(); // e.g. a Time Dilation still running (kits.js)
   if (game.lives > 1) {
     game.lives--;
     game.livesLost++;
@@ -201,6 +202,7 @@ function switchCharacter(id) {
     settings.character = id;
     applySettings();
   }
+  resetKitState(); // the old kit's Time Dilation / bow draw (kits.js)
   p.char = id;
   p.flameOn = false;
   p.dash = null;

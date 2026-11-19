@@ -74,10 +74,14 @@ const moonState = { done: false, glow: 0 };
 const doves = [];
 const slashes = [];
 
+const breachRun = { datamined: 0 }; // per-run breach bookkeeping
+const KISS_HEAL_MAX = 30; // HP a run the billboard's kisses can heal
+
 function resetSecretsRun() {
   runSecrets.clear();
+  breachRun.datamined = 0;
   Object.assign(weather, { raining: false, timer: EASTER.rain.firstAt, amount: 0, idle: 0, tearsDone: false });
-  Object.assign(holo, { look: 0, done: false, pulse: 0, act: "idle", actT: 0, kissCd: 3 });
+  Object.assign(holo, { look: 0, done: false, pulse: 0, act: "idle", actT: 0, kissCd: 3, healed: 0 });
   kisses.length = 0;
   ripper.hold = 0;
   terminals.forEach((t) => Object.assign(t, { hold: 0, cooldown: 0 }));
@@ -411,7 +415,7 @@ const BREACH_WORDS = ["123456", "password", "qwerty", "iloveyou", "dragon", "mon
 const BREACH_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const BREACH_DAEMONS = [
   { file: "short_circuit.daemon", size: "2.0M", name: "SHORT CIRCUIT", desc: "EMP: fries every bot on screen" },
-  { file: "datamine.daemon", size: "7.7M", name: "DATAMINE", desc: "siphons their XP: +1 LEVEL" },
+  { file: "datamine.daemon", size: "7.7M", name: "DATAMINE", desc: "siphons their XP: +1 LEVEL (halves each time)" },
   { file: "overclock.daemon", size: "1.0M", name: "OVERCLOCK", desc: "overdrive: 10 s of rapid fire" },
 ];
 const BREACH_WARNINGS = [
@@ -999,8 +1003,11 @@ function breachReward(reward) {
   const pc = centerOf(player);
   if (reward === 0) applyPowerup("emp");
   else if (reward === 1) {
-    gainXp(xpForLevel(progress.level + progress.pending));
-    popup("DATAMINE: +1 LEVEL", pc.x, player.y - 40, "#5aff7a", 26, 1.6);
+    // each DATAMINE in a run siphons half as much as the last: the vaults
+    // notice (it used to be a free level every minute, game clock paused)
+    const share = 1 / 2 ** breachRun.datamined++;
+    gainXp(Math.round(xpForLevel(progress.level + progress.pending) * share));
+    popup(share === 1 ? "DATAMINE: +1 LEVEL" : `DATAMINE: +1/${1 / share} LEVEL`, pc.x, player.y - 40, "#5aff7a", 26, 1.6);
   } else {
     player.overdrive = 10;
     popup("OVERCLOCK", pc.x, player.y - 40, "#ffe14d", 28, 1.6);
@@ -1423,7 +1430,10 @@ function updateBillboard(dt, pc) {
     if (d < 46 && k.t > 0.4) {
       kisses.splice(i, 1);
       burst(k.x, k.y, 8, "#ff8fe0", 200);
-      player.hp = Math.min(stats.maxHp, player.hp + 1);
+      if ((holo.healed || 0) < KISS_HEAL_MAX) {
+        holo.healed = (holo.healed || 0) + 1;
+        player.hp = Math.min(stats.maxHp, player.hp + 1);
+      }
       if (Math.random() < 0.3) popup("<3", k.x, k.y - 20, "#ff8fe0", 22, 0.8);
     } else if (k.t > k.life) kisses.splice(i, 1);
   }

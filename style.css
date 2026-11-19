@@ -2437,55 +2437,814 @@ body.touch.portrait .breach {
   display: none;
 }
 
-.char-select {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6em;
-  margin: 0 0 1em;
+/* The IC select (js/select.js): three tiles (.char-card, role=radio) and the
+   stage, with the hovered / focused / picked IC's bust and dossier. It is the
+   centrepiece of the menu, so the menu panel is wide. --c / --c-rgb: the IC's
+   colour, --r: its resource colour. Wide panels put the tiles in a column
+   beside the stage; narrower ones (phones, small windows) in a row above it. */
+#overlay .panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 80em);
+  container-type: inline-size;
 }
 
-.char-card {
-  display: flex;
-  align-items: center;
-  gap: 0.6em;
-  padding: 0.5em;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+#overlay .panel > * {
+  flex-shrink: 0;
+}
+
+/* Narrow panels (phones, small windows): the buttons come up under the
+   title, so Start is on the first screen; the select follows */
+@container (max-width: 999px) {
+  #overlay .panel > :is(h1, #overlay-text, #overlay-stats, #lb-entry, .overlay-actions) {
+    order: -1;
+  }
+}
+
+.char-select {
+  --t: max(8px, 0.58em); /* dossier text: never below the font's crisp 8px */
+  display: grid;
+  grid-template-columns: minmax(0, 12.5em) minmax(0, 1fr);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 0.6em 0.9em;
+  margin: 0 0 1.2em;
   text-align: left;
-  font-size: 0.6em;
+}
+
+body.touch .char-select {
+  --t: max(9px, 0.6em);
+}
+
+.char-select > .char-card {
+  grid-column: 1;
+}
+
+.char-select > .cs-stage {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+}
+
+/* ---- Tiles */
+.char-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 7.2em minmax(0, 1fr);
+  align-items: center;
+  gap: 0.9em;
+  min-width: 0;
+  padding: 0.7em 0.9em 0.7em 1.1em;
+  border: 2px solid rgba(var(--c-rgb), 0.3);
+  border-radius: 3px;
+  background: linear-gradient(100deg, rgba(var(--c-rgb), 0.14), rgba(var(--c-rgb), 0.02) 70%), rgba(10, 3, 24, 0.75);
+  color: #fff;
+  font-size: max(10px, 0.64em);
+  line-height: 1.35;
+  text-align: left;
   touch-action: manipulation;
+  transition: transform 0.18s ease, border-color 0.18s, box-shadow 0.18s;
+}
+
+/* the accent bar down the left edge */
+.char-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0.4em;
+  background: rgba(var(--c-rgb), 0.35);
 }
 
 .char-card[aria-checked="true"] {
   border-color: var(--c);
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 14px var(--c);
+  background: linear-gradient(100deg, rgba(var(--c-rgb), 0.45), rgba(var(--c-rgb), 0.1) 75%), rgba(10, 3, 24, 0.75);
+  box-shadow: 0 0 18px rgba(var(--c-rgb), 0.55), inset 0 0 18px rgba(var(--c-rgb), 0.22);
 }
 
-.char-card canvas {
-  flex: none;
-  width: 4.6em;
-  height: 4.6em;
+.char-card[aria-checked="true"]::before {
+  background: var(--c);
+  box-shadow: 0 0 10px var(--c);
+}
+
+.char-card:hover,
+.char-card.cs-on {
+  border-color: var(--c);
+  transform: translateX(0.4em);
+}
+
+.char-card:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* the shown tile points at the stage */
+.char-card.cs-on::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: calc(-0.7em - 2px);
+  margin-top: -0.7em;
+  border: 0.7em solid transparent;
+  border-right: 0;
+  border-left-color: var(--c);
+  filter: drop-shadow(0 0 4px var(--c));
+}
+
+.cs-tile-art {
+  display: grid;
+  place-items: center;
+  width: 7.2em;
+  height: 7.2em;
+  border: 1px solid rgba(var(--c-rgb), 0.5);
+  background: radial-gradient(circle at 50% 60%, rgba(var(--c-rgb), 0.35), rgba(5, 1, 12, 0.9) 70%);
+  overflow: hidden;
+}
+
+.cs-tile-art canvas {
   image-rendering: pixelated;
 }
 
 .char-info {
   display: flex;
   flex-direction: column;
-  gap: 0.3em;
+  gap: 0.45em;
   min-width: 0;
 }
 
 .char-name {
   color: var(--c);
-  font-size: 1.15em;
+  font-size: 1.5em;
+  line-height: 1.1;
+  text-shadow: 0 0 10px rgba(var(--c-rgb), 0.7), 2px 2px 0 rgba(0, 0, 0, 0.6);
 }
 
-.char-title,
-.char-kit {
+.char-title {
+  color: #f1dcff;
+  font-size: max(8px, 0.8em);
+}
+
+.cs-tile-role {
+  color: rgba(var(--c-rgb), 1);
+  font-size: max(8px, 0.72em);
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
+/* SELECTED / ACTIVE (and SWITCH on hover in the pause menu) */
+.cs-tile-state {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0.35em 0.5em;
+  background: var(--c);
+  color: #0b0416;
+  font-size: max(8px, 0.62em);
+  letter-spacing: 0.06em;
+}
+
+.cs-tile-state:empty,
+.char-card[aria-checked="false"] .cs-tile-state {
+  display: none;
+}
+
+.char-select.cs-swapping .char-card[aria-checked="false"]:is(:hover, :focus-visible, .cs-on) .cs-tile-state {
+  display: block;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--c);
+  color: var(--c);
+}
+
+.cs-badges {
+  position: absolute;
+  right: 0.4em;
+  bottom: 0.4em;
+  display: flex;
+  gap: 0.3em;
+}
+
+.cs-badges:empty {
+  display: none;
+}
+
+/* the pick lands: a quick white flash */
+.char-card.cs-locked {
+  animation: cs-lock 0.45s ease-out;
+}
+
+@keyframes cs-lock {
+  from {
+    box-shadow: 0 0 0 3px #fff, 0 0 40px var(--c);
+    filter: brightness(1.8);
+  }
+}
+
+/* ---- The stage */
+.cs-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: 17.5em minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "art head kit" "art about kit";
+  column-gap: 1.4em;
+  min-width: 0;
+  padding: 1em 1.2em 1em 0;
+  border: 2px solid var(--c);
+  border-radius: 3px;
+  background: radial-gradient(ellipse 60% 90% at 0% 50%, rgba(var(--c-rgb), 0.2), transparent 70%), linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 30%), rgba(8, 2, 20, 0.94);
+  box-shadow: 0 0 26px rgba(var(--c-rgb), 0.4), inset 0 0 30px rgba(var(--c-rgb), 0.1);
+  overflow: hidden;
+}
+
+/* HUD corner ticks */
+.cs-stage::before,
+.cs-stage::after {
+  content: "";
+  position: absolute;
+  right: 0.5em;
+  width: 1.6em;
+  height: 1.6em;
+  border: 0 solid var(--c);
+  pointer-events: none;
+}
+
+.cs-stage::before {
+  top: 0.5em;
+  border-top-width: 3px;
+  border-right-width: 3px;
+}
+
+.cs-stage::after {
+  bottom: 0.5em;
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+}
+
+.cs-art {
+  grid-area: art;
+  position: relative;
+  min-height: 26em;
+  margin: -1em 0;
+  overflow: hidden;
+  border-right: 2px solid rgba(var(--c-rgb), 0.55);
+  background: radial-gradient(ellipse 60% 46% at 50% 56%, rgba(var(--c-rgb), 0.5), rgba(var(--c-rgb), 0.1) 62%, transparent 80%), linear-gradient(180deg, rgba(5, 1, 12, 0.92), rgba(var(--c-rgb), 0.14));
+}
+
+.cs-art > * {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* the name, huge and outlined, down the side */
+.cs-art-word {
+  left: 0.1em;
+  top: 0.15em;
+  z-index: 0;
+  color: rgba(var(--c-rgb), 0.08);
+  -webkit-text-stroke: 1px rgba(var(--c-rgb), 0.5);
+  font-size: 4.6em;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+}
+
+.cs-art-glow {
+  left: 50%;
+  top: 48%;
+  z-index: 1;
+  width: 16em;
+  height: 16em;
+  margin: -8em 0 0 -8em;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--c-rgb), 0.5), rgba(var(--c-rgb), 0) 68%);
+  animation: cs-breathe 3.4s ease-in-out infinite;
+}
+
+@keyframes cs-breathe {
+  50% {
+    opacity: 0.6;
+    transform: scale(0.92);
+  }
+}
+
+/* a synthwave grid floor */
+.cs-art-floor {
+  left: -40%;
+  right: -40%;
+  bottom: 0;
+  z-index: 1;
+  height: 30%;
+  background: repeating-linear-gradient(90deg, rgba(var(--c-rgb), 0.55) 0 2px, transparent 2px 2.2em), repeating-linear-gradient(0deg, rgba(var(--c-rgb), 0.55) 0 2px, transparent 2px 1.3em);
+  transform: perspective(9em) rotateX(58deg);
+  transform-origin: 50% 100%;
+  -webkit-mask-image: linear-gradient(to top, #000 15%, transparent 95%);
+  mask-image: linear-gradient(to top, #000 15%, transparent 95%);
+  opacity: 0.55;
+}
+
+.cs-bust {
+  position: absolute;
+  z-index: 2;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 0.5em rgba(var(--c-rgb), 0.5));
+}
+
+/* scanlines, and a bright band sweeping down the art */
+.cs-art-scan {
+  inset: 0;
+  z-index: 3;
+  background: linear-gradient(180deg, transparent 46%, rgba(var(--c-rgb), 0.16) 49%, rgba(255, 255, 255, 0.2) 50%, transparent 51.5%) 0 0 / 100% 300% no-repeat, repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.12) 0 1px, transparent 1px 4px);
+  animation: cs-scan 4.2s linear infinite;
+}
+
+@keyframes cs-scan {
+  from {
+    background-position: 0 100%, 0 0;
+  }
+  to {
+    background-position: 0 0, 0 0;
+  }
+}
+
+.cs-head {
+  grid-area: head;
+  min-width: 0;
+}
+
+.cs-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  font-size: max(8px, 0.5em);
+}
+
+.cs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.5em 0.7em;
+  border: 1px solid var(--c);
+  background: rgba(var(--c-rgb), 0.16);
+  color: var(--c);
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+.cs-chip.cs-diff {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f1dcff;
+}
+
+.cs-diff i {
+  width: 0.9em;
+  height: 0.9em;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.cs-diff i:first-of-type {
+  margin-left: 0.4em;
+}
+
+.cs-diff i.on {
+  border-color: var(--c);
+  background: var(--c);
+  box-shadow: 0 0 6px var(--c);
+}
+
+.cs-name {
+  margin-top: 0.35em;
+  color: var(--c);
+  font-size: 2.3em;
+  line-height: 1.05;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 14px rgba(var(--c-rgb), 0.75), 4px 4px 0 rgba(0, 0, 0, 0.55);
+}
+
+.cs-title {
+  margin-top: 0.5em;
+  color: #fff;
+  font-size: max(8px, 0.62em);
+  letter-spacing: 0.22em;
+}
+
+.cs-personality {
+  margin-top: 0.8em;
+  padding-left: 0.8em;
+  border-left: 3px solid var(--c);
+  color: #f6e9ff;
+  font-size: var(--t);
+  line-height: 1.6;
+}
+
+/* SELECTED / DEPLOYED, or how to pick this one */
+.cs-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  margin-top: 0.8em;
   color: #c9b6ff;
-  font-size: 0.8em;
+  font-size: max(8px, 0.5em);
+  letter-spacing: 0.06em;
+}
+
+.cs-status-on {
+  color: var(--c);
+}
+
+.cs-mark {
+  width: 0.8em;
+  height: 0.8em;
+  background: var(--c);
+  box-shadow: 0 0 6px var(--c);
+}
+
+.cs-key {
+  padding: 0.35em 0.5em;
+  border: 1px solid #fff;
+  border-radius: 3px;
+  color: #fff;
+  font-weight: 400;
+}
+
+.cs-status .pad-key {
+  margin-right: 0;
+}
+
+.cs-about,
+.cs-kit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+  min-width: 0;
+  color: #e7dbff;
+  font-size: var(--t);
+  line-height: 1.6;
+}
+
+.cs-about {
+  grid-area: about;
+  margin-top: 1em;
+}
+
+.cs-kit {
+  grid-area: kit;
+  padding-left: 1.4em;
+  border-left: 1px solid rgba(var(--c-rgb), 0.35);
+}
+
+.cs-bg {
+  color: #c9b6ff;
+}
+
+.cs-abilities {
+  display: grid;
+  gap: 0.8em;
+  margin: 0;
+  padding: 0 0 0.9em;
+  border-bottom: 1px solid rgba(var(--c-rgb), 0.4);
+  list-style: none;
+}
+
+.cs-ability {
+  display: grid;
+  grid-template-columns: 3.2em minmax(0, 1fr);
+  align-items: center;
+  gap: 1em;
+}
+
+.cs-icon {
+  width: 3.2em;
+  height: 3.2em;
+  border: 1px solid rgba(var(--c-rgb), 0.7);
+  background-color: rgba(5, 1, 12, 0.85);
+  background-repeat: no-repeat;
+  box-shadow: inset 0 0 10px rgba(var(--c-rgb), 0.35);
+  image-rendering: pixelated;
+}
+
+.cs-ab-text {
+  min-width: 0;
+}
+
+.cs-ab-top {
+  display: block;
+  margin-bottom: 0.2em;
+}
+
+.cs-ab-kind {
+  margin-right: 0.8em;
+  color: var(--c);
+  font-size: 0.85em;
+  letter-spacing: 0.1em;
+}
+
+.cs-ab-name {
+  color: #fff;
+  font-weight: 400;
+}
+
+.cs-k {
+  margin-bottom: 0.2em;
+  color: var(--c);
+  font-size: 0.85em;
+  letter-spacing: 0.1em;
+}
+
+.cs-mech {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em 1.4em;
+  margin: 0;
+  padding: 0;
+  color: #f1dcff;
+  list-style: none;
+}
+
+.cs-mech:empty {
+  display: none;
+}
+
+.cs-mech li::before {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.6em;
+  background: var(--c);
+  vertical-align: 0.1em;
+}
+
+.cs-res {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4em 0.8em;
+}
+
+.cs-res-name {
+  padding: 0.3em 0.6em;
+  border: 1px solid var(--r);
+  color: var(--r);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.08), inset 0 0 8px rgba(255, 255, 255, 0.06);
+  letter-spacing: 0.08em;
+}
+
+.cs-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6em 1.6em;
+}
+
+.cs-stat {
+  display: grid;
+  grid-template-columns: 5.4em minmax(0, 1fr) 4em;
+  align-items: center;
+  gap: 0.7em;
+}
+
+.cs-stat-label {
+  color: #a990d6;
+}
+
+.cs-stat-value {
+  color: #fff;
+  text-align: right;
+}
+
+/* ten segments, like a HUD gauge */
+.cs-stat-bar {
+  height: 1em;
+  background: rgba(255, 255, 255, 0.12);
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 calc(10% - 3px), transparent calc(10% - 3px) 10%);
+  mask-image: repeating-linear-gradient(90deg, #000 0 calc(10% - 3px), transparent calc(10% - 3px) 10%);
+}
+
+.cs-stat-fill {
+  display: block;
+  height: 100%;
+  background: var(--s);
+  box-shadow: 0 0 8px var(--s);
+  transform-origin: 0 50%;
+}
+
+.cs-quote {
+  color: var(--c);
+}
+
+/* the pause menu: what a hot-swap keeps (shown on the ICs you'd switch to) */
+.cs-swapnote {
+  display: none;
+  padding: 0.6em 0.8em;
+  border: 1px dashed var(--c);
+  background: rgba(var(--c-rgb), 0.1);
+  color: #fff;
+}
+
+.cs-stage.cs-swap:not(.cs-current) .cs-swapnote {
+  display: block;
+}
+
+/* a new IC on the stage: the bust slides in, the text fades up, the bars fill */
+.cs-enter .cs-bust {
+  animation: cs-bust-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes cs-bust-in {
+  from {
+    opacity: 0;
+    transform: translateX(-1.5em);
+    filter: brightness(2.5) drop-shadow(0 0 1em var(--c));
+  }
+}
+
+.cs-enter .cs-art-word {
+  animation: cs-word-in 0.6s ease-out both;
+}
+
+@keyframes cs-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(-1.2em);
+  }
+}
+
+.cs-enter .cs-head,
+.cs-enter .cs-about,
+.cs-enter .cs-kit {
+  animation: cs-text-in 0.35s ease-out both;
+}
+
+.cs-enter .cs-about {
+  animation-delay: 0.05s;
+}
+
+.cs-enter .cs-kit {
+  animation-delay: 0.1s;
+}
+
+@keyframes cs-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5em);
+  }
+}
+
+.cs-enter .cs-stat-fill {
+  animation: cs-fill 0.6s 0.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes cs-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Narrower panels (phones, small windows): the tiles in a row above the
+   stage, the art beside the name, the dossier full width below */
+@container (max-width: 999px) {
+  .char-select {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: auto auto;
+    gap: 0.6em;
+  }
+  .char-select > .char-card {
+    grid-column: auto;
+    grid-row: 1;
+  }
+  .char-select > .cs-stage {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .char-card:hover,
+  .char-card.cs-on {
+    transform: translateY(-0.25em);
+  }
+  .char-card.cs-on::after {
+    top: auto;
+    right: auto;
+    bottom: calc(-0.7em - 2px);
+    left: 50%;
+    margin: 0 0 0 -0.7em;
+    border: 0.7em solid transparent;
+    border-bottom: 0;
+    border-top-color: var(--c);
+  }
+  .cs-stage {
+    grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "art head" "art kit" "about about";
+    padding: 0 0.9em 0.9em 0;
+  }
+  .cs-stage::before,
+  .cs-stage::after {
+    display: none;
+  }
+  .cs-art {
+    align-self: start;
+    min-height: 0;
+    aspect-ratio: 4 / 5;
+    margin: 0;
+    border-bottom: 2px solid rgba(var(--c-rgb), 0.55);
+  }
+  .cs-art-word {
+    font-size: 3.4em;
+  }
+  .cs-head {
+    padding-top: 0.9em;
+  }
+  .cs-kit {
+    margin-top: 0.9em;
+    padding: 0.9em 0 0;
+    border-left: 0;
+    border-top: 1px solid rgba(var(--c-rgb), 0.35);
+  }
+  .cs-about {
+    padding-left: 0.9em;
+  }
+  .cs-name {
+    font-size: 2em;
+  }
+}
+
+/* Phones held upright: tiles are portrait-over-name columns */
+@container (max-width: 560px) {
+  .char-card {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 0.5em;
+    padding: 0.6em 0.4em 0.7em;
+    text-align: center;
+  }
+  .char-card::before {
+    top: auto;
+    right: 0;
+    width: auto;
+    height: 0.3em;
+  }
+  .cs-tile-art {
+    width: 5.6em;
+    height: 5.6em;
+  }
+  .char-info {
+    align-items: center;
+  }
+  .char-name {
+    font-size: 1.3em;
+  }
+  .cs-tile-role {
+    display: none;
+  }
+  .cs-tile-state {
+    font-size: 8px;
+  }
+  .cs-badges {
+    top: 0.3em;
+    right: auto;
+    bottom: auto;
+    left: 0.3em;
+  }
+  .cs-stage {
+    grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+    grid-template-areas: "art head" "about about" "kit kit";
+    column-gap: 0.9em;
+  }
+  .cs-kit {
+    padding-left: 0.9em;
+  }
+  .cs-name {
+    font-size: 1.6em;
+  }
+  .cs-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cs-art-word {
+    font-size: 2.6em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-art-scan,
+  .cs-art-glow,
+  .cs-enter .cs-bust,
+  .cs-enter .cs-art-word,
+  .cs-enter .cs-head,
+  .cs-enter .cs-about,
+  .cs-enter .cs-kit,
+  .cs-enter .cs-stat-fill,
+  .char-card.cs-locked {
+    animation: none !important;
+  }
+  .char-card {
+    transition: none;
+  }
+}
+
+/* Phones held sideways: the menu gets the whole screen too (as upright) */
+body.touch:not(.portrait) #overlay {
+  position: fixed;
+  padding: max(8px, var(--safe-top)) max(10px, var(--safe-right)) max(8px, var(--safe-bottom)) max(10px, var(--safe-left));
 }
 
 .stat {
@@ -2512,10 +3271,6 @@ body.touch.portrait .breach {
 .stat-fill {
   display: block;
   height: 100%;
-}
-
-body.portrait .char-select {
-  grid-template-columns: 1fr;
 }
 
 /* ------------------------------------------------- Database (codex) */
@@ -3036,19 +3791,24 @@ body:is(.pad-xbox, .pad-ps, .pad-generic) .overlay {
   vertical-align: -0.12em;
 }
 
-/* Local co-op (js/coop.js): player 2's pick on the IC cards, the 2P mark on the leaderboard */
+/* Local co-op (js/coop.js): who picked which IC (P1 cyan, P2 amber), the 2P mark on the leaderboard */
+.char-p1,
 .char-p2 {
   flex: none;
-  align-self: flex-start;
-  margin-left: auto;
-  padding: 0.15em 0.4em;
-  border-radius: 3px;
-  background: #ffb020;
+  padding: 0.3em 0.45em;
+  border-radius: 2px;
+  background: #19f5ff;
   color: #14051f;
+  font-size: max(8px, 0.62em);
+  line-height: 1;
+}
+
+.char-p2 {
+  background: #ffb020;
 }
 
 .char-card:has(.char-p2) {
-  border-color: #ffb020;
+  box-shadow: 0 0 0 2px #ffb020, 0 0 16px rgba(255, 176, 32, 0.55);
 }
 
 .lb-tag.lb-2p {

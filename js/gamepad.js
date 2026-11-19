@@ -537,6 +537,10 @@ function padMove(screen, dir, repeat) {
     padNudge(el, dx);
     return;
   }
+  if (dx && el.classList.contains("char-card")) {
+    padKey(code, repeat); // left / right cycle the IC tiles, however they're laid out (select.js)
+    return;
+  }
   const next = padNearest(el, items, dx, dy);
   if (next) padFocus(next);
   else if (dy) padScroll(screen, dy * 160); // nothing further: scroll the panel instead
