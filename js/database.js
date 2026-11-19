@@ -301,7 +301,7 @@ const ENEMY_TYPES = {
     xp: 2,
     w: 52,
     h: 92,
-    sheet: { img: "ninja", fw: 40, fh: 48, frames: 3, dashFrame: 3, scale: 2.1, flip: true, fps: 12 },
+    sheet: { img: "ninja2", fallback: "ninja", fw: 40, fh: 48, frames: 3, dashFrame: 3, scale: 2.1, flip: true, fps: 12 },
     dash: { range: 420, windup: 0.4, speed: 1150, time: 0.32, cooldown: [2.2, 3.2] },
     maxAlive: 4,
     from: 45,
@@ -401,8 +401,8 @@ const BOSSES = {
   nullptr: {
     name: "NULL",
     title: "Second boss",
-    sheet: { img: "nullBoss", fw: 64, fh: 96 },
-    fallback: { img: "nullFallback", fw: 64, fh: 96 }, // painted by null.js until the art lands
+    sheet: { img: "nullBoss2", fw: 64, fh: 96 },
+    fallback: { img: "nullBoss", fw: 64, fh: 96 }, // the v3.1 sheet (null.js also paints one)
     hp: 3200,
     intro: "THE ASSASSIN WHO ISN'T THERE",
     desc: "A glitch-ninja assassin. It splits into holographic copies (only one is real), blinks out and reappears behind or above you to slash, throws fans of shuriken, snipes from the rooftops with a rail shot and vanishes in smoke. Below 60% it makes more copies and blinks faster; below 25% it hits a STACK OVERFLOW and chains its blinks.",
