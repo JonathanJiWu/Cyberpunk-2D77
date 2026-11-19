@@ -23,6 +23,9 @@ Sheets:
                               0-1 idle, 2-5 run, 6 air, 7 blink out, 8 blink in,
                               9 slash, 10 throw, 11 rail aim, 12 hurt,
                               13 defeated; facing right, feet on row 94
+    billboard2.png   576x128  the hologram ad, 6 frames of 96x128 (the layout of
+                              billboard.png): 0/1 idle, 2 wave, 3 fingertips to
+                              the lips, 4 blowing a kiss, 5 wink
 """
 
 import argparse
@@ -1069,6 +1072,245 @@ def make_null2():
     return sheet
 
 
+# ============================================================ BILLBOARD ===
+# The giant hologram ad ("COMPANION 2D77"): 6 frames of 96x128, a bust cut
+# at the bottom edge, facing 3/4 right. 0/1 idle (a slow sway), 2 wave,
+# 3 fingertips to the lips, 4 blowing the kiss, 5 a wink. js/secrets.js
+# draws her additively, mirrors her toward you, and launches the hearts from
+# her lips at about (52, 31): keep the mouth there. A confident neon ad model:
+# sleek cyan bob, glam make-up, a structured high-collared jacket. Glowing,
+# stylish, PG.
+BSKIN = Mat(ramp("#4a2050", "#8a3c6e", "#c86a8e", "#eb98ac", "#fcc4cc", "#fff0ee"), rim=0.6, line=0.5)
+BHAIR = Mat(ramp("#1a1458", "#1c3a8a", "#0f74b4", "#14b4e0", "#3ceeff", "#b8fdff"), rim=0.5, line=0.5)
+BJACKET = Mat(ramp("#1c0838", "#341062", "#4e1a8e", "#6a28b8", "#8c44dc", "#b77cf4"), rim=0.8, line=0.5)
+BLIP = Mat(ramp("#5a0a3c", "#a8146a", "#e62b96", "#ff6ab8", "#ffb8de"), rim=0.2, line=0.5)
+BEYE = Mat(ramp("#3a2a6a", "#8f8ac8", "#d8dcf4", "#ffffff"), rim=0, line=0.5)
+BIRIS = Mat(ramp("#12205a", "#1e58b0", "#24a8e6", "#7ef2ff"), rim=0, line=0.5)
+BLINER = Mat(ramp("#120626", "#2a1050", "#4a2080"), rim=0, line=0.6)
+BNEON = Mat(ramp("#0e9fc6", "#19f5ff", "#b5fcff", "#ffffff"), rim=0, line=0.5, glow=True)
+BPINK = Mat(ramp("#a8189c", "#ff2fd6", "#ffa6f0", "#ffffff"), rim=0, line=0.5, glow=True)
+HOTPINK = hx("#ff4fd8")
+
+# per frame: the gesturing arm (elbow, hand, hand shape) and the face
+BB_FRAMES = [
+    dict(sway=0, eyes="open", mouth="smile", arm=None),
+    dict(sway=1, eyes="soft", mouth="smile", arm=None),
+    dict(sway=0, eyes="open", mouth="grin", arm=((72, 72), (80, 40), "wave")),
+    dict(sway=0, eyes="soft", mouth="pucker", arm=((66, 70), (56, 35), "lips")),
+    dict(sway=0, eyes="open", mouth="pucker", arm=((70, 66), (73, 38), "blow")),
+    dict(sway=0, eyes="wink", mouth="grin", arm=None),
+]
+
+
+def bb_hand(P, hand, kind, z):
+    """Hands kept simple and readable at this size: a palm and fingers."""
+    hx_, hy_ = hand
+    tone = lambda x, y, s, t: 3.6 + 1.0 * s
+    if kind == "wave":  # open palm toward us, fingers up and a little apart
+        P.fill(ellipse(hx_, hy_ + 1, 3.6, 3.4, 96, 128), BSKIN, lambda x, y: 4.0 - 0.3 * (x - hx_), z=z)
+        for i, dx in enumerate((-2.6, -0.9, 0.9, 2.6)):
+            capsule(P, (hx_ + dx, hy_ - 1), (hx_ + dx * 1.5, hy_ - 6.5 + abs(dx) * 0.6), 0.95, 0.8, BSKIN, tone, z)
+        capsule(P, (hx_ - 3, hy_ + 2), (hx_ - 6.4, hy_ - 0.5), 1.0, 0.8, BSKIN, tone, z)  # thumb
+        for dx in (-2.6, -0.9, 0.9, 2.6):  # neon nails
+            P.fill({(int(hx_ + dx * 1.5), int(hy_ - 6.8 + abs(dx) * 0.6))}, BPINK, 1.0, z=z + 0.1)
+    elif kind == "lips":  # fingertips to the lips: two fingers up, the rest curled
+        P.fill(ellipse(hx_ + 1.5, hy_ + 3.5, 3.2, 3.0, 96, 128), BSKIN, lambda x, y: 3.6 - 0.25 * (x - hx_), z=z)
+        capsule(P, (hx_ + 0.5, hy_ + 2), (hx_ - 0.6, hy_ - 2.5), 0.95, 0.8, BSKIN, tone, z)
+        capsule(P, (hx_ + 2.4, hy_ + 2), (hx_ + 1.6, hy_ - 2.0), 0.95, 0.8, BSKIN, tone, z)
+        P.fill({(int(hx_ - 0.6), int(hy_ - 2.8)), (int(hx_ + 1.6), int(hy_ - 2.3))}, BPINK, 1.0, z=z + 0.1)
+    elif kind == "blow":  # palm up and open, sending it your way
+        P.fill(ellipse(hx_, hy_, 3.8, 2.6, 96, 128), BSKIN, lambda x, y: 3.8 - 0.4 * (y - hy_), z=z)
+        for i, dy in enumerate((-2.2, -0.8, 0.6, 1.8)):
+            capsule(P, (hx_ + 2, hy_ + dy * 0.6), (hx_ + 7.2 - abs(dy) * 0.6, hy_ - 1.6 + dy), 0.9, 0.75, BSKIN, tone, z)
+        capsule(P, (hx_ - 1, hy_ - 1.5), (hx_ + 2, hy_ - 5), 1.0, 0.8, BSKIN, tone, z)  # thumb
+        P.fill({(int(hx_ + 7.2 - 1.3), int(hy_ - 3.8))}, BPINK, 1.0, z=z + 0.1)
+
+
+def bb_eye(P, A, B, up_h, low_h, iris, closed=False, wink=False, liner_dir=-1):
+    """A glam almond eye: liner with a wing, lashes, a bright holo iris."""
+    ax, ay = A
+    bx, by = B
+    L = math.hypot(bx - ax, by - ay)
+    ux, uy = (bx - ax) / L, (by - ay) / L
+
+    def lids(u):
+        base = ay + (by - ay) * u
+        s = math.sin(math.pi * min(1.0, max(0.0, u)))
+        return base - up_h * s ** 0.7, base + low_h * s ** 1.2
+    for y in range(int(min(ay, by) - up_h - 3), int(max(ay, by) + low_h + 3)):
+        for x in range(int(min(ax, bx) - 3), int(max(ax, bx) + 3)):
+            fx, fy = x + 0.5, y + 0.5
+            u = ((fx - ax) * ux + (fy - ay) * uy) / L
+            if u < -0.3 or u > 1.12:
+                continue
+            top, bot = lids(u)
+            if closed or wink:
+                # a closed, smiling eye: one curved line of liner
+                arc = (ay + (by - ay) * u) - (1.0 if wink else 0.0) * math.sin(math.pi * min(1, max(0, u))) + 0.6
+                if 0 <= u <= 1 and abs(fy - arc) < 0.75:
+                    P.put(x, y, BLINER, 0.0, 11)
+                continue
+            if 0 <= u <= 1 and top < fy < bot:
+                d = math.hypot(fx - iris[0], fy - iris[1])
+                if d < 1.9:
+                    t = 0.0 if d < 0.8 else 2.0 if fy > iris[1] else 1.0
+                    P.put(x, y, BIRIS, t + (0 if fy - top > 0.8 else -0.5), 11)
+                else:
+                    P.put(x, y, BEYE, 2.0 if fy - top > 0.9 else 1.0, 11)
+            elif top - 1.05 <= fy <= top and -0.02 <= u <= 1.0:
+                P.put(x, y, BLINER, 0.0, 11)  # liner
+            elif bot <= fy <= bot + 0.5 and 0.2 <= u <= 0.95:
+                P.shift({(x, y)}, -1.0, only={BSKIN})
+    if not (closed or wink):
+        P.put(int(iris[0] - 1), int(iris[1] - 1), BEYE, 3.0, 11.5)  # glint
+    # the wing past the outer corner, and lashes
+    oc = A if liner_dir < 0 else B
+    for k in range(1, 4):
+        P.put(int(oc[0] + liner_dir * k), int(oc[1] - 0.3 - k * 0.7), BLINER, 0.0, 11)
+    if not (closed or wink):
+        for u in (0.18, 0.4, 0.62):
+            lx = ax + (bx - ax) * u
+            top = lids(u)[0]
+            P.put(int(lx + liner_dir * 0.6), int(top - 1.6), BLINER, 1.0, 11)
+
+
+def billboard_frame(f):
+    F = BB_FRAMES[f]
+    W, H = 96, 128
+    P = Paint(W, H)
+    sw = F["sway"]
+    # --- hair behind the head (z 1)
+    back = poly(W, H, [(44, 5), (54, 4.5), (62, 8), (66, 15), (67, 26), (66.5, 36), (63, 42), (57, 41), (54, 36),
+                       (42, 40), (36, 43.5 + sw), (31, 42 + sw), (28.5, 34), (28, 22), (31, 12), (37, 6.5)], smooth=True)
+    hl = dome(42, 12, 24, 28)
+    P.fill(back, BHAIR, lambda x, y: 0.6 + 3.2 * hl(x, y), z=1)
+    for c in ([(40, 7), (32, 16), (30, 28), (31.5, 39)], [(46, 7), (37, 15), (34.5, 28), (35.4, 41)],
+              [(58, 7), (64, 16), (65, 28), (63.5, 38)]):
+        stroke(P, c, 2.4, BHAIR, lambda x, y, s, t: 0.8 + 3.0 * hl(x, y) + 0.9 * s - 0.6 * t, z=1, clip=back)
+    # --- a fitted jacket: structured shoulders, arms at her sides, a belt (z 2)
+    torso = poly(W, H, [(31, 51), (40, 47.5), (56, 47.5), (65, 51), (68.6, 58), (67.6, 72), (64, 92), (62.6, 104),
+                        (65.6, 129), (30.4, 129), (33.4, 104), (32, 92), (28.4, 72), (27.4, 58)], smooth=True)
+    jl = dome(42, 74, 30, 60)
+    P.fill(torso, BJACKET, lambda x, y: 0.8 + 3.4 * jl(x, y), z=2)
+    belt = {(x, y) for (x, y) in torso if 97 <= y <= 100}
+    P.fill(belt, BJACKET, 0.6, z=2.2)
+    P.fill({(x, y) for x in range(46, 51) for y in range(97, 101)}, BNEON, 1.0, z=2.3)
+    P.fill({(47, 98), (48, 98), (47, 99), (48, 99)}, BJACKET, 0.6, z=2.4)
+    P.fill(set(curve_line([(50, 50), (53, 66), (51, 86), (50, 97)])), BNEON, 1.0, z=2.5)  # asymmetric closure
+    P.fill(set(curve_line([(49, 101), (48, 116), (47, 128)])), BNEON, 1.0, z=2.5)
+    P.fill(set(curve_line([(30, 54), (40, 50), (48, 49.4)])), BNEON, 0.0, z=2.5)  # shoulder piping
+    P.fill(set(curve_line([(56, 49.4), (64, 51), (68, 55)])), BNEON, 0.0, z=2.5)
+    arm_tone = lambda base: (lambda x, y, s, t: base + 1.3 * s)
+    capsule(P, (30, 56), (25.4, 87), 4.4, 3.7, BJACKET, arm_tone(2.4), 2.6)  # near arm, at her side
+    capsule(P, (25.4, 87), (28, 117), 3.7, 3.0, BJACKET, arm_tone(2.2), 2.6)
+    P.fill(ellipse(28.4, 120.6, 2.6, 3.0, W, H), BSKIN, 3.4, z=2.7)
+    P.fill({(x, y) for (x, y) in ellipse(27.6, 116.2, 3.2, 1.2, W, H)}, BNEON, 0.0, z=2.8)  # cuff
+    if not F["arm"]:  # the far arm rests too, unless it is busy
+        capsule(P, (66, 56), (71, 87), 4.2, 3.6, BJACKET, arm_tone(1.6), 1.8)
+        capsule(P, (71, 87), (68.4, 117), 3.6, 3.0, BJACKET, arm_tone(1.4), 1.8)
+        P.fill(ellipse(68, 120.6, 2.5, 3.0, W, H), BSKIN, 2.8, z=1.9)
+    # neck (z 3)
+    neck = poly(W, H, [(43, 33), (53, 34), (54, 46), (49, 49), (43, 46)], smooth=True)
+    P.fill(neck, BSKIN, lambda x, y: 2.8 if x > 50 else 3.4 - (0.9 if y < 39 else 0), z=3)
+    # high collar around the neck (z 4)
+    collar = poly(W, H, [(38, 46), (40, 39), (45, 42), (52, 42.5), (57, 38.5), (59, 46), (52, 50), (44, 50)], smooth=True)
+    P.fill(collar, BJACKET, lambda x, y: 3.6 if x < 46 else 2.6 if x < 54 else 1.8, z=4)
+    P.fill(set(curve_line([(39.6, 40.5), (45, 43), (52, 43.4), (57, 39.6)])), BNEON, 1.0, z=4.5)
+    # --- face (z 5): soft beauty lighting from the top left
+    face = poly(W, H, [(40, 14), (46, 10.5), (54, 10.5), (59.5, 13.5), (61.2, 18.5), (60.4, 22), (61.8, 26),
+                       (60.4, 30), (59.6, 33.5), (56, 37), (52, 38.4), (47.4, 37), (43, 33), (40, 28), (39, 21)],
+                smooth=True)
+
+    def face_tone(x, y):
+        fx, fy = x + 0.5, y + 0.5
+        ridge = 54.2 + (fy - 20) * 0.32
+        if fx > ridge + 4.6:
+            return 3.0
+        if fx > ridge + 0.6 and fy > 19:
+            return 3.4
+        if fx < 42.5:
+            return 3.6
+        return 4.2 if fy < 30 else 4.0
+    P.fill(face, BSKIN, face_tone, z=5)
+    P.shift(ellipse(45.5, 28.8, 3.0, 1.6, W, H), 0.6, only={BSKIN})  # cheekbone glow
+    P.fill(ellipse(45.2, 29.4, 2.0, 0.9, W, H), BLIP, 4.0, z=5.1)  # a touch of blush
+    # nose: small, a bridge highlight and a soft shadow underneath
+    P.fill(set(line(54, 21, 55, 26)), BSKIN, 5.0, z=5.2)
+    P.fill({(57, 28), (56, 28), (58, 27)}, BSKIN, 2.4, z=5.2)
+    P.fill({(57, 27)}, BSKIN, 4.6, z=5.2)
+    # --- bangs: a side-swept fringe from the part across the forehead (z 6)
+    fringe = poly(W, H, [(40.4, 13), (44, 6.5), (51, 5), (58, 6.4), (63, 10.4), (63.6, 16), (61, 19.6), (58.4, 15.6),
+                         (54, 13.2), (49, 13.4), (44.6, 16), (41.6, 20)], smooth=True)
+    P.fill(fringe, BHAIR, lambda x, y: 1.2 + 3.4 * hl(x, y), z=6)
+    for c in ([(44, 9), (52, 7.6), (59, 10), (62, 15.6)], [(41.6, 15), (47, 11), (54, 10.4), (60.4, 14.6)],
+              [(41, 19.4), (45, 14.4), (51, 12.4)]):
+        stroke(P, c, 1.8, BHAIR, lambda x, y, s, t: 1.6 + 3.2 * hl(x, y) + 1.0 * s - 0.5 * t, z=6, clip=fringe)
+    # glossy shine band across the crown
+    P.fill({p for p in set(curve_line([(39, 13.6), (44, 9.4), (51, 8.2)])) if p in fringe}, BHAIR, 5.0, z=6.1)
+    # near-side hair falling over the ear to the jaw (z 6)
+    side = poly(W, H, [(36.6, 14), (41.6, 15.6), (41.4, 24), (42.6, 33), (41, 40.5 + sw), (36, 42.5 + sw),
+                       (34.4, 30), (34.6, 20)], smooth=True)
+    P.fill(side, BHAIR, lambda x, y: 1.0 + 3.0 * hl(x, y), z=6)
+    stroke(P, [(37.6, 15), (38.2, 26), (38.6, 41)], 1.6, BHAIR, lambda x, y, s, t: 1.6 + 2.6 * hl(x, y) + 0.8 * s,
+           z=6, clip=side)
+    # a geometric neon earring below the hair line
+    ex, ey = 40 + sw * 0.5, 42.5 + sw
+    P.fill({(int(ex), int(ey) + k) for k in range(2)}, BNEON, 1.0, z=7)
+    P.fill({(int(ex) - 1, int(ey) + 2), (int(ex) + 1, int(ey) + 2), (int(ex), int(ey) + 3)}, BNEON, 2.0, z=7)
+    # --- the face's features (z 11)
+    eyes = F["eyes"]
+    lid = 0.6 if eyes == "soft" else 0.0
+    bb_eye(P, (42.2, 24.2), (49.2, 23.6), 2.4 - lid, 1.5, (46.6 + sw * 0.3, 24.2), closed=False,
+           wink=(eyes == "wink"), liner_dir=-1)
+    bb_eye(P, (54.6, 23.4), (58.8, 23.8), 2.0 - lid, 1.2, (57.3 + sw * 0.3, 24.0), liner_dir=1)
+    for pts in ([(41.6, 20.2), (45, 18.4), (49.4, 19.4)], [(54.4, 19.4), (57, 18.6), (59.4, 19.6)]):  # arched brows
+        P.fill(set(curve_line(pts)), BLINER, 1.0, z=11)
+    bb_mouth(P, F["mouth"])
+    # --- the gesturing arm (z 12)
+    if F["arm"]:
+        elbow, hand, kind = F["arm"]
+        sh = (66, 56)
+        capsule(P, sh, elbow, 4.6, 3.8, BJACKET, lambda x, y, s, t: 2.6 + 1.4 * s, 12)
+        capsule(P, elbow, hand, 3.6, 2.6, BJACKET, lambda x, y, s, t: 2.8 + 1.4 * s, 12)
+        cuff = lerp(elbow, hand, 0.82)
+        capsule(P, cuff, cuff, 2.9, 2.9, BNEON, lambda x, y, s, t: 0.0, 12.1)
+        bb_hand(P, hand, kind, 12.5)
+    im = P.finish(HOTPINK, rim_from=0.5)
+    if f == 5:  # a sparkle by the wink
+        px = im.load()
+        for (x, y, a) in ((38, 18, 255), (37, 18, 200), (39, 18, 200), (38, 17, 200), (38, 19, 200), (36, 18, 120),
+                          (40, 18, 120), (38, 16, 120), (38, 20, 120)):
+            px[x, y] = (255, 230, 255, a)
+    return im
+
+
+def bb_mouth(P, kind):
+    """Lips around (52, 31): full, glossy, hot pink."""
+    if kind == "pucker":  # a small round kiss, pushed forward
+        P.fill(ellipse(52.6, 31.4, 2.4, 2.1, 96, 128), BLIP, lambda x, y: 2.6 + (1.2 if y < 31 else 0), z=11)
+        P.fill({(52, 31), (53, 31)}, BLIP, 0.6, z=11.1)
+        P.fill({(51, 30)}, BLIP, 4.0, z=11.1)
+        return
+    grin = kind == "grin"
+    P.fill({(x, 30) for x in range(49, 56)}, BLIP, 2.2, z=11)  # upper lip...
+    P.fill({(51, 29), (53, 29)}, BLIP, 1.8, z=11)  # ...and its cupid's bow
+    P.fill({(x, 31) for x in range(49, 56)} | {(48, 30), (56, 30)}, BLIP, 0.6, z=11)  # corners turn up
+    low = 33 if grin else 32
+    if grin:  # parted: a hint of teeth
+        P.fill({(x, 31) for x in range(50, 55)}, BEYE, 2.0, z=11.1)
+        P.fill({(x, 32) for x in range(49, 56)}, BLIP, 0.6, z=11)
+    P.fill({(x, low) for x in range(49, 56)}, BLIP, 3.2, z=11)  # the fuller lower lip
+    P.fill({(x, low + 1) for x in range(50, 55)}, BLIP, 2.4, z=11)
+    P.fill({(51, low), (52, low)}, BLIP, 4.0, z=11.1)  # gloss
+
+
+def make_billboard2():
+    sheet = Image.new("RGBA", (96 * 6, 128), (0, 0, 0, 0))
+    for f in range(6):
+        sheet.paste(billboard_frame(f), (f * 96, 0))
+    return sheet
+
+
 # ================================================================== main ===
 def preview(im, path, scale=6, bg=(24, 20, 40)):
     big = im.resize((im.width * scale, im.height * scale), Image.NEAREST)
@@ -1082,6 +1324,7 @@ def build_all():
         "legend2.png": make_legend2(),
         "legend-bust.png": make_legend_bust(),
         "null2.png": make_null2(),
+        "billboard2.png": make_billboard2(),
     }
 
 

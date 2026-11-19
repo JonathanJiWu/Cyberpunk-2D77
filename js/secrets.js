@@ -1441,7 +1441,7 @@ function billboardLips() {
 }
 
 function drawBillboard(time) {
-  const img = IMG.billboard;
+  const img = isReady(IMG.billboard2) ? IMG.billboard2 : IMG.billboard; // v3.2 art, else the older sheet
   const r = billboardRect();
   const x = r.x + holo.glitch;
   const hue = (time * 40) % 360;
