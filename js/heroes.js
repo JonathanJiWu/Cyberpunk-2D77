@@ -64,7 +64,7 @@ function primaryAim(autoRange, projSpeed) {
   return null;
 }
 
-// Specials: Paine holds the flame; Tetsu and Sudo trigger on a press
+// Specials trigger on a press (special.hold would make one hold-to-use; no IC's is)
 function specialPressed() {
   const p = player;
   const held = flameHeld();

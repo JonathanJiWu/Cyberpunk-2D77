@@ -1,8 +1,9 @@
 "use strict";
 // =============================================================================
-// The player: platformer movement, aiming, Paine's kit (energy ball + flame),
-// the auto-firing weapons unlocked through upgrades, damage and drawing.
-// Tetsu's and Sudo's kits are in heroes.js; all base stats in database.js.
+// The player: platformer movement, aiming, the shared weapons unlocked
+// through upgrades (orbit, missiles, stomp, chain), damage and drawing.
+// The IC kits live in heroes.js (Tetsu) and kits.js (Paine, Sudo); base
+// stats in database.js.
 // =============================================================================
 
 // The player object IS its hitbox (x, y, w, h). The hero is drawn 80x120
