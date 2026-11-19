@@ -84,6 +84,9 @@ loadImage("portraits2", "img/portraits2.png"); // 3 portraits of 48x48
 loadImage("fx2", "img/fx2.png"); // 8 cells of 32x32: arrows, EM, glitch, bleed, heat, reflect
 loadImage("xpHardware", "img/xp-hardware.png"); // rows RAM / NVMe / CPU x 4 shine frames
 loadImage("nullBoss", "img/null.png"); // 14 frames of 64x96
+// v3.2: redrawn NPCs (tools/art_npcs.py). The older sheets above stay as fallbacks.
+loadImage("legend2", "img/legend2.png"); // THE LEGEND's talking head: 6 frames of 96x96 (shown via CSS)
+loadImage("legendBust", "img/legend-bust.png"); // THE LEGEND, 192x240 bust
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64

@@ -15,10 +15,10 @@ Usage:
     python3 tools/art_npcs.py --preview DIR    # also writes 6x previews there
 
 Sheets:
-    legend2.png      576x96   THE LEGEND, 6 frames of 96x96: 0 idle, 1 blink,
-                              2 talk (mouth open), 3 talk (half), 4 smirk,
-                              5 one eyebrow raised
-    legend-bust.png  192x240  THE LEGEND, head-and-shoulders bust
+    legend2.png      576x96   THE LEGEND, 6 frames of 96x96 (a close-up talking
+                              head): 0 idle, 1 blink, 2 talk (mouth open),
+                              3 talk (half), 4 smirk, 5 one eyebrow raised
+    legend-bust.png  192x240  THE LEGEND, head-and-shoulders bust (same model)
 """
 
 import argparse
@@ -346,25 +346,73 @@ SUIT = Mat(ramp("#040409", "#0a0a13", "#13141f", "#1e2132", "#2d3249", "#454e70"
 SHIRT = Mat(ramp("#081018", "#0f1c29", "#182b3c", "#233f52", "#33586c"), rim=0.6, line=0.45)
 EYEW = Mat(ramp("#5d5a6e", "#9796aa", "#c9cad8", "#eef0f7"), rim=0, line=0.3)
 IRIS = Mat(ramp("#0d111c", "#26344a", "#45627c", "#7ba0b8"), rim=0, line=0.3)
-LIP = Mat(ramp("#1f0f19", "#4a2330", "#74393e", "#975650"), rim=0.3, line=0.3)
+LIP = Mat(ramp("#1f0f19", "#4a2330", "#74393e", "#975650", "#b5736a"), rim=0.3, line=0.3)
 TEETH = Mat(ramp("#5e5a6c", "#a9a7b6", "#dcdce6"), rim=0, line=0.3)
 IMPL = Mat(ramp("#141226", "#272543", "#3e3c66", "#0e9fc6", "#19f5ff", "#b5fcff"), rim=0, line=0.45)
 GLOWC = Mat(ramp("#0e9fc6", "#19f5ff", "#b5fcff", "#ffffff"), rim=0, line=0.6, glow=True)
 CYAN = hx("#19f5ff")
 
 
-def legend_base(P):
-    """Everything but the expression, on the 96x96 grid."""
+class Xf:
+    """Design coordinates -> pixels. THE LEGEND is designed on a 96px grid;
+    the talking head draws it closer, the bust bigger, from the same model."""
+
+    def __init__(self, k, ox, oy):
+        self.k, self.ox, self.oy = k, ox, oy
+
+    def p(self, x, y):
+        return (self.ox + self.k * x, self.oy + self.k * y)
+
+    def pts(self, L):
+        return [self.p(x, y) for x, y in L]
+
+    def d(self, x, y):
+        """pixel (its centre) -> design coordinates"""
+        return ((x + 0.5 - self.ox) / self.k, (y + 0.5 - self.oy) / self.k)
+
+    def r(self, v):
+        return v * self.k
+
+    def poly(self, P, L, smooth=False):
+        return poly(P.w, P.h, self.pts(L), smooth)
+
+    def ell(self, P, cx, cy, rx, ry):
+        return ellipse(*self.p(cx, cy), self.r(rx), self.r(ry), P.w, P.h)
+
+    def dome(self, cx, cy, rx, ry, **kw):
+        return dome(*self.p(cx, cy), self.r(rx), self.r(ry), **kw)
+
+    def stroke(self, P, L, w, mat, tone, z, clip=None, taper=(0.35, 0.2)):
+        return stroke(P, self.pts(L), self.r(w), mat, tone, z, clip, taper)
+
+    def band(self, L, w=0.0):
+        """A line through the points, w design units thick (at least 1px)."""
+        pts = curve_line(self.pts(L)) if len(L) > 2 else line(*self.p(*L[0]), *self.p(*L[1]))
+        return set(pts) if self.r(w) < 1.2 else thick(pts, self.r(w) / 2)
+
+    def box(self, x0, y0, x1, y1):
+        """The pixels covering a design-space box."""
+        a, b = self.p(x0, y0), self.p(x1, y1)
+        return [(x, y) for y in range(int(math.floor(a[1])), int(math.ceil(b[1])) + 1)
+                for x in range(int(math.floor(a[0])), int(math.ceil(b[0])) + 1)]
+
+
+def legend_base(P, X):
+    """THE LEGEND without his expression."""
     W, H = P.w, P.h
     rng = random.Random(SEED)
+    D = X.d
+
     def face_tone(x, y):
         # cel-shaded planes: lit near side, the front, the far side in shadow
-        fx, fy = x + 0.5, y + 0.5
+        fx, fy = D(x, y)
         ridge = 54.6 + (fy - 30) * 0.38  # where the face turns past the nose
         if fx > ridge + 5.2:
             return 1.5
-        if fx > ridge + 0.4 and fy > 28.5:
+        if fx > ridge + 1.3 and fy > 28.5:
             return 2.1
+        if fx > ridge + 0.4 and fy > 28.5:
+            return 2.8  # a softer turn beside the nose
         if fy < 28.5:  # forehead
             return 4.8 if fx < 47 else 4.3 if fx < 55 else 3.0 if fx < 59 else 2.0
         if fx < 42.5:  # turning toward the ear
@@ -374,201 +422,274 @@ def legend_base(P):
         return 4.1
 
     # --- hair behind the head, falling to both shoulders (z 1): clumps
-    back = poly(W, H, [(40, 9), (48, 7), (56, 7.5), (61.5, 10.5), (64.6, 16), (65.6, 24), (66, 34), (66.4, 46),
-                       (65.4, 56), (63, 62.5), (59, 63.5), (50, 62), (40, 64), (35.5, 68.5), (32.5, 66),
-                       (30, 67.5), (27.6, 60), (26.4, 50), (26.4, 37), (27.8, 24), (32, 14)], smooth=True)
+    back = X.poly(P, [(40, 9), (48, 7), (56, 7.5), (61.5, 10.5), (64.6, 16), (65.6, 24), (66, 34), (66.4, 46),
+                      (65.4, 56), (63, 62.5), (59, 63.5), (50, 62), (40, 64), (35.5, 68.5), (32.5, 66),
+                      (30, 67.5), (27.6, 60), (26.4, 50), (26.4, 37), (27.8, 24), (32, 14)], smooth=True)
     P.fill(back, HAIR, 0.5, z=1)
-    hb = dome(40, 24, 22, 40)
+    hb = X.dome(40, 24, 22, 40)
 
-    def hair_tone(base, gain, edge, far=99):
-        return lambda x, y, s, t: base + gain * hb(x, y) + edge * s - 0.9 * t * t - (1.0 if x > far else 0)
-    for c in ([(36, 12), (30, 20), (28, 34), (28.6, 48), (30.4, 60), (31, 67)],
+    def hair_tone(base, gain, edge_k, far=99.0):
+        return lambda x, y, s, t: base + gain * hb(x, y) + edge_k * s - 0.9 * t * t - (1.0 if D(x, y)[0] > far else 0)
+    clumps = [[(36, 12), (30, 20), (28, 34), (28.6, 48), (30.4, 60), (31, 67)],
               [(40, 14), (34, 24), (32.4, 38), (33, 52), (34.8, 63), (35.2, 68)],
               [(42, 20), (37.6, 30), (36.4, 44), (37.6, 56), (38.6, 63)],
               [(62, 14), (64.6, 26), (65, 40), (64.6, 52), (62.4, 62)],
-              [(60, 20), (62.6, 32), (63, 46), (61.4, 58)]):
-        stroke(P, c, 2.7, HAIR, hair_tone(0.7, 2.6, 0.9, far=60), z=1, clip=back)
+              [(60, 20), (62.6, 32), (63, 46), (61.4, 58)]]
+    for c in clumps:
+        X.stroke(P, c, 2.7, HAIR, hair_tone(0.7, 2.6, 0.9, far=60), z=1, clip=back)
+    if X.k > 1.8:  # finer strands where there is room for them
+        for c in ([(33, 16), (29, 28), (29.8, 44), (32.4, 58)], [(38.4, 18), (35, 30), (34.4, 46), (36.4, 60)],
+                  [(63.4, 22), (64.2, 36), (63.6, 50)]):
+            X.stroke(P, c, 0.6, HAIR, hair_tone(1.2, 2.6, 0.4, far=60), z=1, clip=back)
 
     # --- suit and shirt (z 2..4)
-    jacket = poly(W, H, [(3, 97), (5, 85), (10, 76), (18, 70), (29, 66), (38, 63), (47, 65), (57, 63), (67, 65),
-                         (77, 69), (85, 75), (90, 84), (93, 97)], smooth=True)
-    torso = dome(46, 104, 50, 44)
+    jacket = X.poly(P, [(2, 114), (3, 97), (5, 85), (10, 76), (18, 70), (29, 66), (38, 63), (47, 65), (57, 63),
+                        (67, 65), (77, 69), (85, 75), (90, 84), (93, 97), (94, 114)], smooth=True)
+    torso = X.dome(46, 104, 50, 44)
     P.fill(jacket, SUIT, lambda x, y: 0.4 + 3.0 * torso(x, y), z=2)
-    top_edge = {(x, y) for (x, y) in jacket if (x, y - 1) not in jacket or (x, y - 2) not in jacket}
-    P.shift({p for p in top_edge if p[0] < 44}, 1.2)
-    for seam in ([(15, 74), (13, 84), (12, 96)], [(83, 75), (85.5, 85), (86.5, 96)]):
-        P.shift(set(curve_line(seam)), -1.0)
-    shirt = poly(W, H, [(39, 62), (57, 62), (55.5, 70), (51.5, 82), (48.5, 90), (45, 82), (40.5, 70)])
-    sl = dome(45, 70, 12, 20)
-    P.fill(shirt, SHIRT, lambda x, y: 0.6 + 3.0 * sl(x, y), z=3)
+    top_edge = {(x, y) for (x, y) in jacket if (x, y - 1) not in jacket or (x, y - int(X.k + 1)) not in jacket}
+    P.shift({p for p in top_edge if D(*p)[0] < 44}, 1.2)
+    for seam in ([(15, 74), (13, 84), (12, 100), (11, 114)], [(83, 75), (85.5, 85), (86.5, 100), (87, 114)]):
+        P.shift(X.band(seam, 0.5), -1.0)
+    shirt = X.poly(P, [(39, 62), (57, 62), (55.5, 70), (51.5, 82), (48.5, 90), (45, 82), (40.5, 70)])
+    shl = X.dome(45, 70, 12, 20)
+    P.fill(shirt, SHIRT, lambda x, y: 0.6 + 3.0 * shl(x, y), z=3)
     for side, tone in ((-1, 3.2), (1, 1.8)):  # open collar points
-        col = poly(W, H, [(48 + side * 1.5, 63.5), (48 + side * 9.5, 61), (48 + side * 11, 65.5), (48 + side * 5.5, 74)])
+        col = X.poly(P, [(48 + side * 1.5, 63.5), (48 + side * 9.5, 61), (48 + side * 11, 65.5), (48 + side * 5.5, 74)])
         P.fill(col, SHIRT, tone, z=3.5)
-    lap_l = poly(W, H, [(36.5, 63), (29, 70.5), (34, 74.5), (30, 77.5), (41, 92), (46, 97), (47.5, 89), (41.5, 74)])
-    lap_r = poly(W, H, [(60, 62.5), (66.5, 68.5), (62.5, 72.5), (66.5, 75.5), (55, 92), (51, 97), (50.5, 88), (56.5, 73)])
-    P.fill(lap_l, SUIT, lambda x, y: 2.0 + 1.6 * max(0.0, 1 - (y - 63) / 30), z=4)
-    P.fill(lap_r, SUIT, lambda x, y: 1.3 + 0.8 * max(0.0, 1 - (y - 63) / 30), z=4)
-    P.shift({(x, y) for (x, y) in edge(lap_l) if (x - 1, y) not in lap_l and y < 92}, 1.3)  # satin edge
+    lap_l = X.poly(P, [(36.5, 63), (29, 70.5), (34, 74.5), (30, 77.5), (41, 92), (46, 97), (47.5, 89), (41.5, 74)])
+    lap_r = X.poly(P, [(60, 62.5), (66.5, 68.5), (62.5, 72.5), (66.5, 75.5), (55, 92), (51, 97), (50.5, 88), (56.5, 73)])
+    P.fill(lap_l, SUIT, lambda x, y: 2.0 + 1.6 * max(0.0, 1 - (D(x, y)[1] - 63) / 30), z=4)
+    P.fill(lap_r, SUIT, lambda x, y: 1.3 + 0.8 * max(0.0, 1 - (D(x, y)[1] - 63) / 30), z=4)
+    P.shift({(x, y) for (x, y) in edge(lap_l) if (x - 1, y) not in lap_l and D(x, y)[1] < 92}, 1.3)  # satin edge
     # a small cyan pin on the lapel: a broken chain link
-    P.fill({(35, 80), (36, 80), (36, 81), (38, 82), (39, 82), (39, 83)}, GLOWC, 1.0, z=5)
+    for a, b in (((35, 80), (36.6, 80.6)), ((38, 82), (39.6, 82.8))):
+        P.fill(X.band([a, b], 0.9), GLOWC, 1.0, z=5)
+    if X.k > 1.8:  # a pocket square in the far breast pocket and the jacket's buttons
+        P.fill(X.poly(P, [(66, 86), (71, 84.5), (72, 87), (66.5, 88)]), GLOWC, 0.0, z=5)
+        P.fill(X.ell(P, 50, 104, 1.0, 1.0), SUIT, 3.5, z=5)
 
     # --- neck (z 5)
-    neck = poly(W, H, [(41.5, 46), (55.5, 49), (57, 57), (56.6, 64.5), (48, 66.5), (39.6, 63.5), (40.4, 55)], smooth=True)
-    nl = dome(45, 56, 12, 14)
-    P.fill(neck, SKIN, lambda x, y: 0.2 + 2.4 * nl(x, y) - (1.0 if y < 59 else 0), z=5)
+    neck = X.poly(P, [(41.5, 46), (55.5, 49), (57, 57), (56.6, 64.5), (48, 66.5), (39.6, 63.5), (40.4, 55)], smooth=True)
+    nl = X.dome(45, 56, 12, 14)
+    P.fill(neck, SKIN, lambda x, y: 0.2 + 2.4 * nl(x, y) - (1.0 if D(x, y)[1] < 59 else 0), z=5)
 
     # --- ear (z 6)
-    ear = ellipse(37.8, 36.5, 2.5, 4.6, W, H)
-    P.fill(ear, SKIN, lambda x, y: 1.4 + 2.6 * dome(37, 35.5, 3, 5)(x, y), z=6)
-    P.shift(ellipse(38.4, 37, 0.9, 2.3, W, H), -1.4)
+    ear = X.ell(P, 37.8, 36.5, 2.5, 4.6)
+    ed = X.dome(37, 35.5, 3, 5)
+    P.fill(ear, SKIN, lambda x, y: 1.4 + 2.6 * ed(x, y), z=6)
+    P.shift(X.ell(P, 38.4, 37, 0.9, 2.3), -1.4)
 
     # --- face (z 7)
-    face = poly(W, H, [(41, 24.5), (45, 21.5), (52, 20.8), (58, 21.6), (62, 24), (63, 28.5), (62, 31.6), (63.4, 35.6),
-                       (63.6, 39.5), (63, 43.5), (62.6, 47.5), (61, 51.5), (57.6, 55.2), (52.5, 57), (47, 56),
-                       (42.6, 52.4), (40, 46.5), (39.4, 39), (39.6, 31)], smooth=True)
+    face = X.poly(P, [(41, 24.5), (45, 21.5), (52, 20.8), (58, 21.6), (62, 24), (63, 28.5), (62, 31.6), (63.4, 35.6),
+                      (63.6, 39.5), (63, 43.5), (62.6, 47.5), (61, 51.5), (57.6, 55.2), (52.5, 57), (47, 56),
+                      (42.6, 52.4), (40, 46.5), (39.4, 39), (39.6, 31)], smooth=True)
     P.fill(face, SKIN, face_tone, z=7)
-    P.shift(ellipse(47, 32.6, 5.8, 2.5, W, H), -1.1, only={SKIN})  # eye sockets
-    P.shift(ellipse(59.2, 32.6, 2.8, 2.3, W, H), -0.6, only={SKIN})
-    P.shift(ellipse(45.6, 37.2, 3.4, 1.2, W, H), 0.7, only={SKIN})  # near cheekbone
-    P.shift({(62, 35), (62, 36)}, 0.9, only={SKIN})  # far cheekbone catches a little light
+    P.shift(X.ell(P, 47, 32.6, 5.8, 2.5), -1.1, only={SKIN})  # eye sockets
+    P.shift(X.ell(P, 59.2, 32.6, 2.8, 2.3), -0.6, only={SKIN})
+    P.shift(X.ell(P, 45.6, 37.2, 3.4, 1.2), 0.7, only={SKIN})  # near cheekbone
+    P.shift(X.ell(P, 62.2, 35.6, 0.7, 1.3), 0.9, only={SKIN})  # far cheekbone catches a little light
     # nose: lit near plane, shadowed far plane, underside and nostril
-    nose = poly(W, H, [(54, 29.5), (55.6, 30), (58, 35), (60.4, 38.6), (61.6, 40.8), (60, 42.2), (56.2, 42.4), (55, 41)])
+    nose = X.poly(P, [(54, 29.5), (55.6, 30), (58, 35), (60.4, 38.6), (61.6, 40.8), (60, 42.2), (56.2, 42.4), (55, 41)])
     for (x, y) in nose:
-        far_plane = x + 0.5 > 54.6 + (y + 0.5 - 30) * 0.38
-        P.put(x, y, SKIN, 2.0 if far_plane else 3.9, 7.5)
-    P.fill(set(line(54, 30, 55, 37)), SKIN, 5.0, 7.5)  # bridge highlight
-    P.fill({(59, 38), (60, 39)}, SKIN, 4.2, 7.5)  # tip
-    P.fill(set(polyline([(55, 42), (58, 42), (61, 41)])), SKIN, 1.0, 7.5)  # underside
-    P.fill({(57, 41)}, SKIN, 0.3, 7.5)  # nostril
-    P.shift(poly(W, H, [(60, 38.5), (63.2, 39), (63, 42.6), (60.6, 43)]), -1.0, only={SKIN})  # nose shadow
-    P.shift(set(curve_line([(53.6, 41), (51.8, 43), (50.8, 45)])), -1.0, only={SKIN})  # nasolabial fold
+        fx, fy = D(x, y)
+        P.put(x, y, SKIN, 2.0 if fx > 54.6 + (fy - 30) * 0.38 else 3.9, 7.5)
+    P.fill(X.band([(54.2, 30.4), (55.2, 37)], 0.6), SKIN, 5.0, 7.5)  # bridge highlight
+    P.fill(X.ell(P, 59.6, 38.9, 0.9, 0.7), SKIN, 4.3, 7.5)  # tip
+    P.fill(X.band([(55.2, 42.2), (58.2, 42.3), (61, 41.3)], 0.6), SKIN, 1.0, 7.5)  # underside
+    P.fill(X.ell(P, 57.4, 41.5, 0.7, 0.5), SKIN, 0.3, 7.5)  # nostril
+    P.shift(X.poly(P, [(60, 38.5), (63.2, 39), (63, 42.6), (60.6, 43)]), -1.0, only={SKIN})  # nose shadow
+    P.shift(X.band([(53.6, 41), (51.8, 43), (50.8, 45)], 0.5), -1.0, only={SKIN})  # nasolabial fold
 
     # --- the beard (z 8): sideburn, jaw, chin and moustache
-    beard = poly(W, H, [(40.2, 30.5), (42, 31), (42.3, 36.5), (44, 40.5), (47.5, 43.4), (50.5, 43.6), (54, 43.2),
-                        (57, 43.6), (60.2, 42.8), (62.6, 42.4), (63.6, 45.5), (62.8, 50.4), (59.8, 55), (54, 58.4),
-                        (47.6, 58), (43, 54.4), (40.2, 48.4), (39.4, 40)], smooth=True)
-    bl = dome(49, 45, 14, 13)
-    P.fill(beard, BEARD, lambda x, y: 0.3 + 3.0 * bl(x, y) - (1.0 if x > 57 else 0), z=8)
-    burn = {(x, y) for (x, y) in beard if x < 43 and y < 41}
-    P.fill(burn, HAIR, lambda x, y: 1.0 + (0.8 if x == 41 else 0), z=8)
-    stache = poly(W, H, [(48.4, 44.8), (51, 43.4), (55, 43.1), (58.6, 43.3), (61.2, 44.1), (60.6, 45.4), (55, 45.2),
-                         (49.4, 46)], smooth=True)
-    P.fill(stache, BEARD, lambda x, y: (3.6 if y < 44 else 2.6) - (1.2 if x > 58 else 0), z=8)
+    beard = X.poly(P, [(40.2, 30.5), (42, 31), (42.3, 36.5), (44, 40.5), (47.5, 43.4), (50.5, 43.6), (54, 43.2),
+                       (57, 43.6), (60.2, 42.8), (62.6, 42.4), (63.6, 45.5), (62.8, 50.4), (59.8, 55), (54, 58.4),
+                       (47.6, 58), (43, 54.4), (40.2, 48.4), (39.4, 40)], smooth=True)
+    bl = X.dome(49, 45, 14, 13)
+    P.fill(beard, BEARD, lambda x, y: 0.3 + 3.0 * bl(x, y) - (1.0 if D(x, y)[0] > 57 else 0), z=8)
+    burn = {(x, y) for (x, y) in beard if D(x, y)[0] < 43 and D(x, y)[1] < 41}
+    P.fill(burn, HAIR, lambda x, y: 1.0 + (0.8 if D(x, y)[0] > 41.2 else 0), z=8)
     for (x, y) in sorted(beard):  # salt and pepper, mostly on the chin
-        r = rng.random()
-        if (x, y) in burn or (x, y) in stache:
+        if (x, y) in burn:
             continue
-        if r < (0.12 if y > 49 else 0.05):
+        r = rng.random()
+        if r < (0.12 if D(x, y)[1] > 49 else 0.05):
             P.shift({(x, y)}, 1.5)
         elif r < 0.12:
             P.shift({(x, y)}, -0.8)
     for (x, y) in sorted(edge(beard)):  # a soft, trimmed line on the cheek
-        if 36 < y < 44 and x < 55 and (x, y - 1) not in beard and rng.random() < 0.5:
+        fx, fy = D(x, y)
+        if 36 < fy < 44 and fx < 55 and (x, y - 1) not in beard and rng.random() < 0.5:
             P.put(x, y, SKIN, face_tone(x, y) - 0.6, 7)
-    P.shift({(x, y + 1) for (x, y) in edge(beard) if y > 51}, -1.2, only={SKIN})  # beard shadow on the neck
+    P.shift({(x, y + 1) for (x, y) in edge(beard) if D(x, y)[1] > 51}, -1.2, only={SKIN})  # beard shadow on the neck
 
     # --- hair on top, swept back from the hairline (z 9): clumps
-    top = poly(W, H, [(33, 25), (33.6, 16.5), (38.6, 10), (46, 6.8), (54, 6.6), (60, 9), (64.4, 14), (65.6, 20),
-                      (64, 25), (62, 24.2), (60.4, 22.4), (57, 21), (52, 20.4), (47, 21), (43.4, 23), (41.2, 26),
-                      (40.6, 30.6), (38.6, 31.6), (36, 29)], smooth=True)
+    top = X.poly(P, [(33, 25), (33.6, 16.5), (38.6, 10), (46, 6.8), (54, 6.6), (60, 9), (64.4, 14), (65.6, 20),
+                     (64, 25), (62, 24.2), (60.4, 22.4), (57, 21), (52, 20.4), (47, 21), (43.4, 23), (41.2, 26),
+                     (40.6, 30.6), (38.6, 31.6), (36, 29)], smooth=True)
     P.fill(top, HAIR, 0.8, z=9)
     for c in ([(54, 7.6), (46, 7.8), (38.6, 11), (33.6, 17), (33, 24)],
               [(62, 12), (56, 9), (48, 8.6), (40.6, 11.4), (35, 18), (33.6, 27)],
               [(64, 19), (59, 14.6), (51, 13.2), (43, 15.4), (37.4, 22), (35.6, 30)],
               [(62.5, 23.5), (59, 20), (53, 18.6), (46, 19.4), (41, 23), (38.8, 31)]):
-        stroke(P, c, 2.9, HAIR, hair_tone(0.6, 3.0, 1.0, far=61), z=9, clip=top)
+        X.stroke(P, c, 2.9, HAIR, hair_tone(0.6, 3.0, 1.0, far=61), z=9, clip=top)
+    if X.k > 1.8:
+        for c in ([(60, 10.6), (52, 10.6), (44, 12.6), (37.6, 18.4)], [(63, 16.4), (56, 16.2), (47.4, 16.8), (40, 21.6)]):
+            X.stroke(P, c, 0.6, HAIR, hair_tone(1.4, 3.0, 0.4, far=61), z=9, clip=top)
     # the silver streak: from the hairline over the near brow, swept back
-    silver = lambda x, y, s, t: 0.9 + 2.6 * hb(x, y) + 0.7 * s - 1.4 * t * t
-    streak = stroke(P, [(52.4, 21), (47.4, 17.8), (41.4, 17.2), (37, 21), (35, 27)], 1.2, SILVER, silver, z=9.2, clip=top)
-    streak |= stroke(P, [(50.4, 20.6), (45.6, 15.8), (39.6, 15), (35.2, 19.6), (33.8, 24)], 0.9, SILVER, silver, z=9.2,
-                     clip=top)
+    silver = lambda x, y, s, t: 0.6 + 3.2 * hb(x, y) + 0.6 * s - 2.6 * t * t
+    path = [(52.6, 21.2), (48.4, 17.6), (43, 15.4), (37.6, 16.6), (34.4, 20.6)]
+    streak = set()
+    for (ox, oy, w) in ((-0.2, -0.9, 0.55), (0.3, 0.9, 0.42)):
+        streak |= X.stroke(P, [(x + ox, y + oy) for x, y in path], w, SILVER, silver, z=9.2, clip=top,
+                           taper=(0.15, 0.5))
+    for c in ([(47.6, 19.6), (44, 16.4), (40, 15.6)], [(43.4, 18.2), (39.6, 16.8), (36.4, 18.6)]):
+        P.fill({p for p in X.band(c, 0.3) if p in streak}, HAIR, 1.6, z=9.3)
     P.shift({(x, y + 1) for (x, y) in streak if (x, y + 1) not in streak}, -0.8, only={HAIR})
     P.shift({(x, y + 1) for (x, y) in edge(top) if P.has(x, y + 1, {SKIN})}, -1.3, only={SKIN})  # hairline shadow
 
     # --- the temple implant: a small cyan port above the ear, wired into the hair (z 10)
-    P.fill({(40, 27), (41, 27), (42, 27), (40, 28), (41, 28), (42, 28), (40, 29), (41, 29)}, IMPL, 1.0, z=10)
-    P.fill({(41, 28)}, GLOWC, 2.5, z=10.5)
-    P.fill({(42, 28), (41, 27)}, GLOWC, 0.0, z=10.5)
-    P.fill({(39, 28), (38, 28)}, IMPL, 3.0, z=10.5)
+    P.fill(X.poly(P, [(39.6, 26.6), (42.8, 26.4), (43, 29.6), (39.8, 29.8)]), IMPL, 1.0, z=10)
+    P.fill(X.ell(P, 41.4, 28.1, 0.75, 0.75), GLOWC, 2.5, z=10.5)
+    P.fill(X.band([(39.6, 28.2), (37.4, 28.4)], 0.5), IMPL, 3.0, z=10.5)
+    P.fill(X.band([(39.8, 26.8), (38.6, 25)], 0.5), IMPL, 3.0, z=10.5)
     return face_tone
 
 
-def stamp(P, x0, y0, rows, key):
-    """Paint a small pixel map onto the face ('.' leaves it alone)."""
-    for j, row in enumerate(rows):
-        for i, ch in enumerate(row):
-            if ch == ".":
-                continue
-            mat, tone = key[ch]
-            if mat is None:
-                P.shift({(x0 + i, y0 + j)}, tone)
-            else:
-                P.put(x0 + i, y0 + j, mat, tone, 11)
-
-
-# Keys for the expression maps. 0-5 skin tones, -/_ darken, + lighten.
-FACE_KEY = {
-    "0": (SKIN, 0.0), "1": (SKIN, 1.0), "2": (SKIN, 2.0), "3": (SKIN, 3.0), "4": (SKIN, 4.0), "5": (SKIN, 5.0),
-    "-": (None, -1.0), "_": (None, -2.0), "+": (None, 1.0),
-    "K": (HAIR, 0.0), "x": (HAIR, 1.0), "y": (HAIR, 2.0), "z": (HAIR, 3.0),
-    "s": (EYEW, 0.0), "w": (EYEW, 1.0), "W": (EYEW, 2.0), "h": (EYEW, 3.0),
-    "o": (IRIS, 0.0), "I": (IRIS, 1.0), "i": (IRIS, 2.0),
-    "b": (BEARD, 1.0), "c": (BEARD, 2.0), "d": (BEARD, 3.0), "e": (BEARD, 4.0), "k": (BEARD, 0.0),
-    "m": (LIP, 0.0), "n": (LIP, 1.0), "l": (LIP, 2.0), "L": (LIP, 3.0),
-    "t": (TEETH, 1.0), "T": (TEETH, 2.0),
-}
-
-# Near eye: 7x5 at (44, 30), outer corner on the left. Far eye: 5x5 at
-# (57, 30), outer corner on the right. Heavy upper lids (tired), the irises
-# glancing right toward whoever he is talking to (amused, unhurried).
-EYES = {
-    "lidded": ([".-----.", "1KKKKKK", "KswhoIs", ".swIiw1", "..----."],
-               ["-----", "1KKKK", "1wIoK", ".sIo1", ".---."]),
-    "open": ([".1KKKK.", "1KKKKKK", "KwWhoIs", ".swIiw1", "..----."],
-             [".KKK.", "1KKKK", "1WhoK", ".sIo1", ".---."]),
-    "closed": ([".-----.", "1333332", "2333332", "1KKKKK1", "..----."],
-               ["-----", "13332", "23332", "1KKKK", ".---."]),
-    "narrow": ([".-----.", "1222222", "1KKKKKK", ".KwhoIK", "..-__-."],
-               ["-----", "12222", "1KKKK", ".KhoK", ".---."]),
-}
-# Brows: near 9x4 at (43, 26), far 6x4 at (56, 26)
-BROWS = {
-    "rest": ([".........", "...xyyx..", ".xyzzyyxK", "x.......K"], ["......", "xyyx..", "Kxyzyx", "K....x"]),
-    "up": (["...xyyx..", ".xyzzyyxK", "x.......K", "........."], ["xyyx..", "Kxyzyx", "K....x", "......"]),
-    "lift": (["...xyyx..", ".xyzzyyx.", "x......xK", "........."], ["......", "xyyx..", "Kxyzyx", "K....x"]),
-    "skeptic": (["..xyyzx..", ".xy...yxK", "x.......K", "........."], ["......", "......", "Kxyyzx", "KKxx.."]),
-}
-# Mouth: 12x4 at (49, 45): the moustache's lower edge, the lips, the chin
-MOUTHS = {
-    "rest": ["cddeedddc...", ".kmmmmmmk...", "..nlLLLn....", "..kbbbk....."],
-    "smirk": ["kmddedddc...", "..kmmmmmk...", "...nlLLn....", "...kbbk....."],
-    "open": ["cdTTTTTTd...", ".kmmmmmmmk..", "..mmmmmmk...", "..nlLLLn...."],
-    "half": ["cddTTTTdc...", ".kmmmmmmk...", "..nlLLLn....", "..kbbbk....."],
-    "flat": ["cddeedddc...", "..kmmmmk....", "...nlLn.....", "...kbbk....."],
-}
-
+# ---------------------------------------------------------- expressions ---
+# Each frame of the talking head: how heavy the lids are, where the brows
+# sit (outer, middle, inner; negative = up) and the mouth.
 LEGEND_FACES = [
-    ("lidded", "rest", "rest"),     # 0 idle
-    ("closed", "rest", "rest"),     # 1 blink
-    ("open", "up", "open"),         # 2 talk: mouth open
-    ("lidded", "up", "half"),       # 3 talk: mouth half open
-    ("narrow", "lift", "smirk"),    # 4 smirk
-    ("open", "skeptic", "flat"),    # 5 one eyebrow raised
+    dict(lid=0.72, brow_n=(0, 0, 0), brow_f=(0, 0, 0), mouth="rest"),                  # 0 idle
+    dict(lid=0.72, brow_n=(0, 0, 0), brow_f=(0, 0, 0), mouth="rest", closed=True),     # 1 blink
+    dict(lid=0.4, brow_n=(-0.5, -0.6, -0.4), brow_f=(-0.4, -0.5, -0.4), mouth="open"),  # 2 talk: open
+    dict(lid=0.58, brow_n=(-0.3, -0.3, -0.2), brow_f=(-0.2, -0.3, -0.2), mouth="half"),  # 3 talk: half open
+    dict(lid=0.95, squint=0.35, brow_n=(0.1, 0.2, 0.3), brow_f=(-0.6, -0.7, -0.3), mouth="smirk"),  # 4 smirk
+    dict(lid=0.15, brow_n=(-1.2, -1.9, -0.9), brow_f=(0.2, 0.4, 0.5), mouth="flat"),    # 5 eyebrow raised
 ]
 
 
-def legend_face(P, f):
-    eyes, brows, mouth = LEGEND_FACES[f]
-    ne, fe = EYES[eyes]
-    stamp(P, 44, 30, ne, FACE_KEY)
-    stamp(P, 57, 30, fe, FACE_KEY)
-    nb, fb = BROWS[brows]
-    stamp(P, 43, 26, nb, FACE_KEY)
-    stamp(P, 56, 26, fb, FACE_KEY)
-    stamp(P, 49, 45, MOUTHS[mouth], FACE_KEY)
-    stamp(P, 42, 31, ["-", ".", "-"], FACE_KEY)  # crow's feet
-    if mouth == "smirk":
-        stamp(P, 46, 43, ["-.", ".-"], FACE_KEY)  # the cheek bunches up into the beard
+def draw_eye(P, X, A, B, up_h, low_h, lid, squint, iris_c, iris_r, closed):
+    """An almond eye between corners A and B (design units). The upper lid
+    arcs up_h above the corner line minus how far the lid has come down."""
+    ax, ay = A
+    bx, by = B
+    L = math.hypot(bx - ax, by - ay)
+    ux, uy = (bx - ax) / L, (by - ay) / L
+    lash = 0.62 + 0.1 / X.k
+
+    def lids(u):
+        base = ay + (by - ay) * u
+        s = math.sin(math.pi * min(1.0, max(0.0, u)))
+        bot = base + (low_h - squint) * s ** 1.1
+        top = base - (up_h - lid) * s ** 0.75
+        return (bot - 0.02, bot) if closed else (top, bot)
+    x0 = min(ax, bx) - 1.5
+    x1 = max(ax, bx) + 1.5
+    y0 = min(ay, by) - up_h - 2.6
+    y1 = max(ay, by) + low_h + 1.2
+    for (x, y) in X.box(x0, y0, x1, y1):
+        fx, fy = X.d(x, y)
+        u = ((fx - ax) * ux + (fy - ay) * uy) / L
+        if u < -0.1 or u > 1.06:
+            continue
+        top, bot = lids(u)
+        if 0.0 <= u <= 1.0 and top < fy < bot:
+            d = math.hypot(fx - iris_c[0], fy - iris_c[1])
+            shade = fy - top < 0.6  # the lid's shadow on the eye
+            if d < iris_r:
+                t = 0.0 if d < iris_r * 0.5 else (1.0 if fy < iris_c[1] + 0.3 else 2.0)
+                P.put(x, y, IRIS, t - (1 if shade else 0), 11)
+            else:
+                t = 1.35 - (1.0 if shade else 0) - (0.8 if u < 0.22 or u > 0.85 else 0)
+                P.put(x, y, EYEW, t, 11)
+        elif top - lash <= fy <= top and -0.06 <= u <= 1.0:
+            P.put(x, y, HAIR, 0.0, 11)  # the lash line, a touch past the outer corner
+        elif top - lash - 1.1 <= fy <= top - lash - 0.45 and 0.1 <= u <= 0.9:
+            P.shift({(x, y)}, -1.0, only={SKIN})  # the lid crease
+        elif not closed and bot <= fy <= bot + 0.45 and 0.15 <= u <= 0.95:
+            P.shift({(x, y)}, -0.8, only={SKIN})  # the lower lid
+    if not closed:  # the pupil, and a glint beside it
+        px_, py_ = X.p(*iris_c)
+        c = P.get(int(px_), int(py_))
+        if c and c[0] is IRIS:
+            P.put(int(px_), int(py_), IRIS, 0.0, 11)
+            g = P.get(int(px_) - 1, int(py_) - 1) and (int(px_) - 1, int(py_) - 1)
+            g = g if g and P.get(*g)[0] is IRIS else (int(px_) - 1, int(py_))
+            if P.get(*g) and P.get(*g)[0] is IRIS:
+                P.put(g[0], g[1], EYEW, 3.0, 11)
+
+
+def draw_brow(P, X, pts, off, w):
+    pts = [(x, y + o) for (x, y), o in zip(pts, off)]
+    X.stroke(P, pts, w, HAIR, lambda x, y, s, t: 1.2 + (1.4 if s > 0.3 else 0) + 0.6 * t, z=11, taper=(0.6, 0.15))
+
+
+def draw_mouth(P, X, kind):
+    N, M, F = [50.4, 46.7], [55.2, 46.9], [59.6, 46.4]
+    open_h = {"open": 2.3, "half": 1.2}.get(kind, 0.0)
+    if kind == "rest":
+        N[1] -= 0.5
+    elif kind == "smirk":
+        N[0] -= 0.6
+        N[1] -= 2.1
+        M[1] -= 0.45
+    elif kind == "flat":
+        N[0] += 0.6
+        N[1] += 0.1
+        F[0] -= 0.4
+    elif open_h:
+        N[1] -= 0.2
+        F[1] -= 0.2
+
+    def mouth_y(fx):  # the upper edge of the mouth: two straight-ish spans
+        if fx <= M[0]:
+            t = (fx - N[0]) / (M[0] - N[0])
+            return N[1] + (M[1] - N[1]) * (1 - (1 - t) ** 2)
+        t = (fx - M[0]) / (F[0] - M[0])
+        return M[1] + (F[1] - M[1]) * t * t
+    # the moustache over the upper lip, its lower edge following the mouth
+    for (x, y) in X.box(N[0] - 1.6, 43.0, F[0] + 1.6, 47.6):
+        fx, fy = X.d(x, y)
+        lo = mouth_y(min(F[0], max(N[0], fx))) - 0.15
+        hi = 43.4 + 0.12 * abs(fx - 55)
+        if N[0] - 1.4 <= fx <= F[0] + 1.4 and hi <= fy <= lo:
+            t = 3.4 if fy < hi + 0.8 else 0.8 if fy > lo - 0.75 else 2.2
+            P.put(x, y, BEARD, t - (1.2 if fx > 58.4 else 0), 11)
+    # the mouth line / the open mouth
+    for (x, y) in X.box(N[0] - 0.2, 44.0, F[0] + 0.2, 50.0):
+        fx, fy = X.d(x, y)
+        if not N[0] <= fx <= F[0]:
+            continue
+        top = mouth_y(fx)
+        u = (fx - N[0]) / (F[0] - N[0])
+        depth = open_h * math.sin(math.pi * u) ** 0.6
+        if top - 0.1 <= fy <= top + 0.55 + depth:
+            if open_h and fy < top + 0.75 and 0.15 < u < 0.85:
+                P.put(x, y, TEETH, 2.0 if 0.3 < u < 0.7 else 1.0, 11)
+            else:
+                P.put(x, y, LIP, 0.0, 11)
+    # the lower lip catches the light, with a shadow under it
+    ly = (mouth_y(55.2) + 1.25 + open_h * 0.95)
+    lip = X.stroke(P, [(N[0] + 1.8, ly - 0.1 + (N[1] - 46.7) * 0.4), (55.2, ly + 0.15), (F[0] - 1.7, ly)], 0.5, LIP,
+                   lambda x, y, s, t: 2.6 + 1.2 * (s > 0) - (1.2 if X.d(x, y)[0] > 58 else 0), z=11, taper=(0.25, 0.25))
+    P.shift({(x, y + 1) for (x, y) in lip if (x, y + 1) not in lip}, -1.2, only={BEARD})
+    if kind == "smirk":  # the cheek bunches up beside the raised corner
+        P.fill(X.band([(N[0] - 0.4, N[1] + 0.4), (N[0] - 1.5, N[1] - 1.0)], 0.4), BEARD, 0.0, z=11)
+        P.shift(X.ell(P, 47.4, 41.6, 1.8, 1.0), 0.7, only={SKIN})
+
+
+def legend_face(P, X, f):
+    e = LEGEND_FACES[f]
+    closed = e.get("closed", False)
+    sq = e.get("squint", 0.0)
+    draw_brow(P, X, [(43.0, 30.0), (46.6, 28.3), (51.0, 29.0)], e["brow_n"], 0.85)
+    draw_brow(P, X, [(61.8, 29.5), (58.9, 28.3), (56.6, 29.0)], e["brow_f"], 0.75)
+    draw_eye(P, X, (44.2, 32.7), (50.6, 32.5), 1.55, 1.05, e["lid"], sq, (48.9, 32.9), 1.3, closed)
+    draw_eye(P, X, (57.3, 32.5), (61.4, 32.7), 1.35, 0.9, e["lid"], sq, (60.0, 32.9), 1.0, closed)
+    P.fill(X.band([(42.6, 31.8), (41.6, 31.4)], 0.4), SKIN, 2.0, z=11)  # crow's feet
+    P.fill(X.band([(42.8, 33.6), (41.8, 34.0)], 0.4), SKIN, 2.3, z=11)
+    draw_mouth(P, X, e["mouth"])
 
 
 def holo_grade(im, strength=0.22, fade_rows=10):
@@ -593,12 +714,27 @@ def holo_grade(im, strength=0.22, fade_rows=10):
     return im
 
 
+# The talking head is a close-up: the design grid drawn 1.3x, head filling the frame
+LEGEND_HEAD = (1.3, -11.8, -4.5)
+
+
 def legend_frame(f):
     P = Paint(96, 96)
-    legend_base(P)
-    legend_face(P, f)
+    X = Xf(*LEGEND_HEAD)
+    legend_base(P, X)
+    legend_face(P, X, f)
     im = P.finish(CYAN, cut_bottom=True)
     return holo_grade(im)
+
+
+def make_legend_bust():
+    """192x240 head-and-shoulders bust, the same model drawn 2.2x (idle face)."""
+    P = Paint(192, 240)
+    X = Xf(2.2, -7.4, 1.0)
+    legend_base(P, X)
+    legend_face(P, X, 0)
+    im = P.finish(CYAN, cut_bottom=True, rim_w=2)
+    return holo_grade(im, strength=0.16, fade_rows=18)
 
 
 def make_legend2():
@@ -619,6 +755,7 @@ def preview(im, path, scale=6, bg=(24, 20, 40)):
 def build_all():
     return {
         "legend2.png": make_legend2(),
+        "legend-bust.png": make_legend_bust(),
     }
 
 
