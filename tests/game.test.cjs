@@ -4309,6 +4309,9 @@ const fastForward = (page, seconds, bot) =>
       c.getContext("2d").fillRect(40, 20, 112, 220);
       CHARACTERS.tetsu.bust = c.toDataURL();
       CHARACTERS.sudo.bust = "data:image/png;base64,AAAA";
+      // (the real busts were loaded and cached by the stage above: forget them)
+      delete bustImgs.tetsu;
+      delete bustImgs.sudo;
       const out = {};
       for (const id of ["tetsu", "sudo"]) {
         document.querySelector(`.char-card[data-ic="${id}"]`).focus();
