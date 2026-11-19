@@ -745,7 +745,7 @@ const fastForward = (page, seconds, bot) =>
       enemies.forEach((e) => (e.glitchT = 0.5));
       if (i % 3 === 0) burst(player.x, player.y, 40, "#19f5ff", 400);
       if (i % 10 === 0) {
-        glitchCd = 0;
+        player.glitchCd = 0;
         systemGlitch(player.x + 300, player.y);
       }
     };
@@ -1909,8 +1909,8 @@ const fastForward = (page, seconds, bot) =>
         update(1 / 60);
       }
       const out = { hurt: pack.filter((e) => e.hp < 9999).length, slowed: pack.filter((e) => e.slowT > 0).length };
-      // System Glitch: force a proc and check the area stutters
-      glitchCd = 0;
+      // System Glitch: force a proc and check the area stutters (the cooldown is per Hackerman)
+      player.glitchCd = 0;
       systemGlitch(centerOf(pack[1]).x, centerOf(pack[1]).y);
       out.glitched = pack.filter((e) => e.glitchT > 0).length;
       const steps = [];

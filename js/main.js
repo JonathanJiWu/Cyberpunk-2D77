@@ -125,6 +125,7 @@ function pauseGame() {
   if (game.state !== "playing") return;
   setState("paused");
   sfx.flame.stopLoop();
+  synth.stop("dilationLoop"); // (resumeGame starts it again if a dilation is still running)
   music.pause();
 }
 
@@ -132,6 +133,7 @@ function resumeGame() {
   if (game.state !== "paused") return;
   forEachPlayer(() => clearInput());
   setState("playing");
+  if (somePlayer(() => player.dilation > 0)) synth.loop("dilationLoop");
   music.play();
 }
 
@@ -139,6 +141,7 @@ function endRun(won) {
   game.won = won;
   game.overTime = 0;
   sfx.flame.stopLoop();
+  forEachPlayer(() => resetKitState()); // a Time Dilation still running ends with the run (kits.js)
   clearInput();
   levelUpEl.hidden = true;
   setState("over");

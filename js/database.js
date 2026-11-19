@@ -117,7 +117,7 @@ const CHARACTERS = {
       ],
       guide: { role: "MOBILITY", what: "A slicing dash through foes", edge: "Invulnerable while dashing", mechanic: "Guard halves damage after", note: "Costs focus; weaker on bosses" },
     },
-    passive: "Mirror Steel: reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). Level 8: reflections stagger. Level 16: they splash to 2 nearby enemies. Heavy chrome: 150 HP, blocks 50% of damage.",
+    passive: "Mirror Steel: reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). Level 8: reflections stagger minions. Level 16: they splash to 2 nearby enemies. Heavy chrome: 150 HP, blocks 50% of damage.",
     quotes: {
       start: ["Steel remembers.", "Walk with me.", "I am the blade.", "One cut. Zero regressions."],
       levelUp: ["Sharper.", "Stronger steel.", "The path continues.", "Refactored."],

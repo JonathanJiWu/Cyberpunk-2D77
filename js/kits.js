@@ -261,7 +261,9 @@ function roninReflect(src, incoming) {
   const c = centerOf(src);
   damageEnemy(src, dmg, { source: "reflect" });
   const L = playerLevel();
-  if (L >= 8) src.stun = Math.max(src.stun || 0, src.boss ? 0.1 : 0.4); // Mirror Edge: staggers
+  // Mirror Edge: staggers minions. Not bosses: any stun cancels the
+  // Overseer's laser, and with it the vent window that rewards dodging it.
+  if (L >= 8 && !src.boss) src.stun = Math.max(src.stun || 0, 0.4);
   if (L >= 16) {
     // Riposte: the reflection splashes to two more enemies nearby
     enemies
@@ -310,11 +312,11 @@ function emHit(s, e) {
   if (Math.random() < glitchChance()) systemGlitch(c.x, c.y);
 }
 
-// System Glitch: everything near the hit stutters for a moment
-let glitchCd = 0;
+// System Glitch: everything near the hit stutters for a moment. The cooldown
+// is per Hackerman (the bound player: emHit runs for the shooter).
 function systemGlitch(x, y) {
-  if (glitchCd > 0) return;
-  glitchCd = 0.25;
+  if (player.glitchCd > 0) return;
+  player.glitchCd = 0.25;
   const r = glitchRadius();
   const t = glitchTime();
   let n = 0;
@@ -336,7 +338,7 @@ function updateDilation(dt) {
   const p = player;
   const D = stats.dilation;
   p.specialCd -= dt;
-  glitchCd -= dt;
+  p.glitchCd = (p.glitchCd || 0) - dt;
   if (p.dilation > 0) {
     p.dilation -= dt;
     if (p.dilation <= 0) endDilation();
