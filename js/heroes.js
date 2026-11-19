@@ -146,7 +146,7 @@ function updateDash(dt) {
   const pressed = specialPressed();
   let want = pressed;
   let dir = null;
-  if (!want && settings.autoFlame && !p.dash) {
+  if (!want && settings.autoFlame && !bossLocked() && !p.dash) {
     // Auto: dash into a nearby group (or at whatever is about to hit you)
     const pc = centerOf(p);
     const e = nearestEnemy(pc.x, pc.y, D.distance * 0.9, onScreen);

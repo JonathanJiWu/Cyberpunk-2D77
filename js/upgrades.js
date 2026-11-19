@@ -22,7 +22,7 @@ const MAX_REROLLS = 3;
 const PREFERRED_WEIGHT = 3;
 const RARE_CHANCE = 0.1;
 const RARE_CHANCE_PREFERRED = 0.3;
-const HEAL_CARD = { id: "_heal", name: "Repair Kit", icon: 6, max: 99, desc: ["Heal 40 HP."] };
+const HEAL_CARD = { id: "_heal", name: "Repair Kit", icon: 6, max: 99, desc: [`Heal ${40 + LEVEL_UP_HEAL} HP.`] }; // (40 + the level-up heal)
 
 if (!Array.isArray(settings.loadout)) settings.loadout = ["orbit", "armor"];
 
