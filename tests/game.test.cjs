@@ -696,6 +696,73 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  await test("v3.2 NPC art: the redrawn sheets load and are drawn (older sheets as fallbacks); THE LEGEND talks with legend2's 6 frames", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      const size = (n) => (isReady(IMG[n]) ? `${IMG[n].naturalWidth}x${IMG[n].naturalHeight}` : "missing");
+      const out = { sizes: {}, defs: {} };
+      ["legend2", "legendBust", "nullBoss2", "billboard2", "ninja2"].forEach((n) => (out.sizes[n] = size(n)));
+      out.defs = { ninja: [ENEMY_TYPES.ninja.sheet.img, ENEMY_TYPES.ninja.sheet.fallback], nullptr: [BOSSES.nullptr.sheet.img, BOSSES.nullptr.fallback.img] };
+      // which images a draw call hands to the canvas
+      const drawn = (fn) => {
+        const seen = new Set();
+        const orig = ctx.drawImage;
+        ctx.drawImage = function (img, ...rest) {
+          seen.add(img);
+          return orig.call(this, img, ...rest);
+        };
+        try {
+          fn();
+        } finally {
+          ctx.drawImage = orig;
+        }
+        return seen;
+      };
+      // a fallback: the new sheet "fails to load", the older one is used
+      const without = (name, fn) => {
+        const keep = IMG[name];
+        IMG[name] = new Image();
+        try {
+          return fn();
+        } finally {
+          IMG[name] = keep;
+        }
+      };
+      out.billboard = drawn(() => drawBillboard(1)).has(IMG.billboard2);
+      out.billboardOld = without("billboard2", () => drawn(() => drawBillboard(1)).has(IMG.billboard));
+      out.null = nullImg() === IMG.nullBoss2;
+      out.nullOld = without("nullBoss2", () => nullImg() === IMG.nullBoss);
+      const n = spawnEnemy("ninja", player.x + 300, GROUND_Y - 92, { elite: false });
+      n.hurt = n.stun = 0;
+      out.ninja = drawn(() => drawEnemies(1)).has(IMG.ninja2);
+      out.ninjaOld = without("ninja2", () => drawn(() => drawEnemies(1)).has(IMG.ninja));
+      return out;
+    });
+    assert(r.sizes.legend2 === "576x96" && r.sizes.legendBust === "192x240" && r.sizes.nullBoss2 === "896x96", "sheet sizes: " + JSON.stringify(r.sizes));
+    assert(r.sizes.billboard2 === "576x128" && r.sizes.ninja2 === "160x48", "sheet sizes: " + JSON.stringify(r.sizes));
+    assert(r.defs.ninja.join() === "ninja2,ninja" && r.defs.nullptr.join() === "nullBoss2,nullBoss", "sheet defs: " + JSON.stringify(r.defs));
+    assert(r.billboard && r.billboardOld && r.null && r.nullOld && r.ninja && r.ninjaOld, "drawn with the new sheets, else the old: " + JSON.stringify(r));
+    // THE LEGEND: legend2.png, 6 frames wide; talking animates, done rests on frame 4 (the smirk)
+    await page.evaluate(() => {
+      progress.pending = 1;
+      openLevelUp();
+    });
+    const legend = () =>
+      page.evaluate(() => {
+        const el = document.querySelector("#legend-levelup");
+        const cs = getComputedStyle(el.querySelector(".legend-sprite"));
+        return { talking: el.classList.contains("talking"), done: el.classList.contains("done"), image: cs.backgroundImage, size: cs.backgroundSize, x: cs.backgroundPositionX, anim: cs.animationName };
+      });
+    const talking = await legend();
+    await page.waitForFunction(() => document.querySelector("#legend-levelup").classList.contains("done"), null, { timeout: 8000 });
+    const done = await legend();
+    assert(talking.talking && /legend2\.png/.test(talking.image) && talking.size === "600% 100%" && /legend-talk/.test(talking.anim), "talking legend: " + JSON.stringify(talking));
+    assert(done.done && /legend2\.png/.test(done.image) && done.x === "80%" && !/legend-talk|legend-blink/.test(done.anim), "legend at rest: " + JSON.stringify(done));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("the camera follows the player up to the rooftops", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page);
