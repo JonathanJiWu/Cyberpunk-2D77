@@ -1964,6 +1964,7 @@ const fastForward = (page, seconds, bot) =>
   // (js/nav.js) Walkers and bosses route through a platform graph built from
   // their own jump physics; flyers spread out. Helpers run in the page.
   const NAV_HELPERS = `
+    director.nextBossAt = 1e9; // (no boss walking in on a long test)
     window.__navPut = (i) => {
       const p = platforms[i];
       Object.assign(player, { x: p.x + p.w / 2 - player.w / 2, y: p.y - player.h, vx: 0, vy: 0, onGround: true, standingOn: p, invuln: 99 });
@@ -2127,18 +2128,17 @@ const fastForward = (page, seconds, bot) =>
         spawn();
         const b = game.boss;
         b.x = clamp(top.x + 700, 0, WORLD_W - b.w);
+        const t = __navUntil(() => !b.parked && ((b.onGround && b.standingOn === top) || overlaps(b, player)), 40);
+        // up there it still fights
         const states = new Set();
-        const t = __navUntil(() => {
-          states.add(b.state);
-          if (b.parked) return false;
-          return (b.onGround && b.standingOn === top) || overlaps(b, player);
-        }, 40);
+        __navUntil(() => states.add(b.state) && false, 8);
         out[kind] = { t: Math.round(t * 10) / 10, states: [...states] };
       }
       return out;
     });
     for (const k of ["overseer", "nullptr", "goat"]) assert(r[k].t >= 0, `${k} never got up to the rooftop: ` + JSON.stringify(r));
-    assert(r.overseer.states.length >= 3, "the Overseer stopped attacking while it climbed: " + JSON.stringify(r.overseer));
+    assert(["burst", "dash", "slam", "laser"].some((s) => r.overseer.states.includes(s)), "the Overseer stopped attacking up there: " + JSON.stringify(r.overseer));
+    assert(["charge", "leap", "breath"].some((s) => r.goat.states.includes(s)), "the GOAT stopped attacking up there: " + JSON.stringify(r.goat));
     assert(!problems.length, problems.join("; "));
     await context.close();
   });

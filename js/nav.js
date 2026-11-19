@@ -51,6 +51,7 @@ const NAV_WALKER_FALL = 1500;
 const NAV_JUMP = 0;
 const NAV_DROP = 1;
 const NAV_GRAPPLE = 2;
+const NAV_JUMP_LEFT = 3; // (graph building: a jump down and across to the left of its own floor)
 // what a navigating enemy is doing
 const NAV_RUN = 0; // on a floor: running to the take-off point (or the target)
 const NAV_AIR = 1; // on its way to the next floor (a jump or a drop)
@@ -181,6 +182,66 @@ function navReach(m, h, k) {
   return m.air * k * T;
 }
 
+// The take-off speed for a single jump from x to lx (h up): the gentlest one
+// that makes it, a little variation, and (going down and across) enough air
+// time to get clear of its own floor first. -1: too far; -2: can't clear it.
+function navHopSpeed(m, e, from, h, cx, lx) {
+  let v = navJumpSpeed(m, h, Math.abs(lx - cx));
+  if (v < 0) return -1;
+  v = Math.min(m.jump, v * rand(1, 1.05)); // (they don't all fly in lockstep)
+  if (h < 0 && from && !from.ground) {
+    // at a steady speed across it has to be past its own floor's edge before
+    // it comes back down past that floor's top: a high enough arc does it
+    const exit = (lx > cx ? from.x + from.w - 6 + e.w / 2 - cx : cx - (from.x + 6 - e.w / 2)) + 6;
+    if (exit > 0) {
+      const g = m.g;
+      const need = Math.min(0.999, exit / Math.max(Math.abs(lx - cx), 1));
+      const share = (u) => (2 * u) / (u + Math.sqrt(u * u - 2 * g * h)); // (of the way across, back at its floor's height)
+      if (share(m.jump) < need) return -2;
+      if (share(v) < need) {
+        let a = v;
+        let b = m.jump;
+        for (let i = 0; i < 10; i++) {
+          const mid = (a + b) / 2;
+          if (share(mid) >= need) b = mid;
+          else a = mid;
+        }
+        v = b;
+      }
+    }
+  }
+  return v;
+}
+
+// Would a jump (feet at y0, speeds v up and vx across) come down on some
+// other floor before it gets down to height by? Returns that floor. live:
+// moving floors count too, where they will be by then (at take-off time).
+const navPC = { x0: 0, x1: 0, y: 0, ground: false };
+function navArcHit(m, w, x0, y0, v, vx, by, pa, pb, live) {
+  const g = m.g;
+  const apex = y0 - (v * v) / (2 * g);
+  const tEnd = (v + Math.sqrt(Math.max(0, v * v - 2 * g * (y0 - by)))) / g;
+  for (let i = 0; i < platforms.length; i++) {
+    const c = platforms[i];
+    if (c === pa || c === pb || (navMoving(c) && !live)) continue;
+    let cy = c.y;
+    if (cy <= apex + 2 || cy >= by + 60) continue;
+    let tc = (v + Math.sqrt(Math.max(0, v * v - 2 * g * (y0 - cy)))) / g; // passing its top, going down
+    let cx0 = c.x;
+    if (navMoving(c)) {
+      navPose(c, 0, 0, tc, navPC);
+      cy = navPC.y;
+      cx0 = navPC.x0;
+      if (cy <= apex + 2) continue;
+      tc = (v + Math.sqrt(Math.max(0, v * v - 2 * g * (y0 - cy)))) / g;
+    }
+    if (cy >= by || tc > tEnd) continue;
+    const xc = x0 + vx * tc;
+    if (xc > cx0 + 6 - w / 2 && xc < cx0 + c.w - 6 + w / 2) return c;
+  }
+  return null;
+}
+
 // The gentlest single jump that clears h and covers d sideways (-1: none does)
 function navJumpSpeed(m, h, d) {
   const g = m.g;
@@ -234,13 +295,17 @@ function navTry(m, A, B, kind, pa, pb, R) {
   if (h < 0) {
     if (A.ground) return false;
     // going down: it has to come down beside its own floor, not back onto it
+    // (one move for each side: NAV_JUMP lands right of it, NAV_JUMP_LEFT left)
     const c0 = A.x0 + 6 - w / 2;
     const c1 = A.x1 - 6 + w / 2;
-    if (c0 < navSB[1] && c1 > navSB[0]) {
-      if (c0 - navSB[0] >= navSB[1] - c1) navSB[1] = Math.min(navSB[1], c0);
-      else navSB[0] = Math.max(navSB[0], c1);
+    if (kind === NAV_JUMP_LEFT) {
+      if (navSB[0] >= c0) return false;
+      navSB[1] = Math.min(navSB[1], c0);
+    } else {
+      if (navSB[1] <= c1) return false;
+      navSB[0] = Math.max(navSB[0], c1);
     }
-  }
+  } else if (kind === NAV_JUMP_LEFT) return false;
   if (navSB[1] - navSB[0] < 4) return false;
   const reach = navReach(m, h, NAV.reach);
   R.t0 = Math.max(navSA[0], navSB[0] - reach);
@@ -261,6 +326,14 @@ function navTry(m, A, B, kind, pa, pb, R) {
     navSA[1] = Math.max(tx, lx) + 0.01;
     const span = navSA[1] - navSA[0];
     if (navClearOf(navSA, A.y, B.y, w, pa, pb) < span - 0.001) return false;
+  }
+  {
+    // the arc from the nearest take-off spot must not come down on another floor
+    const tx = clamp((navSB[0] + navSB[1]) / 2, R.t0, R.t1);
+    const lx = clamp(tx, navSB[0], navSB[1]);
+    const v = navJumpSpeed(m, h, Math.abs(lx - tx));
+    const T = v > 0 ? (v + Math.sqrt(Math.max(0, v * v - 2 * m.g * h))) / m.g : 0;
+    if (v > 0 && navArcHit(m, w, tx, A.y, v, (lx - tx) / T, B.y, pa, pb)) return false;
   }
   // (only where it can actually come down: not "anywhere on the street")
   R.l0 = Math.max(navSB[0], R.t0 - reach);
@@ -303,7 +376,7 @@ function navGraph(m) {
       const pb = navPlat(b);
       const ka = navMoving(pa) ? NAV.phases : 1;
       const kb = navMoving(pb) ? NAV.phases : 1;
-      for (let kind = 0; kind < 3; kind++) {
+      for (let kind = 0; kind < 4; kind++) {
         let ok = 0;
         let t0 = Infinity;
         let t1 = -Infinity;
@@ -328,7 +401,7 @@ function navGraph(m) {
         // a moving floor is only in reach part of the time: count the wait
         const period = Math.max(pa && dyn ? pa.period || 0 : 0, pb && dyn ? pb.period || 0 : 0);
         const wait = dyn ? (1 - ok / (ka * kb)) * period * 0.5 : 0;
-        list.push({ a, b, kind, t0, t1, l0, l1, time, cost: time + wait, dyn });
+        list.push({ a, b, kind: kind === NAV_JUMP_LEFT ? NAV_JUMP : kind, code: kind, t0, t1, l0, l1, time, cost: time + wait, dyn });
       }
     }
   }
@@ -340,6 +413,7 @@ function navGraph(m) {
     from: new Int16Array(E),
     to: new Int16Array(E),
     kind: new Uint8Array(E),
+    code: new Uint8Array(E), // (the kind as navTry knows it: which side for a jump down)
     dyn: new Uint8Array(E),
     t0: new Float32Array(E),
     t1: new Float32Array(E),
@@ -359,6 +433,7 @@ function navGraph(m) {
     G.from[k] = d.a;
     G.to[k] = d.b;
     G.kind[k] = d.kind;
+    G.code[k] = d.code;
     G.dyn[k] = d.dyn ? 1 : 0;
     G.t0[k] = d.t0;
     G.t1[k] = d.t1;
@@ -491,7 +566,7 @@ function navTakeoff(m, G, k, out) {
   const pb = navPlat(G.to[k]);
   navPose(pa, 0, 0, 0, navPA);
   navPose(pb, 0, 0, G.time[k], navPB);
-  if (navTry(m, navPA, navPB, G.kind[k], pa, pb, navR)) {
+  if (navTry(m, navPA, navPB, G.code[k], pa, pb, navR)) {
     out[0] = navR.t0;
     out[1] = navR.t1;
     return true;
@@ -515,13 +590,11 @@ function navLaunch(e, n, m, G, k, goal, t, cx) {
   const h = feet - navPB.y;
   const from = e.standingOn;
   if (kind === NAV_JUMP && h < 0 && from && !from.ground) {
-    // (down and across: land beside this floor, not back on it)
-    const c0 = from.x + 6 - m.w / 2;
-    const c1 = from.x + from.w - 6 + m.w / 2;
-    if (c0 < navLB[1] && c1 > navLB[0]) {
-      if (c0 - navLB[0] >= navLB[1] - c1) navLB[1] = Math.min(navLB[1], c0);
-      else navLB[0] = Math.max(navLB[0], c1);
-    }
+    // (down and across: land beside this floor, on the side this move is for)
+    navLB[0] = Math.max(navLB[0], G.l0[k]);
+    navLB[1] = Math.min(navLB[1], G.l1[k]);
+    if (G.code[k] === NAV_JUMP_LEFT) navLB[1] = Math.min(navLB[1], from.x + 6 - e.w / 2 - 8);
+    else navLB[0] = Math.max(navLB[0], from.x + from.w - 6 + e.w / 2 + 8);
   }
   if (navLB[1] - navLB[0] < 2) return false;
   let lx = navLandX(G, k, goal, t, navLB[0], navLB[1]);
@@ -543,21 +616,24 @@ function navLaunch(e, n, m, G, k, goal, t, cx) {
     const maxReach = navReach(m, h, 0.9);
     if (Math.abs(lx - cx) > maxReach) lx = clamp(cx + Math.sign(lx - cx) * maxReach, navLB[0], navLB[1]);
     const d = Math.abs(lx - cx);
-    let v = navJumpSpeed(m, h, d);
+    let v = navHopSpeed(m, e, from, h, cx, lx);
     let T;
+    if (v === -2) return false; // (can't get clear of its own floor from here)
     if (v < 0) {
       if (!m.double || h + NAV.clear > m.rise || d > maxReach + 1) return false;
       v = m.jump; // a double jump: the second one comes at the top of the first
       T = navFlight(m, h, true);
     } else {
-      v = Math.min(m.jump, v * rand(1, 1.05)); // (a little variation: they don't all fly in lockstep)
-      if (h < 0 && from && !from.ground) {
-        // down and across: enough air time to get clear of its own floor first
-        const exit = lx > cx ? from.x + from.w - 6 + e.w / 2 - cx : cx - (from.x + 6 - e.w / 2);
-        v = Math.max(v, (m.g * Math.max(0, exit)) / (2 * m.air * 0.9));
-        if (v > m.jump) return false;
-      }
       T = (v + Math.sqrt(Math.max(0, v * v - 2 * m.g * h))) / m.g;
+      const own = from && !from.ground ? from : null;
+      if (navArcHit(m, e.w, cx, feet, v, (lx - cx) / T, navPB.y, own, pb, true)) {
+        // something would catch it on the way down: a lower arc to the nearest part of the floor
+        lx = clamp(cx, navLB[0], navLB[1]);
+        v = navHopSpeed(m, e, from, h, cx, lx);
+        if (v < 0) return false;
+        T = (v + Math.sqrt(Math.max(0, v * v - 2 * m.g * h))) / m.g;
+        if (navArcHit(m, e.w, cx, feet, v, (lx - cx) / T, navPB.y, own, pb, true)) return false;
+      }
     }
     e.vy = -v;
     e.vx = clamp((lx - cx) / Math.max(T, 0.1), -m.air, m.air);
@@ -599,7 +675,13 @@ function navSteerAir(e, n, m, G) {
   if (pa && G.kind[k] === NAV_JUMP && by > pa.y + 20 && feet <= pa.y + 2) {
     const c0 = pa.x + 6 - e.w / 2;
     const c1 = pa.x + pa.w - 6 + e.w / 2;
-    if (cx > c0 - 6 && cx < c1 + 6) return lx > cx ? m.air : -m.air;
+    if (cx > c0 - 6 && cx < c1 + 6) {
+      // still over it: fast enough to be past the edge before coming back down to it
+      const dir = lx > cx ? 1 : -1;
+      const left = dir > 0 ? c1 + 6 - cx : cx - (c0 - 6);
+      const tBack = (-e.vy + Math.sqrt(e.vy * e.vy + 2 * g * Math.max(0, pa.y - feet))) / g;
+      return dir * Math.min(m.air, Math.max(Math.abs(lx - cx) / Math.max(tr, 0.06), left / Math.max(tBack, 0.05)));
+    }
   }
   // a double jump only when this arc can't make it: too low, or the floor out
   // of reach sideways (never a last-moment one on the way down)
@@ -724,6 +806,7 @@ function navFollow(e, n, m, G, node, goal, t, cx, speed, dt) {
     n.settle -= dt;
     return 0;
   }
+  if (game.time < G.busy[k]) n.stuck = Math.max(0, n.stuck - dt); // (waiting its turn is not being stuck)
   if (reachable && game.time >= G.busy[k] && navLaunch(e, n, m, G, k, goal, t, cx)) {
     G.busy[k] = game.time + rand(NAV.stagger[0], NAV.stagger[1]);
     return e.vx;
