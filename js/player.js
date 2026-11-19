@@ -840,6 +840,31 @@ function drawPlayerProjectiles() {
       if (Math.random() < 0.25) drawCell("fx2", 3, 32, s.x + rand(-10, 10), s.y + rand(-s.r, s.r), 28, 28, rand(0, 6));
       return;
     }
+    // Enemy shots parried back (Monoblade / katana) keep the look they came in with
+    if (s.kind === "shuriken") {
+      if (s.spin === undefined) s.spin = 0; // (the parry copies no spin)
+      drawShuriken(s); // null.js
+      return;
+    }
+    if (s.kind === "meteor") {
+      glow(s.x, s.y, 70, "rgba(255,90,20,0.6)");
+      if (flame) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.angle - Math.PI / 2);
+        ctx.drawImage(flame, -36, -66, 72, 100);
+        ctx.restore();
+      }
+      return;
+    }
+    if (s.kind === "ring") {
+      glow(s.x, s.y, 34, "rgba(25,245,255,0.75)");
+      ctx.fillStyle = "#e9ffff";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
     glow(s.x, s.y, 55 * (s.r / 22), "rgba(40,160,255,0.5)");
     if (!blue) return;
     const k = s.r / 22;

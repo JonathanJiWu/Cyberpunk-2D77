@@ -1832,6 +1832,47 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  await test("parried enemy shots keep their look: shuriken, meteors and rings aren't drawn as the old energy ball", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "tetsu", autoFire: false, autoFlame: false } });
+    const r = await page.evaluate(() => {
+      const blue = smallOr("blueFlame");
+      const out = {};
+      const realShuriken = drawShuriken;
+      let shurikenCalls = 0;
+      drawShuriken = (s) => (shurikenCalls++, realShuriken(s));
+      const draw = ctx.drawImage.bind(ctx);
+      let blueDraws = 0;
+      ctx.drawImage = function (img, ...rest) {
+        if (blue && img === blue) blueDraws++;
+        return draw(img, ...rest);
+      };
+      const pc = centerOf(player);
+      ["shuriken", "meteor", "ring"].forEach((kind) => {
+        playerShots.length = 0;
+        playerShots.push({ x: pc.x + 200, y: pc.y, vx: 1100, vy: 0, r: 16, angle: 0, life: 1, damage: 5, pierce: 0, hit: new Set(), kind });
+        blueDraws = 0;
+        drawPlayerProjectiles();
+        out[kind] = blueDraws;
+      });
+      out.shurikenCalls = shurikenCalls;
+      // the player's own default shot still uses the energy ball
+      playerShots.length = 0;
+      playerShots.push({ x: pc.x + 200, y: pc.y, vx: 1100, vy: 0, r: 22, angle: 0, life: 1, damage: 5, pierce: 0, hit: new Set() });
+      blueDraws = 0;
+      drawPlayerProjectiles();
+      out.ball = blueDraws;
+      ctx.drawImage = draw;
+      drawShuriken = realShuriken;
+      playerShots.length = 0;
+      return out;
+    });
+    assert(r.shuriken === 0 && r.meteor === 0 && r.ring === 0 && r.shurikenCalls === 1, "parried shots drawn as the energy ball: " + JSON.stringify(r));
+    assert(r.ball === 1, "the default shot lost its look: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("Ronin: Mirror Steel reflects 15% of incoming damage, scaling with level, without loops", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { settings: { character: "tetsu" } });
