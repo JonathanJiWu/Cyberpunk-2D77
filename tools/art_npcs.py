@@ -26,6 +26,8 @@ Sheets:
     billboard2.png   576x128  the hologram ad, 6 frames of 96x128 (the layout of
                               billboard.png): 0/1 idle, 2 wave, 3 fingertips to
                               the lips, 4 blowing a kiss, 5 wink
+    ninja2.png       160x48   Cyber Ninja enemy, 4 frames of 40x48 (the layout
+                              of ninja.png): 0-2 run, 3 dash; feet on row 47
 """
 
 import argparse
@@ -1311,6 +1313,117 @@ def make_billboard2():
     return sheet
 
 
+# ========================================================== CYBER NINJA ===
+# The corporate assassin enemy: 4 frames of 40x48 facing right, feet on the
+# bottom row (the layout of ninja.png): 0-2 run, 3 the dash. Graphite armour,
+# a helmet with a magenta visor slit, a magenta scarf and a forearm blade;
+# magenta rim light, so it never reads as NULL (violet, hooded, cloaked).
+KSUIT = Mat(ramp("#0a0910", "#16141f", "#242131", "#363248", "#4d4866", "#6c6690"), rim=0.5, line=0.55)
+KPLATE = Mat(ramp("#121018", "#22202e", "#36334a", "#504c6c", "#757096", "#a9a4cc"), rim=0.5, line=0.5)
+KSCARF = Mat(ramp("#3a0834", "#6a1260", "#a01e86", "#d636ac", "#ff74d4"), rim=0.5, line=0.5)
+KGLOW = Mat(ramp("#a8189c", "#ff2fd6", "#ffa6f0", "#ffffff"), rim=0, line=0.5, glow=True)
+MAGENTA = hx("#ff2fd6")
+
+NINJA_POSES = [
+    # head, chest, pelvis, near (shoulder, elbow, hand), far arm, near (hip, knee, foot), far leg, scarf lift
+    dict(h=(25, 10), c=(23, 19), p=(20, 29), na=((24, 18), (28, 23), (32, 24)), fa=((21, 18), (16, 23), (12, 21)),
+         nl=((21, 30), (27, 37), (31, 46)), fl=((19, 30), (14, 37), (8, 41)), sc=0),
+    dict(h=(25, 9), c=(23, 18), p=(20, 28), na=((24, 17), (28, 22), (32, 23)), fa=((21, 17), (19, 24), (18, 28)),
+         nl=((21, 29), (24, 37), (21, 46)), fl=((19, 29), (22, 35), (16, 40)), sc=2),
+    dict(h=(25, 10), c=(23, 19), p=(20, 29), na=((24, 18), (28, 23), (32, 24)), fa=((21, 18), (24, 24), (26, 28)),
+         nl=((21, 30), (16, 37), (10, 41)), fl=((19, 30), (25, 37), (29, 46)), sc=1),
+    dict(h=(28, 21), c=(25, 27), p=(17, 32), na=((26, 26), (31, 28), (36, 27)), fa=((22, 26), (17, 30), (13, 31)),
+         nl=((18, 33), (26, 38), (30, 46)), fl=((16, 33), (9, 40), (2, 45)), sc=3),
+]
+
+
+def ninja_frame(f):
+    J = NINJA_POSES[f]
+    W, H = 40, 48
+    P = Paint(W, H)
+    hd, ch, pv = J["h"], J["c"], J["p"]
+    lean = unit((ch[0] - pv[0], ch[1] - pv[1]))
+    # the scarf streams back from the neck, fluttering (z 0)
+    nk = (ch[0] - 1, ch[1] - 3)
+    w_ = J["sc"]
+    tail = [nk, (nk[0] - 4, nk[1] - 1 + (w_ % 2)), (nk[0] - 8, nk[1] - 1 + w_), (nk[0] - 11, nk[1] + (1 if w_ == 1 else 0) + w_)]
+    stroke(P, tail, 0.85, KSCARF, lambda x, y, s, t: 2.6 + 1.0 * s - 1.2 * t, z=0, taper=(0.05, 0.6))
+    # far limbs (z 1-2)
+    sa, ea, ha = J["fa"]
+    capsule(P, sa, ea, 1.6, 1.4, KSUIT, lit(1.2), 1)
+    capsule(P, ea, ha, 1.5, 1.2, KPLATE, lit(1.4), 1)
+    hip, kn, ft = J["fl"]
+    capsule(P, hip, kn, 2.3, 1.9, KSUIT, lit(1.2), 2)
+    capsule(P, kn, ft, 1.8, 1.3, KPLATE, lit(1.3), 2)
+    P.fill(poly(W, H, [(ft[0] - 1.6, ft[1] - 1.2), (ft[0] + 2.8, ft[1] - 0.6), (ft[0] + 3.2, ft[1] + 1.6), (ft[0] - 1.6, ft[1] + 1.6)]),
+           KSUIT, 1.2, z=2.1)
+    # torso (z 3): suit, chest plate, a magenta line at the waist
+    n = (-lean[1], lean[0])
+    if n[0] < 0:
+        n = (-n[0], -n[1])
+    tp = [(ch[0] + n[0] * 4.6 + lean[0] * 2, ch[1] + n[1] * 4.6 + lean[1] * 2),
+          (ch[0] - n[0] * 4.4 + lean[0] * 2, ch[1] - n[1] * 4.4 + lean[1] * 2),
+          (pv[0] - n[0] * 3.4 - lean[0], pv[1] - n[1] * 3.4 - lean[1]),
+          (pv[0] + n[0] * 3.6 - lean[0], pv[1] + n[1] * 3.6 - lean[1])]
+    torso = poly(W, H, tp)
+    acr = lambda x, y: ((x + 0.5 - ch[0]) * n[0] + (y + 0.5 - ch[1]) * n[1]) / 4.5
+    P.fill(torso, KSUIT, lambda x, y: 2.4 - 1.3 * acr(x, y), z=3)
+    plate = poly(W, H, [(ch[0] + n[0] * 4 + lean[0] * 1.5, ch[1] + n[1] * 4 + lean[1] * 1.5),
+                        (ch[0] - n[0] * 3 + lean[0] * 1.5, ch[1] - n[1] * 3 + lean[1] * 1.5),
+                        (ch[0] - n[0] * 2.4 - lean[0] * 4, ch[1] - n[1] * 2.4 - lean[1] * 4),
+                        (ch[0] + n[0] * 3.4 - lean[0] * 4.6, ch[1] + n[1] * 3.4 - lean[1] * 4.6)])
+    P.fill(plate, KPLATE, lambda x, y: 3.2 - 1.4 * acr(x, y), z=3.1)
+    wl = lerp(pv, ch, 0.18)
+    P.fill({p for p in line(wl[0] - n[0] * 3.4, wl[1] - n[1] * 3.4, wl[0] + n[0] * 3.6, wl[1] + n[1] * 3.6) if p in torso},
+           KGLOW, 1.0, z=3.2)
+    # near leg (z 4)
+    hip, kn, ft = J["nl"]
+    capsule(P, hip, kn, 2.4, 2.0, KSUIT, lit(2.2), 4)
+    capsule(P, kn, ft, 1.9, 1.4, KPLATE, lit(2.6), 4)
+    capsule(P, kn, kn, 1.7, 1.7, KPLATE, lit(3.2), 4.1)
+    P.fill(poly(W, H, [(ft[0] - 1.6, ft[1] - 1.2), (ft[0] + 2.8, ft[1] - 0.6), (ft[0] + 3.2, ft[1] + 1.6), (ft[0] - 1.6, ft[1] + 1.6)]),
+           KSUIT, 2.4, z=4.2)
+    # head (z 5): a rounded helmet, a fin, the visor slit
+    helm = ellipse(hd[0], hd[1], 3.6, 4.0, W, H)
+    hl_ = dome(hd[0] - 1, hd[1] - 1.5, 4.2, 4.6)
+    P.fill(helm, KPLATE, lambda x, y: 0.8 + 4.0 * hl_(x, y), z=5)
+    vy = int(round(hd[1] - 0.2))
+    P.fill({(x, vy) for x in range(int(hd[0]), int(hd[0]) + 4)}, KGLOW, 1.0, z=5.2)
+    P.fill({(int(hd[0]) + 2, vy)}, KGLOW, 3.0, z=5.3)
+    P.fill({(int(hd[0]) - 1, vy + 2), (int(hd[0]), vy + 2)}, KPLATE, 1.0, z=5.2)  # jaw seam
+    # near arm (z 6) with the forearm blade
+    sa, ea, ha = J["na"]
+    capsule(P, sa, ea, 1.7, 1.5, KSUIT, lit(2.4), 6)
+    capsule(P, ea, ha, 1.6, 1.3, KPLATE, lit(3.0), 6.1)
+    capsule(P, sa, sa, 2.0, 2.0, KPLATE, lit(3.2), 6.2)  # shoulder plate
+    fd = unit((ha[0] - ea[0], ha[1] - ea[1]))
+    blade_len = 13 if f == 3 else 6
+    b0 = lerp(ea, ha, 0.3)
+    b1 = (ha[0] + fd[0] * (blade_len - 4), ha[1] + fd[1] * (blade_len - 4) - (0 if f == 3 else 1))
+    capsule(P, b0, b1, 0.9, 0.4, KGLOW, lambda x, y, s, t: 1.6 + 1.4 * (abs(s) < 0.5) + 0.6 * t, 6.5)
+    im = P.finish(MAGENTA, rim_from=0.45)
+    if f == 3:  # dash streaks
+        px = im.load()
+        for (y, x0, x1) in ((24, 0, 7), (29, 1, 9), (35, 0, 6), (41, 2, 8)):
+            for x in range(x0, x1):
+                if px[x, y][3] == 0:
+                    px[x, y] = (255, 47, 214, 90 + 18 * (x - x0))
+    # feet on the bottom row
+    low = max(y for y in range(H) for x in range(W) if im.getpixel((x, y))[3] > 200)
+    if low != 47:
+        moved = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        moved.paste(im, (0, 47 - low))
+        im = moved
+    return im
+
+
+def make_ninja2():
+    sheet = Image.new("RGBA", (40 * 4, 48), (0, 0, 0, 0))
+    for f in range(4):
+        sheet.paste(ninja_frame(f), (f * 40, 0))
+    return sheet
+
+
 # ================================================================== main ===
 def preview(im, path, scale=6, bg=(24, 20, 40)):
     big = im.resize((im.width * scale, im.height * scale), Image.NEAREST)
@@ -1325,6 +1438,7 @@ def build_all():
         "legend-bust.png": make_legend_bust(),
         "null2.png": make_null2(),
         "billboard2.png": make_billboard2(),
+        "ninja2.png": make_ninja2(),
     }
 
 

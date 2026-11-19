@@ -263,7 +263,7 @@ const ENEMY_TYPES = {
     xp: 2,
     w: 52,
     h: 92,
-    sheet: { img: "ninja", fw: 40, fh: 48, frames: 3, dashFrame: 3, scale: 2.1, flip: true, fps: 12 },
+    sheet: { img: "ninja2", fallback: "ninja", fw: 40, fh: 48, frames: 3, dashFrame: 3, scale: 2.1, flip: true, fps: 12 },
     dash: { range: 420, windup: 0.4, speed: 1150, time: 0.32, cooldown: [2.2, 3.2] },
     maxAlive: 4,
     from: 45,

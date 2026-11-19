@@ -89,6 +89,7 @@ loadImage("legend2", "img/legend2.png"); // THE LEGEND's talking head: 6 frames 
 loadImage("legendBust", "img/legend-bust.png"); // THE LEGEND, 192x240 bust
 loadImage("nullBoss2", "img/null2.png"); // NULL, same layout as null.png
 loadImage("billboard2", "img/billboard2.png"); // the hologram ad, same layout as billboard.png
+loadImage("ninja2", "img/ninja2.png"); // Cyber Ninja, same layout as ninja.png
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64
