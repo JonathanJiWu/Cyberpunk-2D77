@@ -293,7 +293,7 @@ class Part:
     def ell(self, F, c, r, mat, R=None, k=0.0, sub=False, tan=None, sfn=None, tag=None):
         R = np.eye(3) if R is None else np.asarray(R, float)
         rw = np.asarray(r, float) * F.s
-        return self._add("ell", (F.p(c), rw, F.R @ R), mat, k, sub, F.p(c), float(rw.max()), tan, sfn, tag)
+        return self._add("ell", (F.p(c), rw, F.R @ R), mat, k * F.s, sub, F.p(c), float(rw.max()), tan, sfn, tag)
 
     def cone(self, F, a, b, r1, r2, mat, k=0.0, sub=False, tan=None, sfn=None, tag=None):
         A, B = F.p(a), F.p(b)
@@ -301,16 +301,16 @@ class Part:
         L = float(np.linalg.norm(B - A))
         if L <= abs(r1w - r2w) + 1e-3:  # degenerate: just a ball
             return self.ell(F, a, (max(r1, r2),) * 3, mat, k=k, sub=sub, tan=tan, sfn=sfn, tag=tag)
-        return self._add("cone", (A, B, r1w, r2w), mat, k, sub, (A + B) / 2, L / 2 + max(r1w, r2w), tan, sfn, tag)
+        return self._add("cone", (A, B, r1w, r2w), mat, k * F.s, sub, (A + B) / 2, L / 2 + max(r1w, r2w), tan, sfn, tag)
 
     def box(self, F, c, half, mat, R=None, rr=0.5, k=0.0, sub=False, tag=None):
         R = np.eye(3) if R is None else np.asarray(R, float)
         hw = np.asarray(half, float) * F.s
-        return self._add("box", (F.p(c), hw, F.R @ R, rr * F.s), mat, k, sub, F.p(c), float(np.linalg.norm(hw)), tag=tag)
+        return self._add("box", (F.p(c), hw, F.R @ R, rr * F.s), mat, k * F.s, sub, F.p(c), float(np.linalg.norm(hw)), tag=tag)
 
     def plane(self, F, p0, n, k=0.0):
         """Cut away everything on the +n side of the plane."""
-        return self._add("plane", (F.p(p0), unit(F.d(n))), None, k, True, F.p(p0), 0.0)
+        return self._add("plane", (F.p(p0), unit(F.d(n))), None, k * F.s, True, F.p(p0), 0.0)
 
     def sdf(self, P, want_mat=False):
         d = None
@@ -675,8 +675,8 @@ def materials():
                       th=[0.1, 0.24, 0.42, 0.62, 0.84], hi="#ff9a6a", sheen=0.72, gloss=90, rim=[RED, "#ff8aa6"],
                       outline="#1a020a", line="#26040f", ao=0.7)
     M["p_stub"] = Mat(["#2e121c", "#4d1f2a", "#6e3236", "#8c4642"], th=[0.2, 0.45, 0.72], rim=[RED], outline="#1a020a")
-    M["p_leather"] = Mat(["#09060d", "#110c18", "#1a1424", "#251d33", "#342a47"], kind="leather",
-                         th=[0.12, 0.3, 0.56, 0.84], sheen=0.86, gloss=70, hi="#6c5f8c", rim=["#a6113e", RED],
+    M["p_leather"] = Mat(["#0c0912", "#191424", "#272037", "#372d4d", "#4c406a"], kind="leather", wrap=0.5,
+                         th=[0.1, 0.28, 0.52, 0.8], sheen=0.86, gloss=70, hi="#8c7fb4", rim=["#a6113e", RED],
                          outline="#050308", line="#050308", bounce="#1c1a3a")
     M["p_strap"] = Mat(["#1e1219", "#34212a", "#4d3138", "#6a454a"], th=[0.15, 0.4, 0.75], rim=["#a6113e", RED],
                        outline="#050308")
@@ -702,7 +702,7 @@ def materials():
     # --- Sudo: purple hoodie, jeans, white sneakers, black battery, green LEDs
     M["s_skin"] = Mat(["#3b1f24", "#64343a", "#93524f", "#bd7865", "#dc9d81", "#f2c4a4", "#ffe6cf"],
                       th=[0.1, 0.22, 0.36, 0.52, 0.7, 0.9], rim=["#8cffa6", "#d4ffdc"], line="#4a2630", outline="#22101a")
-    M["s_hair"] = Mat(["#24110c", "#45210f", "#6e3716", "#9c541f", "#c9782b", "#e8a046"], kind="hair",
+    M["s_hair"] = Mat(["#1e0e0a", "#3d1d0f", "#653214", "#8f4a1b", "#b8662a", "#d98a3c"], kind="hair",
                       th=[0.1, 0.24, 0.42, 0.62, 0.84], hi="#ffd07a", sheen=0.55, gloss=22, rim=["#5aff7a", "#c8ffd2"],
                       outline="#140806", line="#24110c", ao=0.7)
     M["s_hood"] = Mat(["#170a2b", "#2a1450", "#40207a", "#5a2d91", "#7845bd", "#9a68dc"], th=[0.1, 0.25, 0.45, 0.68, 0.9],
@@ -724,6 +724,20 @@ def materials():
 
 
 MAT = materials()
+FAR = {}
+
+
+def far(m):
+    """The same material one tone darker (limbs on the far side of the body)."""
+    if m.id not in FAR:
+        f = Mat.__new__(Mat)
+        f.__dict__.update(m.__dict__)
+        f.ramp = np.concatenate([m.ramp[:1], m.ramp[:-1]])
+        f.rim = m.rim[:1] if m.rim is not None else None
+        MATS.append(f)
+        f.id = len(MATS) - 1
+        FAR[m.id] = f
+    return FAR[m.id]
 INK = pal("#0b0416")  # generic darkest ink
 
 
@@ -842,7 +856,7 @@ def chain(P, F, pts, radii, mat, k=6, sw=2.6, sub=False):
         def tan(Q, axis=axis):
             return np.broadcast_to(axis, Q.shape)
 
-        def sfn(Q, A=A, bn=bn):
+        def sfn(Q, A=A, bn=bn, sw=sw * F.s):
             return ((Q - A) @ bn) / sw
 
         P.cone(F, a, b, ra, rb, mat, k=k, sub=sub, tan=tan, sfn=sfn)
@@ -1286,6 +1300,894 @@ def render_bust(build):
     return R, m, B, H
 
 
+# ============================================================== the rig =====
+# Sprites: 80x120 frames, 4x supersampled; world units are output pixels,
+# x = 0 is the frame's centre line, y = 0 the bottom of the soles (row 113),
+# so the outline lands on row 114 like the old sheets (drawn at -40, -115).
+FW, FH, SPR_SS, OX, OY = 80, 120, 4, 40, 114
+D = math.radians
+
+# Proportions (pixels). About 6.5-7 heads tall: Paine ~100, Tetsu ~108, Sudo ~95.
+PROPS = {
+    "paine": dict(hip=49.5, waist=8.5, chest=13.0, neck=7.5, headc=9.0, head_s=0.168, shw=9.0, shy=4.6, hipw=4.4,
+                  uarm=15.0, farm=13.5, thigh=23.5, shin=23.0, foot=8.0, ankle=2.4),
+    "tetsu": dict(hip=52.0, waist=9.5, chest=14.5, neck=7.0, headc=8.6, head_s=0.156, shw=13.6, shy=3.8, hipw=6.4,
+                  uarm=15.5, farm=14.0, thigh=24.0, shin=24.0, foot=10.0, ankle=2.8),
+    "sudo": dict(hip=44.0, waist=8.0, chest=12.0, neck=6.5, headc=8.8, head_s=0.165, shw=8.6, shy=4.2, hipw=4.2,
+                 uarm=13.5, farm=12.5, thigh=21.0, shin=20.5, foot=8.6, ankle=2.4),
+}
+
+
+def ik2(a, t, l1, l2, pole):
+    """Two-bone IK: joint and end positions reaching from a toward t, bending toward pole."""
+    a, t, pole = (np.asarray(v, float) for v in (a, t, pole))
+    d = t - a
+    L = float(np.linalg.norm(d))
+    dirv = d / max(L, 1e-9)
+    L = min(max(L, abs(l1 - l2) + 0.05), l1 + l2 - 0.05)
+    ca = (l1 * l1 + L * L - l2 * l2) / (2 * l1 * L)
+    sa = math.sqrt(max(0.0, 1 - ca * ca))
+    pv = pole - dirv * float(pole @ dirv)
+    pv = unit(pv) if np.linalg.norm(pv) > 1e-6 else unit(np.cross(dirv, [0, 0, 1]))
+    return a + dirv * (l1 * ca) + pv * (l1 * sa), a + dirv * L
+
+
+def limb_dir(pitch, out, zs):
+    """0 = straight down, +pitch swings forward, +out lifts it to the side."""
+    return np.array([math.sin(pitch) * math.cos(out), -math.cos(pitch) * math.cos(out), zs * math.sin(out)])
+
+
+def skeleton(pr, po):
+    """Joint positions (body space) for pose po. Limbs take (pitch, out, bend) or ('ik', target, pole)."""
+    J = {}
+    lean = po.get("lean", 0.0)
+    Rp = rot_y(po.get("ptwist", 0.0)) @ rot_z(-lean * 0.45)
+    Rt = rot_y(po.get("twist", 0.0)) @ rot_z(-lean)
+    pel = np.array([po.get("px", 0.0), pr["hip"] + po.get("py", 0.0), 0.0])
+    waist = pel + Rp @ np.array([0, pr["waist"], 0])
+    chest = waist + Rt @ np.array([0, pr["chest"], 0])
+    neck = chest + Rt @ np.array([0, pr["neck"], 0])
+    Rn = Rt @ rot_z(-po.get("nlean", 0.0))
+    Rh = Rn @ rot_y(po.get("hyaw", 0.0)) @ rot_z(po.get("hpitch", 0.0)) @ rot_x(po.get("hroll", 0.0))
+    head = neck + Rn @ np.array([1.0, pr["headc"], 0])
+    J.update(pel=pel, waist=waist, chest=chest, neck=neck, head=head, Rp=Rp, Rt=Rt, Rh=Rh)
+    for side, zs in (("R", 1), ("L", -1)):
+        sh = chest + Rt @ np.array([-0.6, pr["shy"], zs * pr["shw"]])
+        hip = pel + Rp @ np.array([0, -1.0, zs * pr["hipw"]])
+        J["sh" + side], J["hip" + side] = sh, hip
+        arm = po.get("arm" + side, (0.05, 0.12, 0.25))
+        if arm[0] == "ik":
+            el, ha = ik2(sh, arm[1], pr["uarm"], pr["farm"], arm[2])
+        else:
+            pitch, out, bend = arm
+            el = sh + Rt @ limb_dir(pitch, out, zs) * pr["uarm"]
+            ha = el + Rt @ limb_dir(pitch + bend, out * 0.6, zs) * pr["farm"]
+        J["el" + side], J["ha" + side] = el, ha
+        leg = po.get("leg" + side, (0.0, 0.05, 0.1))
+        if leg[0] == "ik":
+            kn, an = ik2(hip, leg[1], pr["thigh"], pr["shin"], leg[2])
+        else:
+            pitch, out, bend = leg
+            kn = hip + limb_dir(pitch, out, zs) * pr["thigh"]
+            an = kn + limb_dir(pitch - bend, out * 0.5, zs) * pr["shin"]
+        fp = po.get("foot" + side, 0.0)  # toe pitch: + points the toe down
+        toe = an + np.array([math.cos(fp), -math.sin(fp) - 0.0, 0]) * pr["foot"] + np.array([0, -pr["ankle"] * 0.4, 0])
+        J["kn" + side], J["an" + side], J["toe" + side] = kn, an, toe
+    return J
+
+
+def plant(pr, po, J, radius=1.8):
+    """How far to lift the pose so the lowest sole touches y = 0 (airborne poses float)."""
+    if po.get("air"):
+        return po.get("lift", 18.0)
+    low = min(J[k][1] for k in ("anR", "anL", "toeR", "toeL")) - radius
+    low = min(low, min(J["knR"][1], J["knL"][1]) - 3.2)  # a knee on the ground
+    return -low
+
+
+def mirror(po):
+    """Swap left and right in a pose."""
+    out = {}
+    for k, v in po.items():
+        if k.endswith("R") and k[:-1] in ("arm", "leg", "foot"):
+            out[k[:-1] + "L"] = v
+        elif k.endswith("L") and k[:-1] in ("arm", "leg", "foot"):
+            out[k[:-1] + "R"] = v
+        elif k in ("twist", "ptwist", "hyaw", "hroll"):
+            out[k] = -v
+        else:
+            out[k] = v
+    return out
+
+
+def run_cycle(base, contact, drive):
+    """Four frames: contact R, drive (L knee up), contact L, drive (R knee up)."""
+    f0 = dict(base, **contact)
+    f1 = dict(base, **drive)
+    return [f0, f1, mirror(f0), mirror(f1)]
+
+
+# ========================================================= sprite views =====
+VIEWS = {"right": rot_y(-D(32)), "left": rot_y(math.pi + D(32)), "front": rot_y(-math.pi / 2 + D(16)),
+         "back": rot_y(math.pi / 2 + D(14))}
+
+
+def rel(J, spec):
+    """IK targets may be given relative to a joint: ('chest', (dx, dy, dz))."""
+    if isinstance(spec, tuple) and len(spec) == 2 and isinstance(spec[0], str):
+        return J[spec[0]] + np.asarray(spec[1], float)
+    return np.asarray(spec, float)
+
+
+def pose_joints(pr, po):
+    """skeleton() with IK targets resolved against the torso first."""
+    po2 = dict(po)
+    for k in ("armR", "armL", "legR", "legL"):
+        v = po.get(k)
+        if v is not None and v[0] == "ik" and isinstance(v[1], tuple) and isinstance(v[1][0], str):
+            po2[k] = ("ik", (0.0, 0.0, 0.0), v[2])
+    J = skeleton(pr, po2)
+    for k in ("armR", "armL", "legR", "legL"):
+        v = po.get(k)
+        if v is not None and v[0] == "ik":
+            po2[k] = ("ik", rel(J, v[1]), np.asarray(v[2], float))
+    return skeleton(pr, po2)
+
+
+def limb(P, F, a, b, r1, r2, mat, k=0.8):
+    P.cone(F, a, b, r1, r2, mat, k=k)
+
+
+def tail_points(start, n, seg, a0, curl, wave, phase, side_drift=0.0):
+    """A hanging chain (ponytail, scarf tail) in body space: angle 0 = down, + = toward the back."""
+    pts = [np.asarray(start, float)]
+    for i in range(n):
+        a = a0 + curl * i + wave * math.sin(phase + i * 1.1) * (i / n)
+        pts.append(pts[-1] + np.array([-math.sin(a), -math.cos(a), side_drift]) * seg)
+    return pts
+
+
+def to_body(Bf, w):
+    return Bf.R.T @ (np.asarray(w, float) - Bf.T)
+
+
+class Sprite:
+    """A frame being built: model, frames for body / head, and 1x finishing steps."""
+
+    def __init__(self, pr, po, view):
+        self.pr, self.po, self.view = pr, po, view
+        self.J = J = pose_joints(pr, po)
+        lift = plant(pr, po, J)
+        self.Bf = Frame(VIEWS[view], (po.get("dx", 0.0), lift, 0.0))
+        self.H = self.Bf.sub(J["Rh"], J["head"], pr["head_s"])
+        self.Ft = self.Bf.sub(J["Rt"], J["chest"])
+        self.Fw = self.Bf.sub(J["Rp"], J["waist"])
+        self.Fp = self.Bf.sub(J["Rp"], J["pel"])
+        self.m = Model()
+        self.anchors = {}  # named body-space points (where the game's effects attach)
+        self.after = []  # (fn(R)) run on the 1x image before the outline
+        self.late = []  # run after the outline (thin glowing lines)
+
+    def near(self):
+        """+1 if the body's right side faces us, -1 if the left does."""
+        return 1 if self.Bf.R[2, 2] > 0 else -1
+
+    def px(self, F, p):
+        w = F.p(p)
+        return w[0] + OX, OY - w[1], float(w[2])
+
+    def render(self):
+        R = Render(FW, FH, SPR_SS, OX, OY)
+        R.render(self.m)
+        R.shade(ao_radius=2 * SPR_SS, smooth=1)
+        R.reduce()
+        R.cleanup()
+        R.inner_lines(dz=2.0)
+        for fn in self.after:
+            fn(R)
+        R.outline()
+        for fn in self.late:
+            fn(R)
+        return R
+
+
+def eyes_1x(S, R, F, styles):
+    """Tiny 1x eyes from the head frame: styles['near'/'far'/'front'] are ASCII maps
+    centred on the eye ('o' marks the anchor); maps face right and are mirrored."""
+    H = S.H
+    pts = []
+    for side in (-1, 1):
+        z = 14.0 * side
+        x, y, wz = S.px(H, (face_x(z) + 1.0, 1.0, z))
+        f = facing(H, (0.8, 0.05, 0.6 * side))
+        pts.append((wz, x, y, f, side))
+    pts.sort(reverse=True)
+    front = S.view == "front"
+    for rank, (wz, x, y, f, side) in enumerate(pts):
+        if f < 0.12 or S.view == "back":
+            continue
+        key = "front" if front else ("near" if rank == 0 else "far")
+        rows = styles[key]
+        flip = (S.view == "left") or (front and side > 0)
+        oy_ = [j for j, r in enumerate(rows) if "o" in r][0]
+        r0 = rows[oy_][::-1] if flip else rows[oy_]
+        ox_ = r0.index("o")
+        for j, row in enumerate(rows):
+            row = row[::-1] if flip else row
+            for i, ch in enumerate(row):
+                if ch in ". ":
+                    continue
+                put(R, x + i - ox_, y + j - oy_, styles["key"][ch.lower() if ch == "o" else ch], front="on")
+
+
+def mouth_1x(S, R, cols, width=1, y=-23.0, smile=0):
+    if S.view == "back":
+        return
+    x, yy, _ = S.px(S.H, (face_x(0, y) + 1.5, y, 0))
+    d = -1 if S.view == "left" else 1
+    if S.view == "front":
+        for i in range(-width, width + 1):
+            put(R, x + i, yy, cols[0], front="on")
+        return
+    put(R, x, yy, cols[0], front="on")
+    put(R, x - d, yy - smile, cols[1], front="on")
+
+
+# ================================================================ PAINE =====
+def paine_sprite(pr, po, view):
+    S = Sprite(pr, po, view)
+    J, Bf, H, Ft, Fw, Fp, m = S.J, S.Bf, S.H, S.Ft, S.Fw, S.Fp, S.m
+    sk, lea, trim = MAT["p_skin"], MAT["p_leather"], MAT["p_trim"]
+    hc = lambda P: (P - H.T) @ H.R / H.s
+
+    def head_paint(P, n, mats):
+        Q = hc(P)
+        out = mats.copy()
+        shaved = (Q[:, 2] < -21) & (Q[:, 1] > -9) & (Q[:, 1] < 26) & (Q[:, 0] < 16) & (Q[:, 0] > -40)
+        out[shaved & (mats == sk.id)] = MAT["p_stub"].id
+        return out
+
+    head = m.part(1, paint=head_paint)
+    human_head(head, H, sk, jaw=0.92, chin=0.9, nose=1.0)
+    head.cone(Bf, J["neck"] + J["Rt"] @ np.array([0, -2.5, 0]), J["head"] + J["Rh"] @ np.array([-0.6, -4.5, 0]), 2.3, 2.1, sk, k=0.6)
+    # hair: cap + bangs, the tie and a ponytail that swings with the motion
+    hm = MAT["p_hair"]
+    hair = m.part(2)
+    tie_w = H.p((-37.0, 35.0, 0.0))
+    tx, ty = tie_w[0], tie_w[1]
+    hair.ell(H, (-6, 10, 0), (47, 47, 39.5), hm, tan=lambda Q: tie_w[None, :] - Q,
+             sfn=lambda Q: np.arctan2(Q[:, 1] - ty, Q[:, 0] - tx) * 5.0)
+    hair.plane(H, (30, 30, 0), (1, -1.2, 0), k=3)
+    hair.box(H, (-10, -14, -44), (40, 30, 26), None, sub=True, k=3)
+    chain(hair, H, [(16, 47, -18), (31, 41, -6), (39, 32, 8), (38.5, 21, 20), (33, 9, 28), (26, -5, 32)],
+          [7, 8.5, 8, 6.5, 5, 3], hm, k=8, sw=5)
+    tie = m.part(3)
+    tie.cone(H, (-36, 38, 0), (-44, 44, 0), 8, 7.5, trim)
+    a0, curl, wave = po.get("tail", (0.3, 0.05, 0.0))
+    t0 = to_body(Bf, H.p((-46, 45, 0)))
+    pts = tail_points(t0, 6, 5.2, a0, curl, wave, po.get("phase", 0.0))
+    tail = m.part(3)
+    chain(tail, Bf, pts, [1.7, 2.1, 2.0, 1.8, 1.45, 1.0, 0.5], hm, k=0.8, sw=0.8)
+    # torso: heat-proof leather, red piping down the flanks, a belt
+    fc = lambda F: (lambda P: (P - F.T) @ F.R)
+
+    def torso_paint(P, n, mats):
+        Qt, Qp = fc(Ft)(P), fc(Fp)(P)
+        out = mats.copy()
+        out[(np.abs(Qt[:, 2]) > 5.9) & (Qt[:, 1] > -9) & (Qt[:, 1] < 5)] = trim.id
+        belt = (Qp[:, 1] > 3.2) & (Qp[:, 1] < 4.9)
+        out[belt] = MAT["p_strap"].id
+        out[belt & (Qp[:, 0] > 3.0) & (np.abs(Qp[:, 2]) < 1.3)] = MAT["p_metal"].id
+        # the heat vents between the shoulder blades
+        out[(Qt[:, 0] < -3.6) & (np.abs(np.abs(Qt[:, 2]) - 2.2) < 0.7) & (Qt[:, 1] > -3) & (Qt[:, 1] < 4)] = MAT["p_glow"].id
+        return out
+
+    T = m.part(4, paint=torso_paint)
+    T.ell(Ft, (0.4, 0.4, 0), (4.4, 7.0, 6.4), lea)
+    for zs in (-1, 1):
+        T.ell(Ft, (3.0, 0.8, 2.7 * zs), (2.2, 2.3, 2.2), lea, k=1.2)
+        T.ell(Ft, (-0.6, 4.6, 8.0 * zs), (2.6, 2.6, 2.6), lea, k=1.5)
+    T.ell(Fw, (0.2, 0.6, 0), (3.6, 5.4, 4.8), lea, k=2.5)
+    T.ell(Fp, (0.0, 0.4, 0), (4.2, 4.8, 6.0), lea, k=2.5)
+    T.cone(Bf, J["neck"] + J["Rt"] @ np.array([0, -2.0, 0]), J["neck"] + J["Rt"] @ np.array([0.3, 1.6, 0]), 3.1, 2.8, lea, k=0.6)
+    # limbs
+    for side, g in (("R", 5), ("L", 6)):
+        zs = 1 if side == "R" else -1
+        sh, el, ha = J["sh" + side], J["el" + side], J["ha" + side]
+        lea = MAT["p_leather"] if zs == S.near() or view in ("front", "back") else far(MAT["p_leather"])
+
+        def arm_paint(P, n, mats, el=el, ha=ha):
+            Q = to_body_pts(Bf, P)
+            t = ((Q - el) @ unit(ha - el)) / max(1e-6, float(np.linalg.norm(ha - el)))
+            out = mats.copy()
+            band = (t > 0.25) & (t < 0.85)
+            out[band & (np.mod(t * 10, 3.0) < 1.6) & (n[:, 1] > 0.3)] = MAT["p_glow"].id
+            return out
+
+        A = m.part(g, paint=arm_paint)
+        A.ell(Bf, sh, (2.7, 2.9, 2.7), lea)
+        limb(A, Bf, sh, el, 2.6, 2.15, lea)
+        limb(A, Bf, el, ha, 2.15, 1.85, lea)
+        hand = ha + unit(ha - el) * 1.0
+        A.ell(Bf, hand, (1.7, 1.7, 1.6), lea, k=0.6)
+        hip, kn, an, toe = J["hip" + side], J["kn" + side], J["an" + side], J["toe" + side]
+
+        def leg_paint(P, n, mats, kn=kn, an=an, toe=toe):
+            Q = to_body_pts(Bf, P)
+            out = mats.copy()
+            # boot tops, red soles
+            along = (Q - kn) @ unit(an - kn)
+            out[(np.abs(along - 3.2) < 0.7)] = trim.id
+            foot = np.minimum(np.linalg.norm(Q - an, axis=1), np.linalg.norm(Q - toe, axis=1)) < 3.0
+            sole = (Q - an) @ unit(np.cross(toe - an, np.array([0, 0, 1.0])))
+            out[foot & (sole > 1.0) & (Q[:, 1] < an[1] + 0.5)] = trim.id
+            return out
+
+        Lg = m.part(g + 2, paint=leg_paint)
+        limb(Lg, Bf, hip, kn, 3.8, 2.9, lea)
+        limb(Lg, Bf, kn, an, 2.8, 2.0, lea)
+        limb(Lg, Bf, an, toe, 2.1, 1.6, lea, k=0.8)
+    # the cyber bow: unfolded in her hand while shooting, collapsed on her back otherwise
+    bow = po.get("bow")
+    if bow is None:
+        B2 = m.part(9)
+        B2.cone(Ft, (-4.8, -7.5, -4.2), (-5.4, 8.5, 4.6), 0.9, 0.9, MAT["p_metal"])
+        B2.ell(Ft, (-5.45, 9.4, 4.9), (1.2, 1.2, 1.2), MAT["p_neon"])
+        B2.ell(Ft, (-4.75, -8.4, -4.5), (1.1, 1.1, 1.1), MAT["p_neon"])
+    else:
+        paine_bow(S, bow)
+    S.after.append(lambda R: paine_face(S, R))
+    return S
+
+
+def to_body_pts(Bf, P):
+    return (P - Bf.T) @ Bf.R
+
+
+def paine_bow(S, bow):
+    """The bow in the far... in the bow hand (left), string to the nock."""
+    J, Bf, m = S.J, S.Bf, S.m
+    grip = J["haL"] + unit(J["haL"] - J["elL"]) * 0.8
+    up = np.array([0.0, 1.0, 0.0])
+    fwd = unit(np.array([1.0, 0.0, 0.0]))
+    tips = []
+    Bw = m.part(9)
+    for sg in (1, -1):
+        pts = [grip + up * sg * 2.0]
+        for t, (dx, dy) in enumerate(((-1.4, 7.0), (-3.0, 13.5), (-3.6, 19.0), (-2.2, 22.5))):
+            pts.append(grip + fwd * dx + up * sg * dy)
+        chain(Bw, Bf, pts, [1.25, 1.15, 0.95, 0.8, 0.7], MAT["p_metal"], k=0.4)
+        tips.append(pts[-1])
+        Bw.ell(Bf, pts[-1], (0.9, 0.9, 0.9), MAT["p_neon"], k=0.2)
+    Bw.ell(Bf, grip, (1.5, 2.6, 1.4), MAT["p_trim"], k=0.4)
+    nock = J["haR"] + unit(J["haR"] - J["elR"]) * 0.6 if bow.get("drawn", True) else grip - fwd * 3.0
+    S.anchors["arrow"] = grip + fwd * 5.0
+
+    def strings(R):
+        a = S.px(Bf, tips[0])
+        c = S.px(Bf, tips[1])
+        n_ = S.px(Bf, nock) if bow.get("drawn", True) else None
+        col = pal("#ffd0dc")
+        if n_ is not None:
+            for (x0, y0, _), (x1, y1, _) in ((a, n_), (n_, c)):
+                for (x, y) in line_px(x0, y0, x1, y1):
+                    put(R, x, y, col)
+            if bow.get("arrow", True):
+                g = S.px(Bf, grip + fwd * 5.0)
+                for (x, y) in line_px(n_[0], n_[1], g[0], g[1]):
+                    put(R, x, y, pal("#f4f4ff"))
+                d = 1 if g[0] >= n_[0] else -1
+                put(R, g[0] + d, g[1], pal("#ff2457"))
+                put(R, g[0] + 2 * d, g[1], pal("#ffffff"))
+                put(R, g[0] + d, g[1] - 1, pal("#ff86ac"))
+                put(R, g[0] + d, g[1] + 1, pal("#ff86ac"))
+        else:
+            for (x, y) in line_px(a[0], a[1], c[0], c[1]):
+                put(R, x, y, col)
+
+    S.late.append(strings)
+
+
+PAINE_EYES = {
+    "near": ["KKK", "wo."], "far": ["K", "o"], "front": ["KK", "ow"],
+    "key": {"K": pal("#1a0610"), "w": pal("#ecdcd6"), "o": pal("#2f6e4c")},
+}
+
+
+def paine_face(S, R):
+    eyes_1x(S, R, S.H, PAINE_EYES)
+    mouth_1x(S, R, (pal("#a8323e"), pal("#7a2232")), width=1, smile=1)
+    if S.view != "back":
+        # brows
+        for side in (-1, 1):
+            x, y, wz = S.px(S.H, (face_x(14 * side) + 1.5, 10.5, 14 * side))
+            if facing(S.H, (0.8, 0.05, 0.6 * side)) > 0.2:
+                put(R, x, y, pal("#5c1020"), front="on")
+                put(R, x + (1 if (S.view == "right") == (side > 0) else -1), y, pal("#5c1020"), front="on")
+
+
+# ========================================================= Paine's poses ====
+def paine_poses():
+    run = run_cycle(dict(lean=0.2, hyaw=D(8), nlean=-0.12, tail=(1.2, -0.16, 0.25)),
+                    contact=dict(legR=(0.52, 0.04, 0.16), legL=(-0.42, 0.04, 1.6), footR=-0.25, footL=0.95,
+                                 armL=(0.85, 0.1, 1.35), armR=(-0.7, 0.14, 0.7), phase=0.0),
+                    drive=dict(legR=(-0.5, 0.04, 0.45), legL=(1.0, 0.04, 1.8), footR=0.95, footL=0.5,
+                               armR=(0.85, 0.1, 1.35), armL=(-0.7, 0.14, 0.7), phase=1.6))
+    for i, f in enumerate(run):
+        f["phase"] = i * 1.6
+    idle = dict(lean=0.03, twist=0.12, hyaw=D(10), legR=(0.16, 0.07, 0.1), legL=(-0.12, 0.1, 0.14), footL=0.12,
+                armR=(0.12, 0.22, 0.5), armL=(-0.08, 0.16, 0.35), tail=(0.22, 0.05, 0.0))
+    air = dict(air=True, lift=6, lean=0.06, legR=(0.85, 0.06, 1.55), legL=(0.1, 0.06, 1.05), footR=0.5, footL=0.8,
+               armR=(1.5, 0.4, 0.4), armL=(-0.8, 0.5, 0.6), tail=(1.3, -0.06, 0.0), hpitch=0.08)
+    look = dict(idle, hpitch=0.55, nlean=-0.25, tail=(0.12, 0.03, 0.0))
+    stance = dict(lean=0.02, twist=-0.18, hyaw=D(6), legL=(0.36, 0.06, 0.35), legR=(-0.3, 0.12, 0.25), footR=0.25,
+                  tail=(0.5, 0.0, 0.0))
+    atk = []
+    for k, (grip, nock, bow) in enumerate((
+            ((24, 1.5, -3.5), ("head", (-6.0, -6.0, 4.5)), {"drawn": True}),
+            ((25, 1.0, -3.5), ("head", (-9.5, -5.0, 5.0)), {"drawn": True}),
+            ((24, 2.0, -3.5), ("head", (-15.0, -3.0, 8.0)), {"drawn": False}),
+            ((21, -3.0, -3.0), ("chest", (4.0, -6.0, 6.0)), {"drawn": False}))):
+        f = dict(stance, bow=bow)
+        f["armL"] = ("ik", ("chest", grip), (0.0, -1.0, -1.0))
+        f["armR"] = ("ik", nock, (-1.0, -0.3, 1.0))
+        atk.append(f)
+    return {"run": run, "idle": idle, "air": air, "look": look, "attack": atk}
+
+
+# ================================================================ TETSU =====
+def tetsu_helmet(P, H, ch, tr):
+    P.ell(H, (-3, 8, 0), (38, 40, 32), ch)
+    P.ell(H, (12, -6, 0), (24, 27, 23), ch, k=8)
+    P.box(H, (23, -27, 0), (9, 10, 12), ch, rr=4, k=5)
+    for zs in (-1, 1):
+        P.box(H, (19, -14, 17 * zs), (11, 13, 4), ch, R=rot_y(-0.55 * zs) @ rot_z(0.15), rr=2.5, k=4)
+
+
+def tetsu_sprite(pr, po, view):
+    S = Sprite(pr, po, view)
+    J, Bf, H, Ft, Fw, Fp, m = S.J, S.Bf, S.H, S.Ft, S.Fw, S.Fp, S.m
+    ch, dk, tr, cl = MAT["t_chrome"], MAT["t_dark"], MAT["t_trim"], MAT["t_cloth"]
+    nearside = S.near()
+    hp = m.part(1)
+    tetsu_helmet(hp, H, ch, tr)
+    hp.cone(Bf, J["neck"] + J["Rt"] @ np.array([0, -2.5, 0]), J["head"] + J["Rh"] @ np.array([-0.6, -4.5, 0]), 2.6, 2.4, dk, k=0.5)
+    fl = m.part(2)
+    for zs in (-1, 1):
+        fl.box(H, (-4, 6, 35 * zs), (16, 13, 3.5), ch, R=rot_y(0.45 * zs) @ rot_x(-0.6 * zs) @ rot_z(-0.3), rr=2)
+    vis = m.part(3)
+    vis.box(H, (30.5, 1.5, 0), (5.5, 4.0, 19), MAT["t_visor"], rr=1.6)
+    crest = m.part(4)
+    crest.box(H, (-8, 50, 0), (24, 5, 3), ch, R=rot_z(D(16)), rr=2)
+    crest.box(H, (15, 44, 0), (6, 5, 4), tr, R=rot_z(D(30)), rr=2, k=1)
+    # scarf: wrapped at the neck, a tail streaming behind
+    sc = m.part(5)
+    sc.cone(Bf, J["neck"] + J["Rt"] @ np.array([-0.2, -2.6, 0]), J["neck"] + J["Rt"] @ np.array([0, 0.4, 0]), 4.6, 4.1, cl)
+    a0, curl, wave = po.get("tail", (0.35, 0.05, 0.0))
+    t0 = J["neck"] + J["Rt"] @ np.array([-3.6, -1.0, -nearside * 1.5])
+    chain(sc, Bf, tail_points(t0, 4, 4.6, a0, curl, wave, po.get("phase", 0.0)), [1.8, 1.9, 1.7, 1.3, 0.7], cl, k=0.6)
+    fc = lambda F: (lambda P: (P - F.T) @ F.R)
+
+    def torso_paint(P, n, mats):
+        Qt, Qw, Qp = fc(Ft)(P), fc(Fw)(P), fc(Fp)(P)
+        out = mats.copy()
+        out[(mats == ch.id) & (np.abs(Qt[:, 2]) < 0.55) & (Qt[:, 0] > 5.0) & (Qt[:, 1] > -5) & (Qt[:, 1] < 6)] = MAT["t_glow"].id
+        bands = (mats == dk.id) & (np.mod(Qw[:, 1] + 20, 3.0) < 1.3) & (Qw[:, 0] > 1.5)
+        out[bands] = ch.id
+        out[(mats == ch.id) & (Qp[:, 1] < -7.4)] = tr.id  # blue hems on the tassets
+        return out
+
+    T = m.part(6, paint=torso_paint)
+    T.ell(Ft, (0.6, 0.8, 0), (6.9, 9.2, 10.4), ch)
+    T.ell(Ft, (4.8, 1.8, 0), (2.8, 5.2, 5.8), ch, k=1.5)
+    T.ell(Fw, (0.3, 0.5, 0), (5.2, 5.8, 7.4), dk, k=2.0)
+    T.ell(Fp, (0, 0.6, 0), (5.4, 5.0, 8.0), dk, k=2.0)
+    # tassets: chrome plates hanging around the hips
+    for c, half, rot in (((5.0, -3.2, 0), (1.2, 5.4, 5.0), rot_z(-0.18)), ((0.2, -3.4, 7.8), (4.6, 5.4, 1.0), rot_x(0.24)),
+                         ((0.2, -3.4, -7.8), (4.6, 5.4, 1.0), rot_x(-0.24)), ((-5.0, -3.2, 0), (1.2, 5.4, 5.0), rot_z(0.18))):
+        T.box(Fp, c, half, ch, R=rot, rr=0.8, k=0.4)
+    for side, g in (("R", 7), ("L", 8)):
+        zs = 1 if side == "R" else -1
+        isnear = zs == nearside or view in ("front", "back")
+        c_, d_ = (ch, dk) if isnear else (far(ch), far(dk))
+        sh, el, ha = J["sh" + side], J["el" + side], J["ha" + side]
+        A = m.part(g)
+        limb(A, Bf, sh, el, 3.8, 3.3, d_)
+        limb(A, Bf, el, ha, 3.8, 3.2, c_)
+        A.ell(Bf, ha + unit(ha - el) * 1.3, (2.6, 2.6, 2.5), d_, k=0.5)
+        pa = m.part(g + 10)  # pauldron: two lames with blue edges
+        Rp_ = J["Rt"] @ rot_x(0.35 * zs)
+        Fs = Bf.sub(Rp_, sh)
+        pa.ell(Fs, (-0.4, 2.6, 1.6 * zs), (6.6, 2.7, 5.8), c_)
+        pa.ell(Fs, (-0.4, 0.2, 3.0 * zs), (6.9, 2.5, 6.1), c_, k=0.3)
+        pe = m.part(g + 12)
+        pe.ell(Fs, (-0.4, -1.1, 3.4 * zs), (7.0, 2.0, 6.2), tr if isnear else far(tr))
+        hip, kn, an, toe = J["hip" + side], J["kn" + side], J["an" + side], J["toe" + side]
+        Lg = m.part(g + 2)
+        limb(Lg, Bf, hip, kn, 5.2, 4.1, d_)
+        Lg.ell(Bf, kn + unit(kn - hip) * -5.0 + np.array([1.8, 0, 0]), (3.0, 5.6, 3.8), c_, R=basis_from(kn - hip) @ rot_z(math.pi / 2), k=0.6)
+        Lg.ell(Bf, kn + np.array([1.0, 0, 0]), (3.0, 3.0, 3.0), c_, k=0.5)
+        limb(Lg, Bf, kn, an, 4.0, 3.0, c_)
+        limb(Lg, Bf, an, toe, 3.0, 2.4, c_, k=0.8)
+    # the monoblade: on his back, or in both hands mid-swing
+    blade = po.get("blade")
+    if blade is None:
+        sw = m.part(11)
+        a, b = J["chest"] + J["Rt"] @ np.array([-6.2, -10, -nearside * 3.5]), J["chest"] + J["Rt"] @ np.array([-6.4, 12, nearside * 4.2])
+        limb(sw, Bf, a, b, 1.1, 1.0, dk)
+        tip = b + unit(b - a) * 6.0
+        S.anchors["pommel"] = tip
+        limb(sw, Bf, b, tip, 0.9, 0.9, dk)
+        sw.ell(Bf, b, (1.9, 0.6, 1.9), ch, R=basis_from(b - a) @ rot_z(math.pi / 2))
+        sw.ell(Bf, tip, (0.9, 0.9, 0.9), MAT["t_glow"])
+    else:
+        grip = (J["haR"] + J["haL"]) / 2
+        d = unit(np.asarray(blade, float))
+        sw = m.part(11)
+        hilt0 = grip - d * 3.0
+        limb(sw, Bf, hilt0, grip + d * 2.5, 0.9, 0.9, dk)
+        sw.ell(Bf, grip + d * 2.8, (0.6, 1.8, 1.8), ch, R=basis_from(d))
+        tipp = grip + d * 30.0
+        sw.box(Bf, (grip + d * 3.0 + tipp) / 2, (13.5, 1.1, 0.4), ch, R=basis_from(d, up=(0, 0, 1) if abs(d[2]) < 0.9 else (0, 1, 0)), rr=0.3)
+        edge_a, edge_b = grip + d * 4.0, tipp
+
+        def edge(R, a=edge_a, b=edge_b):
+            x0, y0, _ = S.px(Bf, a)
+            x1, y1, _ = S.px(Bf, b)
+            for (x, y) in line_px(x0, y0, x1, y1):
+                put(R, x, y, pal("#a6d4ff"))
+            put(R, x1, y1, pal("#ffffff"))
+
+        S.late.append(edge)
+    S.after.append(lambda R: tetsu_face(S, R))
+    return S
+
+
+def tetsu_face(S, R):
+    if S.view == "back":
+        return
+    for side in (-1, 1):
+        x, y, wz = S.px(S.H, (36.5, 1.5, 10.5 * side))
+        f = facing(S.H, (0.8, 0.05, 0.6 * side))
+        if f < 0.15:
+            continue
+        if side == -S.near() and S.view in ("left", "right"):
+            put(R, x, y, pal("#0b2a66"), front="on")  # the dead optic
+            continue
+        put(R, x, y, pal(BLUE), front="on")
+        put(R, x + (1 if S.view != "left" else -1), y, pal("#dff0ff"), front="on")
+        if S.view == "front" and side < 0:
+            put(R, x - 1, y, pal(BLUE), front="on")
+
+
+def tetsu_poses():
+    run = run_cycle(dict(lean=0.24, hyaw=D(6), nlean=-0.1, tail=(1.25, -0.1, 0.3)),
+                    contact=dict(legR=(0.45, 0.07, 0.2), legL=(-0.38, 0.07, 1.4), footR=-0.2, footL=0.9,
+                                 armL=(0.6, 0.22, 1.2), armR=(-0.55, 0.24, 0.7)),
+                    drive=dict(legR=(-0.42, 0.07, 0.45), legL=(0.85, 0.07, 1.6), footR=0.9, footL=0.5,
+                               armR=(0.6, 0.22, 1.2), armL=(-0.55, 0.24, 0.7)))
+    for i, f in enumerate(run):
+        f["phase"] = i * 1.6
+    idle = dict(lean=0.05, twist=0.1, hyaw=D(6), legR=(0.2, 0.14, 0.16), legL=(-0.16, 0.16, 0.2), footL=0.1,
+                armR=(0.1, 0.34, 0.4), armL=(-0.06, 0.3, 0.35), tail=(0.35, 0.05, 0.0))
+    air = dict(air=True, lift=6, lean=0.1, legR=(0.75, 0.1, 1.45), legL=(0.05, 0.1, 1.0), footR=0.4, footL=0.7,
+               armR=(1.0, 0.5, 0.6), armL=(-0.5, 0.55, 0.6), tail=(1.6, 0.1, 0.0))
+    look = dict(idle, hpitch=0.5, nlean=-0.25)
+    stance = dict(lean=0.12, twist=-0.05, hyaw=D(4), legR=(0.35, 0.12, 0.35), legL=(-0.32, 0.16, 0.3), footL=0.3,
+                  tail=(0.8, 0.0, 0.0))
+    atk = []
+    for k, (hands, blade, extra) in enumerate((
+            ((-1.0, 9.0, 5.0), (-0.55, 0.8, 0.15), dict(twist=0.35, lean=0.02)),
+            ((15.0, 0.0, 2.0), (1.0, 0.06, -0.05), dict(lean=0.3, py=-2.0)),
+            ((9.0, -13.0, -3.0), (0.35, -0.9, -0.2), dict(lean=0.38, twist=-0.3, py=-3.0)),
+            ((9.0, -4.0, 2.0), (0.75, 0.62, 0.0), dict(lean=0.18)))):
+        f = dict(stance, blade=blade, **extra)
+        f["armR"] = ("ik", ("chest", hands), (-0.3, -1.0, 1.0))
+        f["armL"] = ("ik", ("chest", tuple(np.add(hands, (-1.0, -1.6, -1.4)))), (-0.3, -1.0, -1.0))
+        atk.append(f)
+    return {"run": run, "idle": idle, "air": air, "look": look, "attack": atk}
+
+
+# ================================================================= SUDO =====
+def sudo_sprite(pr, po, view):
+    S = Sprite(pr, po, view)
+    J, Bf, H, Ft, Fw, Fp, m = S.J, S.Bf, S.H, S.Ft, S.Fw, S.Fp, S.m
+    sk, hood, jeans, wh, pl = MAT["s_skin"], MAT["s_hood"], MAT["s_jeans"], MAT["s_white"], MAT["s_plastic"]
+    nearside = S.near()
+    head = m.part(1)
+    human_head(head, H, sk, jaw=1.03, chin=0.92, nose=1.1, cheek=1.1)
+    head.cone(Bf, J["neck"] + J["Rt"] @ np.array([0, -2.5, 0]), J["head"] + J["Rh"] @ np.array([-0.6, -4.5, 0]), 2.3, 2.1, sk, k=0.6)
+    hm = MAT["s_hair"]
+    hair = m.part(2)
+    crown = H.p((-6, 30, 0))
+    hair.ell(H, (-6, 13, 0), (47, 46, 40), hm, tan=lambda Q: Q - crown[None, :],
+             sfn=lambda Q: np.arctan2(Q[:, 1] - crown[1], Q[:, 0] - crown[0]) * 5.0)
+    hair.plane(H, (30, 26, 0), (1, -1.0, 0), k=3)
+    for a_, m_, b_ in (((18, 40, -14), (32, 50, -22), (42, 44, -30)), ((6, 46, 2), (18, 58, 6), (30, 58, 2)),
+                       ((-10, 46, -12), (-16, 58, -22), (-12, 64, -32)), ((-22, 40, 10), (-36, 50, 16), (-44, 56, 10)),
+                       ((-30, 26, -18), (-46, 30, -28), (-56, 24, -36)), ((26, 34, -4), (38, 26, -8), (43, 14, -10)),
+                       ((22, 38, 18), (34, 44, 28), (42, 38, 34)), ((-34, 8, 10), (-48, 2, 16), (-54, -8, 18))):
+        chain(hair, H, [a_, m_, b_], [9, 5.5, 1.6], hm, k=6, sw=5)
+    # headphones round his neck
+    hph = m.part(3)
+    hph.cone(Bf, J["neck"] + J["Rt"] @ np.array([-0.6, -2.0, 0]), J["neck"] + J["Rt"] @ np.array([-0.4, -0.6, 0]), 3.7, 3.6, pl)
+    hph.cone(Bf, J["neck"] + J["Rt"] @ np.array([-0.6, -2.4, 0]), J["neck"] + J["Rt"] @ np.array([-0.4, -0.2, 0]), 2.7, 2.7, None, sub=True)
+    for zs in (-1, 1):
+        hph.ell(Bf, J["neck"] + J["Rt"] @ np.array([1.6, -2.2, 3.4 * zs]), (1.6, 2.0, 1.6), pl, k=0.3)
+    fc = lambda F: (lambda P: (P - F.T) @ F.R)
+
+    def hoodie_paint(P, n, mats):
+        Qt, Qp = fc(Ft)(P), fc(Fp)(P)
+        out = mats.copy()
+        out[(mats == hood.id) & (Qp[:, 1] > 1.2) & (Qp[:, 1] < 2.6)] = far(hood).id  # the hem's shadow
+        pocket = (Qp[:, 0] > 2.5) & (Qp[:, 1] > 2.8) & (Qp[:, 1] < 8.5) & (np.abs(Qp[:, 2]) < 4.5) & (mats == hood.id)
+        out[pocket & (np.abs(np.abs(Qp[:, 2]) - 4.0) < 0.6)] = far(hood).id
+        return out
+
+    T = m.part(4, paint=hoodie_paint)
+    T.ell(Ft, (0.8, 0.0, 0), (6.0, 8.6, 8.4), hood)
+    T.ell(Fw, (0.9, 0.4, 0), (5.7, 6.2, 7.2), hood, k=2.0)
+    T.ell(Fp, (0.6, 2.6, 0), (5.7, 3.4, 7.5), hood, k=1.5)
+    T.ell(Ft, (-3.6, 7.6, 0), (3.4, 2.8, 5.6), hood, k=1.2)  # the hood, bunched behind the neck
+    for zs in (-1, 1):
+        T.ell(Ft, (-0.4, 4.0, 8.0 * zs), (3.2, 3.3, 3.2), hood, k=1.5)
+    pel = m.part(5)
+    pel.ell(Fp, (0, -0.4, 0), (4.3, 4.0, 6.1), jeans)
+    # the battery backpack: huge, with charge LEDs
+    def pack_paint(P, n, mats):
+        Q = fc(Ft)(P)
+        out = mats.copy()
+        leds = (np.abs(Q[:, 2]) > 7.6) & (Q[:, 1] > -5) & (Q[:, 1] < 9) & (np.mod(Q[:, 1] + 8, 2.8) < 1.3) & (np.abs(Q[:, 0] + 10.0) < 2.4)
+        out[leds] = MAT["s_led"].id
+        return out
+
+    bp = m.part(6, paint=pack_paint)
+    bp.box(Ft, (-10.2, 2.4, 0), (4.6, 12.5, 8.0), pl, rr=1.6)
+    bp.cone(Ft, (-10.0, 14.5, -5.0), (-10.8, 19.5, -5.6), 0.5, 0.4, MAT["s_metal"])  # antenna
+    bp.ell(Ft, (-10.8, 19.8, -5.6), (0.8, 0.8, 0.8), MAT["s_led"])
+    proj = po.get("proj", "hip")
+    for side, g in (("R", 7), ("L", 8)):
+        zs = 1 if side == "R" else -1
+        isnear = zs == nearside or view in ("front", "back")
+        h_, j_, w_ = (hood, jeans, wh) if isnear else (far(hood), far(jeans), far(wh))
+        sh, el, ha = J["sh" + side], J["el" + side], J["ha" + side]
+        A = m.part(g)
+        limb(A, Bf, sh, el, 3.0, 2.7, h_)
+        limb(A, Bf, el, ha, 2.7, 2.5, h_)
+        A.ell(Bf, ha + unit(ha - el) * 1.0, (1.5, 1.5, 1.4), sk if isnear else far(sk), k=0.4)
+        hip, kn, an, toe = J["hip" + side], J["kn" + side], J["an" + side], J["toe" + side]
+
+        def shoe_paint(P, n, mats, an=an, w_=w_):
+            Q = to_body_pts(Bf, P)
+            out = mats.copy()
+            out[(mats == w_.id) & (Q[:, 1] < 0.8)] = MAT["s_metal"].id
+            out[(mats == w_.id) & (np.abs(Q[:, 1] - 2.2) < 0.45)] = MAT["s_led"].id
+            return out
+
+        Lg = m.part(g + 2, paint=shoe_paint)
+        limb(Lg, Bf, hip, kn, 3.4, 2.7, j_)
+        limb(Lg, Bf, kn, an, 2.6, 2.2, j_)
+        Lg.cone(Bf, an + np.array([-0.6, -0.4, 0]), toe + np.array([0.4, 0.0, 0]), 2.4, 2.0, w_, k=0.6)
+    # the laptop on his far forearm (screen glowing) and the EM projector in his near hand
+    fs = "L" if nearside > 0 else "R"
+    ns = "R" if nearside > 0 else "L"
+    if view in ("front", "back"):
+        fs, ns = "L", "R"
+    el, ha = J["el" + fs], J["ha" + fs]
+    lap = m.part(12)
+    mid = (el + ha) / 2
+    S.anchors["laptop"] = mid + np.array([-1.1, 4.0, 0])
+    lap.box(Bf, mid + np.array([0, 1.4, 0]), (4.0, 0.5, 3.0), MAT["s_metal"], R=basis_from(ha - el), rr=0.3)
+    lap.box(Bf, mid + np.array([-1.6, 4.0, 0]), (0.4, 2.8, 3.0), MAT["s_metal"], R=basis_from(ha - el) @ rot_z(0.2), rr=0.3)
+    lap.box(Bf, mid + np.array([-1.1, 4.0, 0]), (0.2, 2.3, 2.5), MAT["s_led"], R=basis_from(ha - el) @ rot_z(0.2), rr=0.2)
+    el, ha = J["el" + ns], J["ha" + ns]
+    aim = unit(np.asarray(po.get("aim", (1.0, -0.15, 0.0)), float))
+    gun = m.part(13)
+    g0 = ha + unit(ha - el) * 0.6
+    S.anchors["dish"] = g0 + aim * 7.3
+    limb(gun, Bf, g0 - aim * 3.5, g0 + aim * 4.0, 1.9, 1.9, MAT["s_copper"])
+    gun.cone(Bf, g0 + aim * 4.0, g0 + aim * 7.0, 1.6, 4.6, MAT["s_metal"], k=0.3)
+    gun.ell(Bf, g0 + aim * 7.3, (0.7, 4.6, 4.6), MAT["s_ledhot"] if po.get("fire") else MAT["s_screen"], R=basis_from(aim))
+    cab = m.part(14)
+    back = J["chest"] + J["Rt"] @ np.array([-6.0, -9.5, nearside * 4.0])
+    sag = (back + g0) / 2 + np.array([0, -5.0, 0])
+    chain(cab, Bf, [back, sag, g0 - aim * 3.0], [0.75, 0.75, 0.75], pl, k=0.2)
+    S.after.append(lambda R: sudo_face(S, R))
+    return S
+
+
+SUDO_EYES = {"near": ["KKKK", "KgwK", "KoKK", ".KK."], "far": ["KK", "go", "KK"], "front": ["KKKK", "KwoK", "KKKK"],
+             "key": {"K": pal("#120d18"), "w": pal("#ffffff"), "g": pal("#c8ffd2"), "o": pal("#2a1416")}}
+
+
+def sudo_face(S, R):
+    eyes_1x(S, R, S.H, SUDO_EYES)
+    mouth_1x(S, R, (pal("#fff6ee"), pal("#3a1416")), width=1, smile=0)
+
+
+def sudo_poses():
+    run = run_cycle(dict(lean=0.3, hyaw=D(10), nlean=-0.25, aim=(1.0, -0.4, 0.0)),
+                    contact=dict(legR=(0.42, 0.05, 0.2), legL=(-0.36, 0.05, 1.3), footR=-0.2, footL=0.9),
+                    drive=dict(legR=(-0.4, 0.05, 0.4), legL=(0.75, 0.05, 1.5), footR=0.85, footL=0.4))
+    for i, f in enumerate(run):
+        sw = 0.5 if i in (0, 3) else -0.4
+        f["armL"] = (0.35 + sw, 0.2, 1.4)
+        f["armR"] = ("ik", ("chest", (8.0, -9.0, 5.0 + 0.0)), (-0.2, -1.0, 1.0))
+        f["phase"] = i * 1.6
+    idle = dict(lean=0.2, nlean=-0.22, hyaw=D(12), twist=0.1, legR=(0.12, 0.1, 0.22), legL=(-0.08, 0.1, 0.25),
+                armL=(0.55, 0.18, 1.4), armR=("ik", ("chest", (8.0, -9.5, 5.0)), (-0.2, -1.0, 1.0)), aim=(1.0, -0.2, 0.0))
+    air = dict(air=True, lift=8, lean=0.15, legR=(0.7, 0.08, 1.4), legL=(0.0, 0.08, 1.0), footR=0.4, footL=0.7,
+               armL=(1.6, 0.5, 0.5), armR=("ik", ("chest", (7.0, -4.0, 6.0)), (-0.2, -1.0, 1.0)), aim=(1.0, 0.2, 0.0))
+    look = dict(idle, hpitch=0.5, nlean=-0.1)
+    atk = []
+    for k, (hand, aim, extra) in enumerate((
+            ((3.0, -4.0, 4.0), (1.0, 0.1, 0.0), dict(lean=0.05, py=0.5)),
+            ((15.0, -1.0, 2.5), (1.0, 0.0, 0.0), dict(lean=0.28, fire=True)),
+            ((11.0, 2.0, 3.0), (0.9, 0.42, 0.0), dict(lean=-0.02, fire=True)),
+            ((10.0, -5.0, 3.5), (1.0, -0.05, 0.0), dict(lean=0.18)))):
+        f = dict(idle, aim=aim, **extra)
+        f["legR"], f["legL"] = (0.3, 0.1, 0.3), (-0.28, 0.12, 0.28)
+        f["armR"] = ("ik", ("chest", hand), (-0.2, -1.0, 1.0))
+        f["armL"] = ("ik", ("chest", tuple(np.add(hand, (-2.0, -1.0, -6.0)))), (-0.2, -1.0, -1.0))
+        atk.append(f)
+    return {"run": run, "idle": idle, "air": air, "look": look, "attack": atk}
+
+
+# ============================================================== landing =====
+def landing_poses(who):
+    """The superhero landing: leap, impact (knee and fist down), hold (look up), rise."""
+    tail = {"paine": "tail", "tetsu": "tail"}.get(who)
+    leap = dict(air=True, lift=5, lean=0.15, hpitch=-0.3, legR=(0.75, 0.12, 1.55), legL=(0.2, 0.12, 1.35),
+                footR=0.6, footL=0.8, armR=(0.5, 1.15, 0.5), armL=(-0.5, 1.05, 0.4))
+    low = dict(py=-20.0, lean=0.55, nlean=-0.1,
+               legR=("ik", (10.0, 2.8, 5.0), (1.0, 0.4, 0.0)), footR=-0.05,
+               legL=("ik", (-9.0, 2.6, -4.5), (0.4, -1.0, 0.0)), footL=0.25,
+               armR=("ik", (7.0, 3.5, 3.0), (-0.3, 0.5, 1.0)), armL=(-0.8, 0.9, 0.2))
+    impact = dict(low, hpitch=-0.35)
+    hold = dict(low, hpitch=0.12, hyaw=D(8), glint=True)
+    rise = dict(lean=0.3, py=-9.0, hpitch=0.05, legR=(0.55, 0.1, 1.0), legL=(-0.3, 0.12, 0.8), footL=0.6,
+                armR=(0.25, 0.3, 0.5), armL=(-0.35, 0.3, 0.4))
+    out = [leap, impact, hold, rise]
+    if tail:
+        for f, t in zip(out, ((1.55, -0.12, 0.0), (1.0, -0.15, 0.0), (0.6, -0.05, 0.0), (0.5, 0.0, 0.0))):
+            f[tail] = t
+    if who == "sudo":
+        for f in out:
+            f.setdefault("aim", (1.0, -0.3, 0.0))
+    return [dict(f) for f in out]
+
+
+SHEET_COLS = 6
+
+
+def sheet_frames(who):
+    """[(row, col, view, pose)] for the 6x6 sheet layout."""
+    P = globals()[who + "_poses"]()
+    run, idle, air = P["run"], P["idle"], P["air"]
+    cells = []
+    for row, view in ((0, "front"), (1, "left"), (2, "right"), (3, "back")):
+        for col in range(4):
+            po = run[col]
+            if row == 3 and col == 0:
+                po = P["look"]
+            cells.append((row, col, view, po))
+        cells.append((row, 4, view, idle))
+        cells.append((row, 5, view, air))
+    for row, view in ((4, "left"), (5, "right")):
+        for col, po in enumerate(P["attack"]):
+            cells.append((row, col, view, po))
+    return cells
+
+
+def make_sheet(who):
+    pr = PROPS[who]
+    build = globals()[who + "_sprite"]
+    sheet = Image.new("RGBA", (FW * SHEET_COLS, FH * 6), (0, 0, 0, 0))
+    for row, col, view, po in sheet_frames(who):
+        sheet.alpha_composite(build(pr, po, view).render().to_image(), (col * FW, row * FH))
+    return sheet
+
+
+def make_sheets():
+    return {"widow3.png": make_sheet("paine"), "tetsu3.png": make_sheet("tetsu"), "hackerman3.png": make_sheet("sudo")}
+
+
+def make_landing():
+    sheet = Image.new("RGBA", (FW * 4, FH * 3), (0, 0, 0, 0))
+    for row, who in enumerate(("paine", "tetsu", "sudo")):
+        build = globals()[who + "_sprite"]
+        for col, po in enumerate(landing_poses(who)):
+            S = build(PROPS[who], po, "right")
+            if po.get("glint"):
+                S.late.append(lambda R, S=S, who=who: glint(S, R, who))
+            sheet.alpha_composite(S.render().to_image(), (col * FW, row * FH))
+    return {"hero-landing3.png": sheet}
+
+
+def glint(S, R, who):
+    """The hold frame's flash: a star on the eye (the optic flares for Tetsu)."""
+    x, y, _ = S.px(S.H, (face_x(-14.0 * S.near() * -1) + 2.0, 1.0, 14.0 * S.near()))
+    c = {"paine": pal("#ffffff"), "tetsu": pal("#dff0ff"), "sudo": pal("#d4ffdc")}[who]
+    for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, -2), (0, 2)):
+        put(R, x + dx, y + dy, c)
+
+
+# ============================================================ portraits =====
+def halve(im):
+    """2:1 pixel-art reduction: each 2x2 block keeps its most common colour
+    (the darker one on ties, so outlines, eyes and brows survive)."""
+    a = np.asarray(im.convert("RGBA")).astype(np.int64)
+    h, w = a.shape[0] // 2, a.shape[1] // 2
+    out = np.zeros((h, w, 4), np.uint8)
+    for y in range(h):
+        for x in range(w):
+            blk = a[2 * y:2 * y + 2, 2 * x:2 * x + 2].reshape(4, 4)
+            op = blk[blk[:, 3] > 0]
+            if len(op) < 2:
+                continue
+            keys = [tuple(c) for c in op]
+            best = max(set(keys), key=lambda c: (keys.count(c), -sum(c[:3])))
+            out[y, x] = best
+    return Image.fromarray(out, "RGBA")
+
+
+def make_portraits():
+    """HUD / co-op / menu portraits (64x64): the bust's head, framed in the IC's colour."""
+    sheet = Image.new("RGBA", (64 * 3, 64), (0, 0, 0, 0))
+    for i, (who, col) in enumerate((("paine", RED), ("tetsu", BLUE), ("sudo", GREEN))):
+        R, m, B, H = render_bust(globals()[who + "_bust"])
+        globals()[who + "_bust_finish"](R, m, B, H)
+        im = R.to_image()
+        hx, hy = R.project(H.p((8, -4, 0)))
+        box = (int(round(hx - 64)), int(round(hy - 60)), int(round(hx + 64)), int(round(hy + 68)))
+        head = halve(im.crop(box))
+        cell = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        px = cell.load()
+        c = tuple(int(col[k:k + 2], 16) for k in (1, 3, 5))
+        for y in range(64):
+            for x in range(64):
+                t = y / 63
+                bg = (int(26 - 14 * t), int(11 - 7 * t), int(46 - 24 * t), 255)
+                if y % 3 == 2:
+                    bg = (bg[0] + 6, bg[1] + 3, bg[2] + 10, 255)
+                px[x, y] = bg
+        cell.alpha_composite(head, (0, 0))
+        d = ImageDraw.Draw(cell)
+        d.rectangle((0, 0, 63, 63), outline=(11, 4, 22, 255))
+        d.rectangle((1, 1, 62, 62), outline=c + (255,))
+        d.rectangle((2, 2, 61, 61), outline=(11, 4, 22, 255))
+        sheet.alpha_composite(cell, (64 * i, 0))
+    return {"portraits3.png": sheet}
+
+
+# ============================================================== anchors =====
+def anchors():
+    """Effect anchors for the game code, as offsets from (centre x, feet y) when
+    facing right (x mirrors when facing left): python3 tools/art_ics.py --anchors"""
+    out = {}
+
+    def off(S, p):
+        w = S.Bf.p(p)
+        return round(float(w[0]), 1), round(-float(w[1]) - 1.0, 1)
+
+    P = paine_poses()
+    for k in (0, 1):
+        S = paine_sprite(PROPS["paine"], P["attack"][k], "right")
+        out["paine arrow tip, frame %d" % k] = off(S, S.anchors["arrow"])
+    P = sudo_poses()
+    for k in (1, 2):
+        S = sudo_sprite(PROPS["sudo"], P["attack"][k], "right")
+        out["sudo dish, attack %d" % k] = off(S, S.anchors["dish"])
+        out["sudo laptop, attack %d" % k] = off(S, S.anchors["laptop"])
+    for who in ("paine", "tetsu", "sudo"):
+        S = globals()[who + "_sprite"](PROPS[who], globals()[who + "_poses"]()["idle"], "right")
+        out[who + " near eye, idle"] = off(S, to_body(S.Bf, S.H.p((face_x(14) + 1, 1.0, 14.0 * S.near()))))
+        if "pommel" in S.anchors:
+            out[who + " pommel, idle"] = off(S, S.anchors["pommel"])
+        out[who + " chest, idle"] = off(S, S.J["chest"])
+    return out
+
+
 # ================================================================= main =====
 def build_all(only):
     out = {}
@@ -1302,7 +2204,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--only", default="busts,sheets,landing,portraits", help="comma list: busts,sheets,landing,portraits")
     ap.add_argument("--preview", default=None, help="also write enlarged previews into this folder")
+    ap.add_argument("--anchors", action="store_true", help="print where the game's effects should attach, and stop")
     args = ap.parse_args()
+    if args.anchors:
+        for k, v in anchors().items():
+            print("%-28s dx %6.1f  dy %6.1f" % (k, v[0], v[1]))
+        return
     out = build_all(set(args.only.split(",")))
     for fn, im in out.items():
         im.save(os.path.join(IMG_DIR, fn))

@@ -81,6 +81,15 @@ loadImage("widow", "img/widow.png"); // 6 rows x 4 frames of 32x48 (rows 4/5: bo
 loadImage("hackerman", "img/hackerman.png"); // same layout (rows 4/5: EM projector)
 loadImage("heroLanding2", "img/hero-landing2.png"); // rows: widow, tetsu, hackerman
 loadImage("portraits2", "img/portraits2.png"); // 3 portraits of 48x48
+// v3.2: the ICs redrawn (tools/art_ics.py) at 80x120 a frame, drawn 1:1; the
+// 32x48 sheets above stay as fallbacks while these load (CHARACTERS[id].art)
+loadImage("widow3", "img/widow3.png"); // 6 rows x 6 frames of 80x120 (cols 4/5: idle, airborne)
+loadImage("tetsu3", "img/tetsu3.png"); // same layout
+loadImage("hackerman3", "img/hackerman3.png"); // same layout
+loadImage("heroLanding3", "img/hero-landing3.png"); // rows paine, tetsu, sudo x 4 frames of 80x120
+loadImage("portraits3", "img/portraits3.png"); // 3 portraits of 64x64
+// The portrait sheet to use and its cell size: the 64px one once it has loaded
+const portraitSheet = () => (isReady(IMG.portraits3) ? ["portraits3", 64] : [isReady(IMG.portraits2) ? "portraits2" : "portraits", 48]);
 loadImage("fx2", "img/fx2.png"); // 8 cells of 32x32: arrows, EM, glitch, bleed, heat, reflect
 loadImage("xpHardware", "img/xp-hardware.png"); // rows RAM / NVMe / CPU x 4 shine frames
 loadImage("nullBoss", "img/null.png"); // 14 frames of 64x96

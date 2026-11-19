@@ -134,13 +134,14 @@ function heroLanding() {
 
 // What the hero sheet should show during the drop (or null)
 function introFrame() {
-  const sheet = isReady(IMG.heroLanding2) ? IMG.heroLanding2 : IMG.heroLanding;
+  const big = isReady(IMG.heroLanding3); // v3.2: 80x120 frames
+  const sheet = big ? IMG.heroLanding3 : isReady(IMG.heroLanding2) ? IMG.heroLanding2 : IMG.heroLanding;
   if (!intro.active || !isReady(sheet)) return null;
   let fx;
   if (intro.phase === "leap") fx = 0;
   else if (intro.phase === "land") fx = intro.t < 0.12 ? 1 : intro.t < 0.75 ? 2 : 3;
   else return null;
-  return { sheet, row: LANDING_ROWS[player.char] || 0, fx, tint: null, flip: player.facing < 0 };
+  return { sheet, row: LANDING_ROWS[player.char] || 0, fx, tint: null, flip: player.facing < 0, fw: big ? 80 : 32, fh: big ? 120 : 48 };
 }
 
 // ------------------------------------------------------------------ Lives ---

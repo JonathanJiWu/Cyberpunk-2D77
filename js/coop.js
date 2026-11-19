@@ -541,11 +541,10 @@ function drawCoopHud(VW, time) {
     ctx.strokeStyle = c.color;
     ctx.lineWidth = 3;
     ctx.strokeRect(x - 12, y - 12, 424, c.joining ? 150 : 144);
-    const sheet = isReady(IMG.portraits2) ? "portraits2" : "portraits";
     if (c.joining) {
       const ch = CHARACTERS[c.joining.char] || CHARACTERS.paine;
       hudText("PLAYER 2 // JOIN", x, y, 18, c.color);
-      drawIcon(sheet, 48, ch.portrait, x, y + 30, 56);
+      drawPortrait(ch.portrait, x, y + 30, 56);
       hudText(`< ${ch.name} >`, x + 72, y + 38, 22, ch.color);
       hudText(ch.title.toUpperCase(), x + 72, y + 68, 12, "#c9b6ff");
       const left = Math.ceil(COOP.joinTimeout - c.joining.t);
@@ -553,7 +552,7 @@ function drawCoopHud(VW, time) {
       return;
     }
     const ch = CH();
-    drawIcon(sheet, 48, ch.portrait, x, y, 40);
+    drawPortrait(ch.portrait, x, y, 40);
     hudText(`P2 ${ch.name}`, x + 50, y + 10, 20, c.color);
     const status = coopStatus(c);
     drawBar(x, y + 50, 400, 24, status ? 0 : p.hp / stats.maxHp, status ? 0 : p.ghostHp / stats.maxHp, p.hp / stats.maxHp < 0.3 && Math.sin(time * 12) > 0 ? "#ff2f6d" : c.color);

@@ -51,8 +51,8 @@ function statBar(label, value, color) {
 }
 
 function portraitCanvas(ch, size) {
-  const sheet = isReady(IMG.portraits2) ? "portraits2" : "portraits";
-  return isReady(IMG[sheet]) ? spriteCanvas(sheet, ch.portrait * 48, 0, 48, 48, size) : spriteCanvas(CHARACTERS.paine.sprite.img, 0, 0, 32, 48, size);
+  const [sheet, cell] = portraitSheet(); // (64px v3.2 portraits once loaded)
+  return isReady(IMG[sheet]) ? spriteCanvas(sheet, ch.portrait * cell, 0, cell, cell, size) : spriteCanvas(CHARACTERS.paine.sprite.img, 0, 0, 32, 48, size);
 }
 
 // ------------------------------------------------------- Character select ---
@@ -90,6 +90,7 @@ renderCharSelect();
 // Portraits load after the menu is built: refresh once they arrive
 if (IMG.portraits) IMG.portraits.addEventListener("load", renderCharSelect);
 if (IMG.portraits2) IMG.portraits2.addEventListener("load", renderCharSelect);
+if (IMG.portraits3) IMG.portraits3.addEventListener("load", renderCharSelect);
 
 // ---------------------------------------------------------------- Codex -----
 const codexEl = document.getElementById("codex");

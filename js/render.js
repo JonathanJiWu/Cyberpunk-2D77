@@ -200,6 +200,17 @@ function drawIcon(sheet, size, cell, x, y, s) {
   }
 }
 
+// An IC's HUD portrait. The 64px v3.2 portraits are shown smaller than that,
+// so they're smoothed rather than having whole pixel rows dropped.
+function drawPortrait(cell, x, y, s) {
+  const [sheet, size] = portraitSheet();
+  if (size <= s || !isReady(IMG[sheet])) return drawIcon(sheet, size, cell, x, y, s);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(IMG[sheet], cell * size, 0, size, size, x, y, s, s);
+  ctx.imageSmoothingEnabled = false;
+}
+
 // On small screens the HUD is drawn bigger so it stays readable.
 const hudLayout = { scale: 1, killsY: 132 };
 
@@ -223,7 +234,7 @@ function drawHUD(time) {
   // Health + heat
   const lowHp = p.hp / stats.maxHp < 0.3;
   const hpColor = lowHp && Math.sin(time * 12) > 0 ? "#ff2f6d" : "#19f5ff";
-  drawIcon(isReady(IMG.portraits2) ? "portraits2" : "portraits", 48, CH().portrait, 44, 22, 40);
+  drawPortrait(CH().portrait, 44, 22, 40);
   const team = coopActive(); // co-op: tag player 1's panel, show when they're down
   hudText(`${team ? "P1 " : ""}${CH().name}  LV ${progress.level}`, 94, 32, 24, team ? coop.players[0].color : "#ffe14d");
   const down = coopStatus(coop.players[0]);
