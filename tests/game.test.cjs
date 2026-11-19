@@ -3529,6 +3529,36 @@ const fastForward = (page, seconds, bot) =>
     await h.context.close();
   });
 
+  await test("co-op: player 2 can't leave while out of lives and re-join at full HP for free; the re-join waits for a life and spends it", async () => {
+    const { context, page, problems } = await coopRun({ p2: "tetsu" });
+    const r = await page.evaluate(() => {
+      const out = {};
+      game.lives = 1; // no spare life
+      const b = P(1);
+      b.invuln = 0;
+      b.hp = 0;
+      step(2);
+      out.knocked = { out: coop.players[1].out, lives: game.lives };
+      coopLeave();
+      out.left = coop.players.length;
+      press(1, "START"); // the same pad asks to join again
+      press(1, "A"); // drop in
+      step(150);
+      const c2 = coop.players[1];
+      out.rejoined = { n: coop.players.length, out: !!(c2 && c2.out), hidden: !!(c2 && c2.player.hidden), lives: game.lives, banner: game.banner && game.banner.text };
+      game.lives++; // a life comes back: player 2 drops in on it
+      step(2);
+      out.revived = { out: c2.out, lives: game.lives, intro: c2.intro.active };
+      return out;
+    });
+    assert(r.knocked.out && r.knocked.lives === 1, "player 2 was not knocked out: " + JSON.stringify(r.knocked));
+    assert(r.left === 1, "player 2 did not leave: " + r.left);
+    assert(r.rejoined.n === 2 && r.rejoined.out && r.rejoined.hidden && r.rejoined.lives === 1 && /STILL OUT/.test(r.rejoined.banner), "a re-join while out came back for free: " + JSON.stringify(r.rejoined));
+    assert(!r.revived.out && r.revived.lives === 1 && r.revived.intro, "player 2 did not come back on the next life: " + JSON.stringify(r.revived));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("co-op: damage, deaths and respawns spend the shared lives; a player with no life left is out until one comes back; game over only when both are down", async () => {
     const { context, page, problems } = await coopRun({ p2: "tetsu" });
     const r = await page.evaluate(() => {

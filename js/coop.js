@@ -236,6 +236,18 @@ function coopDrop(ctx, runStart) {
       intro.t = -0.3;
     } else startIntro("join");
   });
+  if (!runStart && game.coopOutLeft) {
+    // they left while out of lives: back in the queue for one (coopUpdate
+    // revives them, spending it, as soon as the team has a life to spare)
+    game.coopOutLeft = false;
+    ctx.out = true;
+    withPlayer(ctx, () => {
+      intro.active = false;
+      player.hp = 0;
+      player.hidden = true;
+    });
+    game.banner = { text: `${ctx.label} IS STILL OUT // GRAB A LIFE TO BRING THEM BACK`, time: 2.6, color: ctx.color };
+  }
 }
 
 // A context's run state goes; the seat (and pad) stay for the next run
@@ -245,6 +257,7 @@ function coopReset() {
   P1().out = false;
   P1().joining = null;
   game.coopRun = false;
+  game.coopOutLeft = false;
 }
 
 // startGame(): player 2 drops in alongside player 1
@@ -260,6 +273,9 @@ function coopStartRun() {
 function coopLeave() {
   if (!coop.seat) return;
   const ctx = coop.players[1];
+  // leaving while knocked out doesn't buy a free comeback: a mid-run re-join
+  // still waits for (and spends) a life, see coopDrop
+  if (ctx && ctx.out && inRun()) game.coopOutLeft = true;
   coop.seat = null;
   gamepads.release(1);
   if (ctx) {
