@@ -368,6 +368,7 @@ function updateNinja(e, dt, dx, dy, want, busy) {
   const D = e.def.dash;
   if (e.dashT > 0) {
     e.dashT -= dt;
+    if (navAtEdge(e, e.dashDir * D.speed * dt)) return (e.dashT = 0); // (a lunge, not a leap off the roof)
     if (Math.random() < 0.6) particles.push({ x: e.x + e.w / 2, y: e.y + e.h * 0.6, vx: 0, vy: 0, life: 0.25, size: 10, color: "#ff2fd6" });
     return e.dashDir * D.speed;
   }
@@ -393,6 +394,7 @@ function updateNinja(e, dt, dx, dy, want, busy) {
 function updateEnforcer(e, dt, dx, dy, want, busy) {
   if (e.bash > 0) {
     e.bash -= dt;
+    if (navAtEdge(e, e.facing * 650 * dt)) return (e.bash = 0); // (stops at the edge of a platform)
     return e.facing * 650;
   }
   if (e.windup > 0) {

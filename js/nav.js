@@ -66,9 +66,10 @@ const NAV_MOVERS = {
   ninja: { jump: 1150, double: 1000, air: 480, think: 0.25 }, // air-kick (a shadow-step double jump)
   enforcer: { jump: 950, air: 260, think: 0.45, grapple: { up: 430, side: 320, reel: 560, aim: 0.42 } }, // heavy: short hops, a grapple for the rest
   walker: { jump: 1150, air: 380, think: 0.3 },
-  overseer: { boss: true, jump: 1350, double: 1150, air: 560, run: 400, think: 0.2 },
-  nullptr: { boss: true, jump: 1350, double: 1150, air: 620, run: 480, think: 0.2 },
-  goat: { boss: true, jump: 1350, double: 1150, air: 460, run: 260, think: 0.25 },
+  // (bosses stand a moment after each landing: room for their attacks mid-climb)
+  overseer: { boss: true, jump: 1350, double: 1150, air: 560, run: 400, think: 0.2, settle: 0.22 },
+  nullptr: { boss: true, jump: 1350, double: 1150, air: 620, run: 480, think: 0.2, settle: 0.22 },
+  goat: { boss: true, jump: 1350, double: 1150, air: 460, run: 260, think: 0.25, settle: 0.28 },
 };
 const navMovers = {};
 const navDebug = { on: /[?&]navdebug\b/.test(location.search) };
@@ -171,6 +172,15 @@ function navFlight(m, h, biggest) {
   return disc < 0 ? 0 : (v + Math.sqrt(disc)) / g;
 }
 
+// How far sideways a jump up (or down) h can carry it. The double jump only
+// counts when the height needs it: long, high double-jump arcs tend to come
+// down on some other floor on the way.
+function navReach(m, h, k) {
+  const single = h + NAV.clear <= (m.jump * m.jump) / (2 * m.g);
+  const T = single ? navFlight({ g: m.g, jump: m.jump, double: 0 }, h, true) : navFlight(m, h, true);
+  return m.air * k * T;
+}
+
 // The gentlest single jump that clears h and covers d sideways (-1: none does)
 function navJumpSpeed(m, h, d) {
   const g = m.g;
@@ -232,9 +242,16 @@ function navTry(m, A, B, kind, pa, pb, R) {
     }
   }
   if (navSB[1] - navSB[0] < 4) return false;
-  const reach = m.air * NAV.reach * navFlight(m, h, true);
+  const reach = navReach(m, h, NAV.reach);
   R.t0 = Math.max(navSA[0], navSB[0] - reach);
   R.t1 = Math.min(navSA[1], navSB[1] + reach);
+  if (h < 0) {
+    // ...and it has to get clear of its own floor before it comes back down
+    // past it: take off near the edge on the landing's side
+    const clearX = m.air * NAV.reach * ((2 * m.jump) / m.g);
+    if (navSB[0] >= A.x1 - 6 + w / 2 - 1) R.t0 = Math.max(R.t0, A.x1 - 6 + w / 2 - clearX);
+    else R.t1 = Math.min(R.t1, A.x0 + 6 - w / 2 + clearX);
+  }
   if (R.t1 - R.t0 < 4) return false;
   if (h < -40) {
     // nothing in between may catch it on the way down
@@ -262,7 +279,7 @@ function navMoverFor(e) {
   const spec = (e.def && e.def.nav) || NAV_MOVERS[key] || NAV_MOVERS.walker;
   const boss = !!e.boss;
   const g = boss ? BOSS_GRAVITY : NAV_WALKER_G;
-  const m = Object.assign({ double: 0, think: 0.3 }, spec, {
+  const m = Object.assign({ double: 0, think: 0.3, settle: 0 }, spec, {
     key,
     boss,
     g,
@@ -408,7 +425,7 @@ function navReachable(m, from, goal) {
 
 // ---------------------------------------------------------- Controller ------
 function navState() {
-  return { m: null, node: -1, goal: -1, edge: -1, phase: NAV_RUN, lx: 0, lrel: 0, dbl: false, think: 0, wait: 0, stuck: 0, best: Infinity, ban: -1, banUntil: 0, failEdge: -1, fails: 0, jumps: 0, grapples: 0, lastX: NaN, t: 0, est: 0, lost: 0 };
+  return { m: null, node: -1, goal: -1, edge: -1, phase: NAV_RUN, lx: 0, lrel: 0, dbl: false, think: 0, wait: 0, stuck: 0, best: Infinity, ban: -1, banUntil: 0, failEdge: -1, fails: 0, jumps: 0, grapples: 0, lastX: NaN, t: 0, est: 0, lost: 0, settle: 0 };
 }
 
 // Is this enemy in the middle of a planned move (jump, drop or grapple)?
@@ -523,7 +540,7 @@ function navLaunch(e, n, m, G, k, goal, t, cx) {
     n.grapples++;
   } else {
     // the gentlest jump that makes it (both its height and its width)
-    const maxReach = m.air * 0.9 * navFlight(m, h, true);
+    const maxReach = navReach(m, h, 0.9);
     if (Math.abs(lx - cx) > maxReach) lx = clamp(cx + Math.sign(lx - cx) * maxReach, navLB[0], navLB[1]);
     const d = Math.abs(lx - cx);
     let v = navJumpSpeed(m, h, d);
@@ -534,6 +551,12 @@ function navLaunch(e, n, m, G, k, goal, t, cx) {
       T = navFlight(m, h, true);
     } else {
       v = Math.min(m.jump, v * rand(1, 1.05)); // (a little variation: they don't all fly in lockstep)
+      if (h < 0 && from && !from.ground) {
+        // down and across: enough air time to get clear of its own floor first
+        const exit = lx > cx ? from.x + from.w - 6 + e.w / 2 - cx : cx - (from.x + 6 - e.w / 2);
+        v = Math.max(v, (m.g * Math.max(0, exit)) / (2 * m.air * 0.9));
+        if (v > m.jump) return false;
+      }
       T = (v + Math.sqrt(Math.max(0, v * v - 2 * m.g * h))) / m.g;
     }
     e.vy = -v;
@@ -567,11 +590,36 @@ function navSteerAir(e, n, m, G) {
   const by = pb ? pb.y : GROUND_Y;
   let disc = e.vy * e.vy + 2 * g * (by - feet);
   let tr = disc >= 0 ? (-e.vy + Math.sqrt(disc)) / g : Math.max(0.05, -e.vy / g);
-  let lx = n.lx;
-  if (navMoving(pb)) lx = navPose(pb, 0, 0, tr, navPB).x0 + n.lrel;
+  // the landing spot (and the range it may land in), where the floor will be by then
+  navPose(pb, 0, 0, tr, navPB);
+  navLanding(navPB, m.w, navLB);
+  let lx = navMoving(pb) ? navPB.x0 + n.lrel : n.lx;
+  // going down and across: get clear of its own floor before passing its top
+  const pa = navPlat(G.from[k]);
+  if (pa && G.kind[k] === NAV_JUMP && by > pa.y + 20 && feet <= pa.y + 2) {
+    const c0 = pa.x + 6 - e.w / 2;
+    const c1 = pa.x + pa.w - 6 + e.w / 2;
+    if (cx > c0 - 6 && cx < c1 + 6) return lx > cx ? m.air : -m.air;
+  }
+  // a double jump only when this arc can't make it: too low, or the floor out
+  // of reach sideways (never a last-moment one on the way down)
   const canDouble = m.double && !n.dbl && (!m.boss || e.airJumps > 0);
-  if (canDouble && e.vy > -220 && (disc < 0 || Math.abs(lx - cx) > m.air * tr)) {
-    const v2 = clamp(Math.sqrt(2 * g * Math.max(feet - (by - NAV.clear), 60)), 380, m.double);
+  if (canDouble && e.vy > -220 && e.vy < 250 && (disc < 0 || navGap(cx, cx, navLB[0], navLB[1]) > m.air * tr)) {
+    // as strong as it needs to be: high enough, and long enough to get across
+    const gap = navGap(cx, cx, navLB[0], navLB[1]);
+    const T2 = (v) => (v + Math.sqrt(Math.max(0, v * v + 2 * g * (by - feet)))) / g;
+    let v2 = clamp(Math.sqrt(2 * g * Math.max(feet - (by - NAV.clear), 60)), 380, m.double);
+    if (T2(m.double) * m.air <= gap + 10) v2 = m.double;
+    else if (T2(v2) * m.air < gap + 10) {
+      let a = v2;
+      let b = m.double;
+      for (let i = 0; i < 10; i++) {
+        const mid = (a + b) / 2;
+        if (T2(mid) * m.air >= gap + 10) b = mid;
+        else a = mid;
+      }
+      v2 = b;
+    }
     e.vy = -v2;
     n.dbl = true;
     if (m.boss) {
@@ -581,6 +629,9 @@ function navSteerAir(e, n, m, G) {
     disc = e.vy * e.vy + 2 * g * (by - feet);
     tr = disc >= 0 ? (-e.vy + Math.sqrt(disc)) / g : Math.max(0.05, -e.vy / g);
   }
+  // can't make the spot itself? the nearest part of the floor will do
+  const reach = m.air * Math.max(tr, 0.06);
+  if (Math.abs(lx - cx) > reach) lx = clamp(cx + Math.sign(lx - cx) * reach, navLB[0], navLB[1]);
   return clamp((lx - cx) / Math.max(tr, 0.06), -m.air, m.air);
 }
 
@@ -597,6 +648,7 @@ function navLand(e, n, G) {
     n.fails = 0;
     n.stuck = 0;
     n.lost = 0;
+    n.settle = n.m.settle;
     n.best = Infinity;
     return;
   }
@@ -668,6 +720,10 @@ function navFollow(e, n, m, G, node, goal, t, cx, speed, dt) {
   const gx = clamp(cx, a + 2, Math.max(a + 2, b - 2));
   if (Math.abs(gx - cx) > 4) return Math.sign(gx - cx) * Math.min(speed, Math.abs(gx - cx) * 8 + 40);
   // at the take-off point: take turns with anyone else using it, then go
+  if (n.settle > 0) {
+    n.settle -= dt;
+    return 0;
+  }
   if (reachable && game.time >= G.busy[k] && navLaunch(e, n, m, G, k, goal, t, cx)) {
     G.busy[k] = game.time + rand(NAV.stagger[0], NAV.stagger[1]);
     return e.vx;
@@ -926,6 +982,14 @@ function navShove(e, dx) {
     x = dx < 0 ? Math.max(x, Math.min(e.x, lo)) : Math.min(x, Math.max(e.x, hi));
   }
   e.x = clamp(x, 0, WORLD_W - e.w);
+}
+
+// Would moving dx carry a walker past the edge of the platform it stands on?
+function navAtEdge(e, dx) {
+  const p = e.standingOn;
+  if (!p || p.ground) return false;
+  const nx = e.x + e.w / 2 + dx;
+  return nx < p.x + 8 || nx > p.x + p.w - 8;
 }
 
 // Flyers spread out: a push away from every other flyer too close (into
