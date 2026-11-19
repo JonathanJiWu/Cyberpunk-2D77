@@ -126,7 +126,7 @@ function renderCodex() {
       if (locked) {
         info.append(el("h3", "", "??? // ENCRYPTED"), el("p", "codex-lore", `Appears around ${formatTime(d.from)} into a run.`));
       } else {
-        const kind = { melee: "MELEE", ranged: "RANGED", bomber: "KAMIKAZE", sniper: "SNIPER" }[d.kind];
+        const kind = d.role || { melee: "MELEE", ranged: "RANGED", bomber: "KAMIKAZE", sniper: "SNIPER" }[d.kind];
         info.append(el("h3", "", `${d.name} // ${kind}${d.walker ? ", WALKER" : ", FLYER"}`));
         info.append(statBar("HP", d.hp / 70, "#ff2f6d"), statBar("DAMAGE", (d.shot ? d.shot.damage : d.damage) / 16, "#ff9b21"), statBar("SPEED", d.speed / 300, "#ffe14d"));
         info.append(el("p", "codex-kit", d.desc), el("p", "codex-lore", d.lore));

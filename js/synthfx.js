@@ -698,6 +698,113 @@ const synth = (() => {
       },
     },
 
+    // ---------------------------------------------- v3.2 ENEMIES ---
+    forkLeap: {
+      gap: 0.08, max: 3, vary: 0.08, wet: 0.05, g: 0.9,
+      fn(k) {
+        // the shell unlatches and a spring "boing"s it into the air
+        k.click(0, 0.25, 4000);
+        k.osc({ type: "square", f: [[0, 220], [0.18, 880]], filt: { t: "lowpass", f: 2400 }, e: perc(0.12, 0.2) });
+        k.osc({ f: [[0, 300], [0.2, 1200]], fm: { f: 30, d: 80 }, e: perc(0.1, 0.22) });
+        k.noise({ buf: "pink", filt: { t: "bandpass", f: [[0, 900], [0.2, 3000]], q: 2 }, e: [[0, 0], [0.04, 0.3], [0.22, 0]] });
+      },
+    },
+    forkSplit: {
+      gap: 0.06, max: 3, vary: 0.05, wet: 0.12, g: 0.9,
+      fn(k) {
+        // fork(): one process pops into two that fly apart, left and right
+        k.thump(0, 160, 60, 0.12, 0.5);
+        k.noise({ buf: "crackle", filt: { t: "highpass", f: 2000 }, e: hit(0.5, 0.2) });
+        [[-0.8, 1], [0.8, 1.5]].forEach(([p, r]) => k.osc({ at: 0.02, type: "square", f: [[0, 660], [0.16, 990 * r]], filt: { t: "lowpass", f: 3500 }, e: perc(0.14, 0.18), to: k.pan([[0, 0], [0.18, p]]) }));
+      },
+    },
+    lobberFire: {
+      gap: 0.1, max: 3, vary: 0.05, wet: 0.2, g: 0.9,
+      fn(k) {
+        const d = k.drive(2.2, 0.7);
+        k.thump(0, 120, 40, 0.3, 0.9, d); // the tube's thoomp
+        k.noise({ buf: "brown", filt: { t: "lowpass", f: [[0, 1600], [0.25, 200]] }, e: hit(0.7, 0.3), to: d });
+        k.noise({ filt: { t: "bandpass", f: 1800, q: 1 }, e: hit(0.25, 0.05) });
+        k.osc({ at: 0.05, f: [[0, 900], [0.5, 1900]], e: [[0, 0], [0.05, 0.06], [0.45, 0.04], [0.55, 0]] }); // the packet whistles up
+      },
+    },
+    packetLand: {
+      gap: 0.06, max: 4, vary: 0.06, wet: 0.2, g: 0.8,
+      fn(k) {
+        const d = k.drive(2.5, 0.6);
+        const c = k.crush(5, 0.3);
+        k.thump(0, 140, 35, 0.4, 0.9, d);
+        k.noise({ buf: "brown", filt: { t: "lowpass", f: [[0, 2500], [0.4, 150]] }, e: hit(0.9, 0.45), to: d });
+        k.noise({ filt: { t: "bandpass", f: [[0, 3000], [0.2, 900]], q: 1 }, e: hit(0.4, 0.2) });
+        for (let i = 0; i < 5; i++) k.osc({ at: 0.03 + i * 0.035, type: "square", f: rnd(1200, 3200), e: perc(0.25, 0.03), to: c }); // the payload scatters
+      },
+    },
+    monolithSlam: {
+      gap: 0.2, max: 2, vary: 0.03, wet: 0.3, g: 0.75,
+      fn(k) {
+        const d = k.drive(3, 0.6);
+        k.thump(0, 90, 25, 0.7, 1, d);
+        k.noise({ buf: "brown", filt: { t: "lowpass", f: [[0, 1200], [0.6, 90]] }, e: hit(1, 0.7), to: d });
+        k.bell(0, 210, [1, 2.3, 3.9], [0.12, 0.08, 0.05], 0.9); // the chassis rings
+        for (let i = 0; i < 4; i++) k.noise({ at: rnd(0.05, 0.3), filt: { t: "bandpass", f: rnd(1500, 3000), q: 4 }, e: hit(rnd(0.08, 0.16), 0.04) }); // gravel
+      },
+    },
+    plateBreak: {
+      gap: 0.08, max: 2, vary: 0.05, wet: 0.2, g: 0.8,
+      fn(k) {
+        const d = k.drive(2, 0.7);
+        k.noise({ filt: { t: "bandpass", f: 2400, q: 1.5 }, e: hit(0.8, 0.06) }); // the crack
+        k.bell(0, 420, [1, 1.58, 2.4, 3.7, 5.1], [0.2, 0.15, 0.1, 0.07, 0.04], 0.8, d); // a slab of steel clanging off
+        k.thump(0.02, 180, 60, 0.18, 0.5);
+        k.noise({ at: 0.25, filt: { t: "bandpass", f: 1800, q: 3 }, e: hit(0.2, 0.05) }); // it hits the floor
+        k.noise({ at: 0.4, filt: { t: "bandpass", f: 1600, q: 3 }, e: hit(0.1, 0.05) });
+      },
+    },
+    armorClang: {
+      gap: 0.09, max: 2, vary: 0.08, wet: 0.08, g: 0.7,
+      fn(k) {
+        k.click(0, 0.3, 3000);
+        k.bell(0, 1300, [1, 2.7, 4.2], [0.12, 0.07, 0.04], 0.25); // a hit that barely got through
+      },
+    },
+    hotfixHeal: {
+      gap: 0.15, max: 2, vary: 0.02, wet: 0.2, g: 0.9,
+      fn(k) {
+        [76, 81, 88].forEach((m, i) => k.chime(i * 0.06, midi(m), 0.08, 0.3)); // a patch applied
+      },
+    },
+    hotfixShield: {
+      gap: 0.2, max: 2, vary: 0.02, wet: 0.25, g: 0.9,
+      fn(k) {
+        k.osc({ f: [[0, 300], [0.3, 1200]], fm: { f: 40, d: [[0, 200], [0.3, 20]] }, e: [[0, 0], [0.05, 0.25], [0.35, 0]] }); // bwoop: the bubble inflates
+        k.osc({ type: "triangle", f: [[0, 600], [0.3, 2400]], e: [[0, 0], [0.1, 0.06], [0.4, 0]] });
+        k.noise({ filt: { t: "highpass", f: 6000 }, e: [[0, 0], [0.2, 0.05], [0.5, 0]], am: { f: 18, d: 0.5 } }); // shimmer
+      },
+    },
+    bubblePop: {
+      gap: 0.05, max: 3, vary: 0.08, wet: 0.1, g: 0.9,
+      fn(k) {
+        k.osc({ f: [[0, 1800], [0.08, 500]], e: perc(0.3, 0.1) });
+        k.noise({ filt: { t: "bandpass", f: 4000, q: 2 }, e: hit(0.4, 0.04) });
+        k.osc({ at: 0.03, type: "triangle", f: [[0, 2600], [0.15, 1300]], e: perc(0.06, 0.15) });
+      },
+    },
+    ratePulse: {
+      gap: 0.3, max: 2, vary: 0.02, wet: 0.3, g: 0.8,
+      fn(k) {
+        // the jamming pulse rolls out, then the tower beeps its status code
+        k.osc({ type: "square", f: [[0, 70], [0.5, 50]], filt: { t: "lowpass", f: [[0, 300], [0.15, 1400], [0.6, 200]], q: 6 }, e: [[0, 0], [0.02, 0.25], [0.6, 0]] });
+        [[0.05, 988], [0.18, 740], [0.31, 494]].forEach(([at, f]) => k.osc({ at, type: "square", f, filt: { t: "lowpass", f: 3000 }, e: [[0, 0], [0.003, 0.06], [0.09, 0.04], [0.1, 0]] }));
+      },
+    },
+    throttled: {
+      gap: 0.4, max: 1, vary: 0.02, wet: 0.05, g: 0.8,
+      fn(k) {
+        // an error buzz: a two-tone "nope"
+        [[0, 330], [0.13, 220]].forEach(([at, f]) => k.osc({ at, type: "sawtooth", f, filt: { t: "lowpass", f: 1800 }, e: [[0, 0], [0.005, 0.18], [0.1, 0.14], [0.11, 0]], am: { f: 50, d: 0.4 } }));
+      },
+    },
+
     // -------------------------------------------------- GENERAL / UI ---
     bossIntro: {
       gap: 1, max: 1, steal: false, vary: 0.01, wet: 0.4, g: 0.8,
@@ -806,6 +913,7 @@ const synth = (() => {
     ["HACKERMAN", ["emDischarge", "glitch", "laptop", "dilationIn", "dilationOut", "dilationLoop"]],
     ["PICKUPS", ["pickupRam", "pickupSsd", "pickupCpu"]],
     ["NULL", ["nullBlink", "nullDecoy", "nullSlash", "nullShuriken", "nullCharge", "nullShot", "nullDeath"]],
+    ["v3.2 ENEMIES", ["forkLeap", "forkSplit", "lobberFire", "packetLand", "monolithSlam", "plateBreak", "armorClang", "hotfixHeal", "hotfixShield", "bubblePop", "ratePulse", "throttled"]],
     ["GENERAL / UI", ["bossIntro", "bossDefeated", "reroll", "install", "uiMove", "uiSelect", "uiBack", "padConnect", "lifeLost", "levelUp"]],
   ];
 

@@ -84,6 +84,12 @@ loadImage("portraits2", "img/portraits2.png"); // 3 portraits of 48x48
 loadImage("fx2", "img/fx2.png"); // 8 cells of 32x32: arrows, EM, glitch, bleed, heat, reflect
 loadImage("xpHardware", "img/xp-hardware.png"); // rows RAM / NVMe / CPU x 4 shine frames
 loadImage("nullBoss", "img/null.png"); // 14 frames of 64x96
+// v3.2 enemies (tools/art_enemies.py)
+loadImage("forkbomb", "img/forkbomb.png"); // 6 frames of 28x28: roll x4, unfurl, leap
+loadImage("lobber", "img/lobber.png"); // 4 frames of 48x40: idle, walk x2, fire
+loadImage("monolith", "img/monolith.png"); // 7 frames of 64x64 (armored, walk x2, idle, slam x2, charge) + a row of plates
+loadImage("hotfix", "img/hotfix.png"); // 6 frames of 36x28: hover x4, tether x2
+loadImage("ratelimiter", "img/ratelimiter.png"); // 4 frames of 36x72: idle, walk x2, pulse
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64

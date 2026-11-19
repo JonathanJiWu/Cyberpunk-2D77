@@ -1480,6 +1480,7 @@ const fastForward = (page, seconds, bot) =>
     ...["emDischarge", "glitch", "laptop", "dilationIn", "dilationOut", "dilationLoop"],
     ...["pickupRam", "pickupSsd", "pickupCpu"],
     ...["nullBlink", "nullDecoy", "nullSlash", "nullShuriken", "nullCharge", "nullShot", "nullDeath"],
+    ...["forkLeap", "forkSplit", "lobberFire", "packetLand", "monolithSlam", "plateBreak", "armorClang", "hotfixHeal", "hotfixShield", "bubblePop", "ratePulse", "throttled"],
     ...["bossIntro", "bossDefeated", "reroll", "install", "uiMove", "uiSelect", "uiBack", "padConnect", "lifeLost", "levelUp"],
   ];
 
@@ -2605,7 +2606,7 @@ const fastForward = (page, seconds, bot) =>
     const closed = await page.evaluate(() => document.getElementById("codex").hidden && game.state === "menu");
     assert(open1 && closed, "codex did not open and close");
     assert(counts.characters.all === 3, "ICs: " + JSON.stringify(counts.characters));
-    assert(counts.enemies.all === 8 && counts.enemies.locked === 8, "enemies: " + JSON.stringify(counts.enemies));
+    assert(counts.enemies.all === 13 && counts.enemies.locked === 13, "enemies: " + JSON.stringify(counts.enemies));
     assert(counts.bosses.all === 3 && counts.bosses.locked === 3, "bosses: " + JSON.stringify(counts.bosses));
     assert(counts.skills.all >= 10 && counts.skills.locked === 0, "skills: " + JSON.stringify(counts.skills));
     assert(!problems.length, problems.join("; "));
