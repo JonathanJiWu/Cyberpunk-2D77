@@ -100,7 +100,7 @@ function updateEnemy2(e, dt, target, wander, stunned) {
   if (e.type === "forkbomb") return updateForkBomb(e, dt, target, wander, busy);
   if (e.type === "lobber") return updateLobber(e, dt, target, wander, busy);
   if (e.type === "monolith") return updateMonolith(e, dt, target, wander, busy);
-  if (e.type === "hotfix") return updateHotfix(e, dt, target, busy);
+  if (e.type === "hotfix") return updateHotfix(e, dt, target);
   return updateRateLimiter(e, dt, target, wander, busy);
 }
 
@@ -653,7 +653,8 @@ function updateDebris2(dt) {
 }
 
 // ----------------------------------------------------------------- Hotfix ---
-function updateHotfix(e, dt, t, busy) {
+function updateHotfix(e, dt, t) {
+  const busy = e.stun > 0; // (a medic: blind or calm, it still patches up its side)
   const P = e.def.patch;
   const sm = e.slowMul;
   const cx = e.x + e.w / 2;

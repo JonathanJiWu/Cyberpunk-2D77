@@ -2579,6 +2579,477 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------------------ v3.2 enemies ----
+  // fresh(x): an empty street with the player standing at x. steps(n, keep):
+  // n frames (level-ups picked; keep: hold the player's HP up)
+  const V2_HELPERS = () => {
+    window.fresh = (x = 1500) => {
+      enemies.length = 0;
+      enemyShots.length = 0;
+      shockwaves.length = 0;
+      playerShots.length = 0;
+      Object.assign(player, { x, y: GROUND_Y - player.h, vx: 0, vy: 0, invuln: 0, onGround: true, standingOn: GROUND });
+      player.hp = stats.maxHp;
+    };
+    window.steps = (n, keep = true) => {
+      for (let i = 0; i < n && game.state !== "over"; i++) {
+        if (keep) player.hp = stats.maxHp;
+        if (game.state === "levelup") chooseUpgrade(0, true);
+        update(1 / 60);
+      }
+    };
+  };
+  const V2_VIEW = { viewport: { width: 1280, height: 720 } };
+  const v2Run = async (character) => {
+    const { context, page, problems } = await open(browser, url, V2_VIEW);
+    await startRun(page, { settings: { character, autoFire: false, autoFlame: false } });
+    await page.evaluate(V2_HELPERS);
+    return { context, page, problems };
+  };
+
+  await test("v3.2 Fork Bomb: rolls in, unfurls (a flash) and leaps; forks into 2 children (3 from an elite) that don't fork again; climbs to a player on a platform", async () => {
+    const { context, page, problems } = await v2Run("paine");
+    const r = await page.evaluate(() => {
+      const out = {};
+      fresh(1500);
+      const f = spawnEnemy("forkbomb", 2200, GROUND_Y - 50, { elite: false });
+      const x0 = f.x;
+      let unfurl = 0;
+      let leap = null;
+      for (let i = 0; i < 60 * 5 && !leap; i++) {
+        steps(1);
+        if (f.state === "unfurl") unfurl++;
+        if (f.state === "leap") leap = { vx: Math.round(f.vx), vy: Math.round(f.vy), frame: frame2(f) };
+      }
+      out.roll = { closed: Math.round(x0 - f.x), unfurl, leap, rolled: f.spin > 4 };
+      damageEnemy(f, 1e6, { source: "test" });
+      const kids = enemies.filter((e) => !e.dead && e.type === "forkbomb");
+      out.kids = { n: kids.length, small: kids.every((k) => k.child && k.w < f.w && k.maxHp < f.maxHp) };
+      kids.forEach((k) => damageEnemy(k, 1e6, { source: "test" }));
+      out.grandkids = enemies.filter((e) => !e.dead && e.type === "forkbomb").length;
+      const el = spawnEnemy("forkbomb", 2200, GROUND_Y - 58, { elite: true });
+      damageEnemy(el, 1e6, { source: "test" });
+      out.eliteKids = enemies.filter((e) => !e.dead && e.type === "forkbomb").length;
+      // the player up on a platform: it finds the way up (nav.js)
+      fresh(1500);
+      const plat = platforms[1];
+      Object.assign(player, { x: plat.x + plat.w / 2 - player.w / 2, y: plat.y - player.h, standingOn: plat });
+      const c = spawnEnemy("forkbomb", 250, GROUND_Y - 50, { elite: false });
+      let up = false;
+      for (let i = 0; i < 60 * 10 && !up; i++) {
+        player.invuln = 1;
+        steps(1);
+        up = c.y + c.h < plat.y + 4 && Math.abs(c.x + c.w / 2 - (plat.x + plat.w / 2)) < plat.w;
+      }
+      out.climbed = up;
+      out.discovered = discovered.has("forkbomb");
+      return out;
+    });
+    assert(r.roll.closed > 200 && r.roll.rolled, "the fork bomb did not roll in: " + JSON.stringify(r.roll));
+    assert(r.roll.unfurl >= 10 && r.roll.leap && r.roll.leap.vy < -600 && r.roll.leap.frame === 5, "no unfurl telegraph before the leap: " + JSON.stringify(r.roll));
+    assert(r.kids.n === 2 && r.kids.small && r.grandkids === 0 && r.eliteKids === 3, "fork counts: " + JSON.stringify(r));
+    assert(r.climbed, "the fork bomb never reached the platform");
+    assert(r.discovered, "the fork bomb is not in the DATABASE");
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("v3.2 Packet Lobber: keeps its distance, marks the floor where you'll be and the packet lands there; shot down, burned by Flame On, parried by the blade", async () => {
+    const { context, page, problems } = await v2Run("paine");
+    const r = await page.evaluate(() => {
+      const out = {};
+      // standing still: the marker is under you (while the packet is still in the tube), and it comes down on it
+      fresh(1500);
+      const l = spawnEnemy("lobber", 2150, GROUND_Y - 74, { elite: false });
+      l.shotCd = 0.3;
+      let mark = null;
+      let gone = false;
+      const hp0 = player.hp;
+      for (let i = 0; i < 60 * 4 && !gone; i++) {
+        steps(1, false);
+        const s = enemyShots.find((q) => q.kind === "packet");
+        if (s && !mark) mark = { dx: Math.round(s.tx - (player.x + player.w / 2)), floor: s.ty === GROUND_Y, planted: l.state === "plant", inTube: s.phase === 0 };
+        if (mark && !s) gone = true;
+      }
+      out.still = { mark, gone, hurt: Math.round(hp0 - player.hp), range: Math.round(Math.abs(l.x + l.w / 2 - player.x - player.w / 2)) };
+      // running: the marker leads you
+      fresh(1500);
+      player.invuln = 99;
+      const l2 = spawnEnemy("lobber", 2050, GROUND_Y - 74, { elite: false });
+      l2.shotCd = 99;
+      input.keys.add("KeyA");
+      steps(20); // up to speed (it only fires while on screen)
+      l2.shotCd = 0;
+      let lead = null;
+      for (let i = 0; i < 60 && lead === null; i++) {
+        steps(1);
+        const s = enemyShots.find((q) => q.kind === "packet");
+        if (s) lead = Math.round(s.tx - (player.x + player.w / 2));
+      }
+      input.keys.clear();
+      out.lead = lead;
+      const flying = () => {
+        fresh(1500);
+        const lb = spawnEnemy("lobber", 2200, GROUND_Y - 74, { elite: false });
+        lb.shotCd = 99;
+        lobberPlant(lb, player);
+        lobberLaunch(lb);
+        return enemyShots.find((q) => q.kind === "packet");
+      };
+      // shot down by an arrow: no blast
+      let s = flying();
+      steps(20);
+      playerShots.push({ x: s.x, y: s.y, vx: 0, vy: 0, r: 12, angle: 0, life: 1, damage: 1, pierce: 0, piercing: false, hit: new Set(), kind: "arrow" });
+      const hp = player.hp;
+      steps(1, false);
+      out.shotDown = { gone: !enemyShots.includes(s), arrowUsed: !playerShots.some((q) => q.kind === "arrow"), unhurt: player.hp === hp };
+      // burned by Flame On
+      s = flying();
+      steps(1);
+      Object.assign(s, { x: player.x + 120, y: player.y + 40, vx: 0, vy: 0 });
+      flameOn(30);
+      steps(6);
+      out.burned = !enemyShots.includes(s);
+      // parried by Tetsu's blade (the Widow borrows the swing for the test)
+      s = flying();
+      steps(1);
+      Object.assign(s, { x: player.x + player.w / 2 + 80, y: player.y + player.h / 2 - 6, vx: 0, vy: 0 });
+      bladeSwing(0);
+      out.parried = !enemyShots.includes(s);
+      out.discovered = discovered.has("lobber");
+      return out;
+    });
+    assert(r.still.mark && r.still.mark.planted && r.still.mark.inTube && Math.abs(r.still.mark.dx) < 40 && r.still.mark.floor, "no marker under a player standing still: " + JSON.stringify(r.still));
+    assert(r.still.gone && r.still.hurt > 0, "the packet did not land on the player: " + JSON.stringify(r.still));
+    assert(r.still.range >= 380 && r.still.range <= 820, "the Lobber did not keep its distance: " + JSON.stringify(r.still));
+    assert(r.lead !== null && r.lead < -120, "the marker did not lead a running player: " + r.lead);
+    assert(r.shotDown.gone && r.shotDown.arrowUsed && r.shotDown.unhurt, "shooting a packet down: " + JSON.stringify(r.shotDown));
+    assert(r.burned && r.parried && r.discovered, "Flame On / the blade did not stop packets: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("v3.2 Legacy Monolith: plates soak chip damage, piercing arrows / dashes / DoTs get through, a broken plate exposes that side; no knockback; the slam's shockwaves stop at its floor's edges", async () => {
+    const { context, page, problems } = await v2Run("paine");
+    const r = await page.evaluate(() => {
+      const out = {};
+      fresh(1500);
+      const m = spawnEnemy("monolith", 1900, GROUND_Y - 150, { elite: false });
+      m.hp = m.maxHp = 1e5;
+      m.facing = -1;
+      m.slamCd = m.chargeCd = 99;
+      const px = player.x;
+      const hit = (amount, opts) => {
+        const h = m.hp;
+        damageEnemy(m, amount, opts);
+        return Math.round((h - m.hp) * 100) / 100;
+      };
+      out.chip = hit(7, { source: "em", fromX: px }); // an EM wave on the front plate
+      out.orbit = hit(9, { source: "orbit" }); // no direction: the crown
+      out.heavy = hit(30, { source: "arrow", fromX: px });
+      out.pierce = hit(20, { source: "arrow", fromX: px, pierce: true });
+      out.burn = hit(5, { source: "bleed" });
+      const crown = m.plates[2].hp;
+      out.cleave = hit(10, { source: "dash", breaksGuard: true });
+      out.crownLoss = Math.round(crown - m.plates[2].hp);
+      damageEnemy(m, 1, { source: "arrow", fromX: px, kbX: 900, kbY: -400, knock: true });
+      out.kb = [m.kbX, m.kbY];
+      let n = 0;
+      while (m.plates[0].hp > 0 && n++ < 20) hit(10, { source: "blade-heavy", fromX: px, breaksGuard: true });
+      out.broken = { front: m.plates[0].hp <= 0, back: m.plates[1].hp > 0, debris: debris2.length };
+      out.exposed = hit(7, { source: "em", fromX: px });
+      out.backStill = hit(7, { source: "em", fromX: m.x + m.w + 300 });
+      // the slam: a wind-up, then shockwaves both ways that hit you on its floor
+      fresh(1500);
+      const s = spawnEnemy("monolith", 1850, GROUND_Y - 150, { elite: false });
+      s.hp = s.maxHp = 1e5;
+      s.slamCd = 0;
+      s.chargeCd = 99;
+      let wind = 0;
+      let waves = 0;
+      let hurt = false;
+      for (let i = 0; i < 60 * 3 && !hurt; i++) {
+        const hp = player.hp;
+        steps(1, false);
+        if (s.state === "slamWind") wind++;
+        waves = Math.max(waves, shockwaves.filter((w) => w.owner === s).length);
+        if (player.hp < hp) hurt = true;
+      }
+      out.slam = { wind, waves, hurt };
+      // on a platform the waves stop at its edges
+      fresh(4800);
+      const p = platforms[13];
+      const t = spawnEnemy("monolith", p.x + 70, p.y - 150, { elite: false });
+      t.slamCd = t.chargeCd = 99;
+      t.stun = 5; // (stays put: it would drop down after the player)
+      steps(3);
+      shockwaves.length = 0;
+      monolithSlam(t);
+      out.onPlat = t.standingOn === p;
+      out.edge =
+        shockwaves.length === 2 &&
+        shockwaves.every((w) => {
+          const end = w.x + w.dir * w.speed * w.life;
+          return end >= p.x - 30 && end <= p.x + p.w + 30;
+        });
+      out.discovered = discovered.has("monolith");
+      return out;
+    });
+    assert(r.chip === 0.7 && r.orbit === 0.9, "chip damage got through the plates: " + JSON.stringify(r));
+    assert(r.heavy === 21 && r.pierce === 20 && r.burn === 5, "heavy / piercing / DoT damage: " + JSON.stringify(r));
+    assert(r.cleave === 10 && r.crownLoss === 30, "the dash did not cleave (x3 on the plate): " + JSON.stringify(r));
+    assert(r.kb[0] === 0 && r.kb[1] === 0, "the Monolith was knocked back: " + r.kb);
+    assert(r.broken.front && r.broken.back && r.broken.debris >= 1, "plates: " + JSON.stringify(r.broken));
+    assert(r.exposed === 7 && r.backStill === 0.7, "a broken plate's side should take full damage: " + JSON.stringify(r));
+    assert(r.slam.wind >= 30 && r.slam.waves === 2 && r.slam.hurt, "slam: " + JSON.stringify(r.slam));
+    assert(r.onPlat && r.edge && r.discovered, "the waves ran past the platform's edges: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("v3.2 Hotfix: tethers to the most hurt ally and heals it, shields it for one hit, keeps away; its shields pop when it dies; shot down, it stops healing", async () => {
+    const { context, page, problems } = await v2Run("paine");
+    const r = await page.evaluate(() => {
+      const out = {};
+      fresh(1500);
+      player.invuln = 99;
+      const hurt = spawnEnemy("enforcer", 2200, GROUND_Y - 116, { elite: false });
+      hurt.hp = hurt.maxHp * 0.4;
+      const fine = spawnEnemy("enforcer", 1950, GROUND_Y - 116, { elite: false });
+      const h = spawnEnemy("hotfix", 2400, GROUND_Y - 420, { elite: false });
+      const hold = () => {
+        hurt.x = 2200;
+        fine.x = 1950;
+      };
+      const hp0 = hurt.hp;
+      let tether = 0;
+      for (let i = 0; i < 60 * 3; i++) {
+        hold();
+        steps(1);
+        if (h.tether1 === hurt) tether++;
+      }
+      out.heal = { picked: h.ally === hurt, tether, healed: Math.round(hurt.hp - hp0), shield: hurt.bubble === h, away: Math.round(Math.abs(h.x + h.w / 2 - player.x - player.w / 2)) };
+      const before = hurt.hp;
+      damageEnemy(hurt, 25, { source: "arrow", fromX: hurt.x + hurt.w + 50 });
+      out.block = { blocked: hurt.hp === before, popped: !hurt.bubble };
+      h.bubbleCd = 0;
+      hold();
+      steps(2);
+      out.reshield = hurt.bubble === h;
+      damageEnemy(h, 1e6, { source: "test" });
+      out.afterDeath = !hurt.bubble;
+      // an arrow shoots a Hotfix out of the sky: no healing while it's down
+      const h2 = spawnEnemy("hotfix", 2350, GROUND_Y - 420, { elite: false });
+      h2.hp = h2.maxHp = 1e4;
+      for (let i = 0; i < 30; i++) {
+        hold();
+        steps(1);
+      }
+      hurt.hp = hurt.maxHp * 0.3;
+      arrowHit({ vx: 1, x: h2.x, y: h2.y, damage: 10, piercing: false }, h2);
+      const hp1 = hurt.hp;
+      for (let i = 0; i < 20; i++) {
+        hold();
+        steps(1);
+      }
+      out.downed = { downed: !!h2.downed, noHeal: hurt.hp === hp1 };
+      out.discovered = discovered.has("hotfix");
+      return out;
+    });
+    assert(r.heal.picked && r.heal.tether > 60 && r.heal.healed > 0, "the Hotfix did not tether and heal the hurt ally: " + JSON.stringify(r.heal));
+    assert(r.heal.shield && r.heal.away > 360, "no shield, or it came close: " + JSON.stringify(r.heal));
+    assert(r.block.blocked && r.block.popped && r.reshield, "the one-hit shield: " + JSON.stringify(r));
+    assert(r.afterDeath, "the shield outlived its Hotfix");
+    assert(r.downed.downed && r.downed.noHeal && r.discovered, "a downed Hotfix: " + JSON.stringify(r.downed));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("v3.2 Rate Limiter: inside its 429 field weapons recharge at half speed and the special is locked (the HUD says so); outside it's normal; a dash collapses the field", async () => {
+    const { context, page, problems } = await v2Run("tetsu");
+    const r = await page.evaluate(() => {
+      const out = {};
+      fresh(1500);
+      const rl = spawnEnemy("ratelimiter", 1700, GROUND_Y - 150, { elite: false });
+      rl.pulseCd = 99;
+      const run = (n) => {
+        for (let i = 0; i < n; i++) {
+          rl.x = 1700;
+          rl.vx = 0;
+          steps(1);
+        }
+      };
+      run(60);
+      out.field = Math.round(rl.fieldR);
+      player.zapCd = 1;
+      run(30);
+      out.inside = { throttled: player.throttleT > 0, zap: +player.zapCd.toFixed(2) };
+      const texts = [];
+      const h = hudText;
+      hudText = function (t) {
+        texts.push(String(t));
+        return h.apply(this, arguments);
+      };
+      try {
+        render(performance.now() / 1000);
+      } finally {
+        hudText = h;
+      }
+      out.hud = texts.some((t) => /429 THROTTLED/.test(t));
+      player.heat = 100;
+      input.specialQueued = true;
+      run(1);
+      out.locked = { dash: !!player.dash, heat: player.heat };
+      // step out: back to normal
+      player.x = 2700;
+      run(30);
+      player.zapCd = 1;
+      run(30);
+      out.outside = { throttled: player.throttleT > 0, zap: +player.zapCd.toFixed(2) };
+      input.specialQueued = true;
+      run(1);
+      out.free = !!player.dash && player.heat < 100;
+      // a dash (or a finisher) cuts the field
+      run(30);
+      player.x = 1500;
+      run(10);
+      out.backIn = player.throttleT > 0;
+      damageEnemy(rl, 5, { source: "dash", breaksGuard: true });
+      run(30);
+      out.cut = { collapse: rl.collapseT > 0, r: Math.round(rl.fieldR), throttled: player.throttleT > 0 };
+      run(60 * 3);
+      out.regrown = Math.round(rl.fieldR);
+      out.discovered = discovered.has("ratelimiter");
+      return out;
+    });
+    assert(r.field >= 240, "the field did not grow: " + r.field);
+    assert(r.inside.throttled && Math.abs(r.inside.zap - 0.75) < 0.03, "inside, weapons should recharge at half speed: " + JSON.stringify(r.inside));
+    assert(r.hud, "no 429 THROTTLED on the HUD");
+    assert(!r.locked.dash && r.locked.heat === 100, "the special was not locked: " + JSON.stringify(r.locked));
+    assert(!r.outside.throttled && Math.abs(r.outside.zap - 0.5) < 0.03, "outside: " + JSON.stringify(r.outside));
+    assert(r.free, "the special stayed locked outside the field");
+    assert(r.backIn && r.cut.collapse && r.cut.r === 0 && !r.cut.throttled, "the dash did not collapse the field: " + JSON.stringify(r));
+    assert(r.regrown >= 240 && r.discovered, "the field never came back: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("v3.2 enemies vs the hijack: a hijacked Fork Bomb's children join your side, a hijacked Hotfix heals your pawns (not enemies), a hijacked Rate Limiter jams enemies (not you)", async () => {
+    const { context, page, problems } = await v2Run("sudo");
+    const r = await page.evaluate(() => {
+      const out = {};
+      fresh(1500);
+      const f = spawnEnemy("forkbomb", 1900, GROUND_Y - 50, { elite: false });
+      hijack(f, 6);
+      damageEnemy(f, 1e6, { source: "test" });
+      const kids = enemies.filter((e) => !e.dead && e.type === "forkbomb");
+      out.kids = { n: kids.length, hijacked: kids.every((k) => isHijacked(k)) };
+      // a hijacked Hotfix patches up a hurt pawn and ignores a hurt enemy
+      fresh(1500);
+      const pawn = spawnEnemy("enforcer", 2000, GROUND_Y - 116, { elite: false });
+      const foe = spawnEnemy("enforcer", 2350, GROUND_Y - 116, { elite: false });
+      hijack(pawn, 30);
+      pawn.hp = pawn.maxHp * 0.4;
+      foe.hp = foe.maxHp * 0.3;
+      const h = spawnEnemy("hotfix", 2150, GROUND_Y - 420, { elite: false });
+      hijack(h, 30);
+      const p0 = pawn.hp;
+      const f0 = foe.hp;
+      for (let i = 0; i < 90; i++) {
+        pawn.x = 2000;
+        foe.x = 2350;
+        steps(1);
+      }
+      out.hotfix = { ally: h.ally === pawn, healedPawn: pawn.hp > p0, foeUnhealed: foe.hp <= f0 };
+      // a hijacked Rate Limiter: its field slows enemies, not the player
+      fresh(1500);
+      const rl = spawnEnemy("ratelimiter", 1650, GROUND_Y - 150, { elite: false });
+      hijack(rl, 30);
+      const c = spawnEnemy("crawler", 1700, GROUND_Y - 48, { elite: false });
+      c.hp = c.maxHp = 1e4;
+      for (let i = 0; i < 40; i++) {
+        rl.x = 1650;
+        c.x = 1700;
+        steps(1);
+      }
+      out.limiter = { field: Math.round(rl.fieldR), playerFree: !(player.throttleT > 0), enemySlowed: c.slowT > 0 && c.slowMul < 1 };
+      return out;
+    });
+    assert(r.kids.n === 2 && r.kids.hijacked, "the children did not inherit the hijack: " + JSON.stringify(r.kids));
+    assert(r.hotfix.ally && r.hotfix.healedPawn && r.hotfix.foeUnhealed, "the hijacked Hotfix: " + JSON.stringify(r.hotfix));
+    assert(r.limiter.field > 100 && r.limiter.playerFree && r.limiter.enemySlowed, "the hijacked Rate Limiter: " + JSON.stringify(r.limiter));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("v3.2 enemies: they join the director's mix on schedule, walkers spawn on floors, three new squads, DATABASE entries; a bot run with them has no errors", async () => {
+    const { context, page, problems } = await open(browser, url, V2_VIEW);
+    await startRun(page, { settings: { character: "sudo", autoFire: true, autoFlame: true } });
+    await page.evaluate(V2_HELPERS);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const ids = ["forkbomb", "lobber", "hotfix", "ratelimiter", "monolith"];
+      out.data = ids.every((id) => {
+        const d = ENEMY_TYPES[id];
+        return d.v2 && d.from > 0 && d.weight > 0 && d.maxAlive > 0 && d.desc && d.lore && ["normal", "resist", "immune"].includes(d.compromise);
+      });
+      out.resist = ["monolith", "ratelimiter"].every((id) => ENEMY_TYPES[id].compromise === "resist");
+      // the director: what it picks at a given time (spawning stubbed out)
+      const real = spawnAtEdge;
+      const picks = (t) => {
+        const seen = new Set();
+        spawnAtEdge = (type) => seen.add(type);
+        enemies.length = 0;
+        Object.assign(director, { stage: STAGE.start, nextBossAt: 1e9, squadAt: 1e9, firstSpawn: 0, acc: 0 });
+        game.time = t;
+        for (let i = 0; i < 60 * 200; i++) updateDirector(1 / 60);
+        spawnAtEdge = real;
+        return ids.filter((id) => seen.has(id));
+      };
+      out.at50 = picks(50);
+      out.at200 = picks(200);
+      // edge spawns: walkers on a floor, the Hotfix in the sky
+      fresh(3000);
+      game.time = 30;
+      ids.forEach((id) => spawnAtEdge(id));
+      out.spawned = ids.every((id) => enemies.some((e) => e.type === id));
+      steps(30);
+      out.grounded = enemies.filter((e) => e.def.walker && e.def.v2).every((e) => e.onGround || !!e.nav);
+      out.flyer = enemies.filter((e) => e.type === "hotfix").every((e) => e.y < GROUND_Y - 150);
+      // the squads
+      out.squads = ["forkstorm", "artillery", "siege"].map((id) => {
+        fresh(3000);
+        const q = SQUADS.find((s) => s.id === id);
+        q.make();
+        return [id, q.from, enemies.map((e) => e.type).sort().join(",")];
+      });
+      // seen: in the DATABASE
+      fresh(3000);
+      ids.forEach((id, i) => spawnEnemy(id, 2700 + i * 120, ENEMY_TYPES[id].walker ? GROUND_Y - ENEMY_TYPES[id].h : GROUND_Y - 400, { elite: false }));
+      steps(2);
+      out.db = ids.every((id) => discovered.has(id));
+      return out;
+    });
+    assert(r.data && r.resist, "the data entries: " + JSON.stringify(r));
+    assert(r.at50.join() === "forkbomb" && r.at200.length === 5, "the director's mix: " + JSON.stringify([r.at50, r.at200]));
+    assert(r.spawned && r.grounded && r.flyer, "edge spawns: " + JSON.stringify(r));
+    const squads = Object.fromEntries(r.squads.map(([id, from, types]) => [id, { from, types }]));
+    assert(squads.forkstorm.types === "forkbomb,forkbomb,forkbomb,forkbomb,forkbomb,forkbomb", "FORK STORM: " + JSON.stringify(squads.forkstorm));
+    assert(squads.artillery.types === "enforcer,lobber,lobber" && squads.siege.types === "hotfix,hotfix,monolith", "squads: " + JSON.stringify(squads));
+    assert(r.db, "the new enemies were not added to the DATABASE");
+    // a minute with all of them in the mix: no errors, the run goes on
+    await page.evaluate(() => {
+      enemies.length = 0;
+      Object.assign(director, { stage: STAGE.start, nextBossAt: 1e9, squadAt: game.time + 5, firstSpawn: 0, acc: 0 });
+      game.time = 200;
+      director.squadAt = 205;
+    });
+    const state = await fastForward(page, 60, "player.hp = Math.max(player.hp, 60); player.heat = Math.max(player.heat, 50); if (Math.random() < 0.02) input.jumpQueued = true;");
+    assert(state === "playing", "the run ended: " + state);
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("bosses: the Overseer (minions derez, no spawns, vents), then NULL, then the GOAT as final boss; beating it wins", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { quiet: false, settings: { autoFire: false, autoFlame: false } });
@@ -3990,6 +4461,45 @@ const fastForward = (page, seconds, bot) =>
     assert(r.m2 > 20 && r.m1 < -20, "walkers did not head for their targets: " + JSON.stringify(r));
     assert(r.shot && r.shot.atP2 < 0.25 && r.shot.atP1 > 0.5, "the drone's shot did not aim at player 2: " + JSON.stringify(r.shot));
     assert(r.down.hidden && r.down.near2 && r.down.drone, "enemies kept chasing a downed player: " + JSON.stringify(r.down));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: the v3.2 enemies: a 429 field throttles only the player standing in it (P2's banner), a packet lands on the player it was aimed at", async () => {
+    const { context, page, problems } = await coopRun({ p2: "tetsu" });
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      Object.assign(a, { x: 1000, y: GROUND_Y - a.h, vx: 0 });
+      Object.assign(b, { x: 2400, y: GROUND_Y - b.h, vx: 0 });
+      a.invuln = b.invuln = 99;
+      step(1);
+      const rl = spawnEnemy("ratelimiter", 2600, GROUND_Y - 150, { elite: false });
+      rl.pulseCd = 99;
+      for (let i = 0; i < 60; i++) {
+        rl.x = 2600;
+        rl.vx = 0;
+        step(1);
+      }
+      const out = { p1: a.throttleT > 0, p2: b.throttleT > 0, banner: hudTexts().some((t) => /P2 429 THROTTLED/.test(t)) };
+      rl.dead = true;
+      step(20);
+      // a packet aimed at player 2 comes down on player 2 only
+      const l = spawnEnemy("lobber", 2950, GROUND_Y - 74, { elite: false });
+      l.shotCd = 99;
+      lobberPlant(l, b);
+      a.invuln = b.invuln = 0;
+      const ha = a.hp;
+      const hb = b.hp;
+      for (let i = 0; i < 60 * 3 && enemyShots.some((s) => s.kind === "packet"); i++) {
+        l.x = 2950;
+        step(1);
+      }
+      out.packet = { p2: b.hp < hb, p1: a.hp === ha, released: !(b.throttleT > 0) };
+      return out;
+    });
+    assert(!r.p1 && r.p2 && r.banner, "the field should throttle player 2 only: " + JSON.stringify(r));
+    assert(r.packet.p2 && r.packet.p1 && r.packet.released, "the packet: " + JSON.stringify(r.packet));
     assert(!problems.length, problems.join("; "));
     await context.close();
   });
