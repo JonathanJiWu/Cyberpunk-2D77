@@ -365,7 +365,7 @@ function nearestEnemy(x, y, maxDist, filter) {
   let best = null;
   let bestD = maxDist;
   for (const e of enemies) {
-    if (e.dead || (filter && !filter(e))) continue;
+    if (e.dead || e.hijackT > 0 || (filter && !filter(e))) continue; // (never your hijacked ones)
     const c = centerOf(e);
     const d = Math.hypot(c.x - x, c.y - y);
     if (d < bestD) {
@@ -395,7 +395,7 @@ function updatePlayerShots(dt) {
     let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 200 || s.x < camera.x - 200 || s.x > camera.x + W + 200;
     if (!gone) {
       for (const e of enemies) {
-        if (e.dead || s.hit.has(e) || !circleHitsBox(s.x, s.y, s.r, e)) continue;
+        if (e.dead || e.hijackT > 0 || s.hit.has(e) || !circleHitsBox(s.x, s.y, s.r, e)) continue; // (shots pass through your hijacked ones)
         if (s.kind === "arrow" || s.kind === "em") {
           if (s.kind === "arrow") arrowHit(s, e);
           else emHit(s, e);
@@ -519,7 +519,7 @@ function updateMissiles(dt) {
     m.y += m.vy * dt;
     m.life -= dt;
     if (Math.random() < 0.5) particles.push({ x: m.x, y: m.y, vx: rand(-30, 30), vy: rand(-30, 30), life: 0.25, size: 5, color: "#19f5ff" });
-    const hitEnemy = enemies.find((e) => !e.dead && circleHitsBox(m.x, m.y, 14, e));
+    const hitEnemy = enemies.find((e) => !e.dead && !(e.hijackT > 0) && circleHitsBox(m.x, m.y, 14, e));
     if (hitEnemy || m.life <= 0 || m.y > GROUND_Y) {
       // Small explosion
       enemies.forEach((e) => {

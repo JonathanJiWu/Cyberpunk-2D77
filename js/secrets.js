@@ -302,7 +302,7 @@ function updateChrome(dt) {
     p.mantisCd -= dt;
     if (p.mantisCd <= 0) {
       const range = 170;
-      const targets = enemies.filter((e) => !e.dead && circleHitsBox(pc.x, pc.y, range, e));
+      const targets = enemies.filter((e) => !e.dead && !(e.hijackT > 0) && circleHitsBox(pc.x, pc.y, range, e));
       if (targets.length) {
         const sides = new Set();
         targets.forEach((e) => {
