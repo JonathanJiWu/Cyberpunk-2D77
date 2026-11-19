@@ -130,8 +130,8 @@ function navPose(p, i, k, ahead, out) {
 
 // Centre x range where a body of width w stands on a floor / should land on it
 function navStand(A, w, out) {
-  out[0] = A.ground ? w / 2 : A.x0 + 4;
-  out[1] = A.ground ? WORLD_W - w / 2 : A.x1 - 4;
+  out[0] = A.ground ? w / 2 : A.x0 + 8;
+  out[1] = A.ground ? WORLD_W - w / 2 : A.x1 - 8;
 }
 function navLanding(B, w, out) {
   const mg = B.ground ? w / 2 : Math.min(w / 2, (B.x1 - B.x0) * 0.35);
@@ -762,7 +762,7 @@ function navTeleport(e, n, cx) {
 // Run along floor `node` toward x (never off its edge)
 function navRunTo(node, x, cx, speed, dead) {
   const p = navPlat(node);
-  if (p) x = clamp(x, p.x + 6, p.x + p.w - 6);
+  if (p) x = clamp(x, p.x + 8, p.x + p.w - 8);
   const d = x - cx;
   return Math.abs(d) < dead ? 0 : Math.sign(d) * speed;
 }
@@ -815,7 +815,7 @@ function navFollow(e, n, m, G, node, goal, t, cx, speed, dt) {
   // (a moving floor comes back within its period; anything longer is a dead end)
   const pa = navPlat(G.from[k]);
   const pb = navPlat(G.to[k]);
-  const patience = 1.5 + Math.max(pa ? pa.period || 0 : 0, pb ? pb.period || 0 : 0) * 1.2;
+  const patience = 1.5 + Math.max(pa ? pa.period || 0 : 0, pb ? pb.period || 0 : 0);
   if (n.wait > patience) {
     navBan(n, k);
     n.edge = -1;
@@ -1075,6 +1075,16 @@ function navAtEdge(e, dx) {
   return nx < p.x + 8 || nx > p.x + p.w - 8;
 }
 
+// Running or sliding along a platform: never past its edge (8 px in)
+function navLedgeClamp(e, vx, dt) {
+  const p = e.standingOn;
+  if (!p || p.ground || !(dt > 0)) return vx;
+  const cx = e.x + e.w / 2;
+  if (vx > 0 && cx + vx * dt > p.x + p.w - 8) return Math.max(0, (p.x + p.w - 8 - cx) / dt);
+  if (vx < 0 && cx + vx * dt < p.x + 8) return Math.min(0, (p.x + 8 - cx) / dt);
+  return vx;
+}
+
 // Flyers spread out: a push away from every other flyer too close (into
 // navFlock, no allocation). Walkers and bosses don't count.
 const navFlock = { x: 0, y: 0 };
@@ -1101,3 +1111,22 @@ function navSpread(e) {
   navFlock.x = fx;
   navFlock.y = fy;
 }
+
+// ------------------------------------------------- For later: the EMP ------
+// Hackerman's EMP will "compromise" enemies so the others turn on them. The
+// hook is enemyTarget(e) (enemies.js): set e.forcedTarget = victim (any
+// enemy body) on each enemy that should go after it, null to let go; it
+// falls back to the player once the victim dies. Already routed through it:
+// walker routes (navWalker / navNodeOfBody work on any body), flyer steering,
+// aiming (fireEnemyShot with an owner, the sniper's sight), camo blindness
+// (target.camo: enemies have none) and the despawn distance. Still to add
+// for compromise itself:
+//  - contact damage: updateEnemy only hurts players (eachTarget); when
+//    target !== player, overlapping it should damageEnemy(target, ...) with a
+//    source added to NOT_PLAYER_DAMAGE (no Time Dilation bonus, no heat)
+//  - enemy shots: updateEnemyShots only tests players; a shot fired at an
+//    enemy target needs a flag so it can hit enemies (never its owner)
+//  - the compromised enemy itself gets forcedTarget = its nearest ally
+//  - bosses keep using `player` directly (they ignore forcedTarget)
+//  - the despawn check measures from the target: with a forced target,
+//    measure from the player instead, or a far-off brawl never despawns

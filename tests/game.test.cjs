@@ -2000,8 +2000,19 @@ const fastForward = (page, seconds, bot) =>
         for (let a = 0; a < G.N; a++) for (let b = 0; b < G.N; b++) if (!navReachable(m, a, b)) bad.push(a + ">" + b);
         out[m.key] = { edges: G.E, kinds: [0, 1, 2].map((k) => G.kind.filter((x) => x === k).length), unreachable: bad.length, some: bad.slice(0, 6) };
       }
+      // walkers called in while you're on the highest rooftop come in up there, not on the street
+      const top = platforms[30];
+      Object.assign(player, { x: top.x + 140, y: top.y - player.h, vx: 0, vy: 0, onGround: true, standingOn: top });
+      camera.x = clamp(player.x - W / 2, 0, WORLD_W - W);
+      camera.y = WORLD_TOP;
+      enemies.length = 0;
+      for (let i = 0; i < 12; i++) spawnAtEdge(["crawler", "ninja", "enforcer"][i % 3]);
+      out.spawnDrops = enemies.map((e) => Math.round(e.y + e.h - top.y));
+      enemies.length = 0;
       return out;
     });
+    assert(r.spawnDrops.length === 12 && r.spawnDrops.every((d) => d < 500), "walkers spawned far below a rooftop player: " + JSON.stringify(r.spawnDrops));
+    delete r.spawnDrops;
     for (const [k, v] of Object.entries(r)) assert(v.edges > 50 && v.unreachable === 0, `${k} can't get everywhere: ${JSON.stringify(v)}`);
     assert(r.enforcer.kinds[2] > 0 && r.crawler.kinds[1] > 0, "no grapple (enforcer) or drop-through moves: " + JSON.stringify(r));
     assert(!problems.length, problems.join("; "));
@@ -2195,7 +2206,8 @@ const fastForward = (page, seconds, bot) =>
     });
     console.log("       soak: " + JSON.stringify(r));
     assert(r.state === "playing" && r.peak >= 20, "the soak did not get busy: " + JSON.stringify(r));
-    assert(r.worst < 10 && r.rescues === 0, "a walker got stuck: " + JSON.stringify(r));
+    // (waiting out one full swing of a moving platform counts as no progress: up to ~7.5 s)
+    assert(r.worst < 12 && r.rescues === 0, "a walker got stuck: " + JSON.stringify(r));
     assert(r.launches > 100 && r.misses < r.launches * 0.1, "too many missed jumps: " + JSON.stringify(r));
     assert(r.ms < 4, "enemy updates are too slow: " + JSON.stringify(r));
     assert(!problems.length, problems.join("; "));

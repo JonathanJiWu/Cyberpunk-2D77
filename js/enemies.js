@@ -278,6 +278,8 @@ function updateEnemy(e, dtAll) {
       if (e.dashT > 0) contactMul = 1;
       const accel = e.dashT > 0 || e.bash > 0 || steering ? 1 : Math.min(1, 8 * dt);
       e.vx += (want - e.vx) * accel;
+      // (walkers don't run or slide off a ledge: they jump or drop when they mean to)
+      if (!steering && e.onGround) e.vx = navLedgeClamp(e, e.vx, dt);
       e.x += e.kbX * dt;
       if (e.kbY < 0) {
         e.vy += e.kbY;
@@ -300,12 +302,11 @@ function updateEnemy(e, dtAll) {
     } else if (def.kind === "bomber") {
       if (updateBomber(e, dt, dx, dy, d, stunned || blind, sm)) return;
     } else {
-      // Ranged flyers (drones, wyrms, snipers) keep their distance and shoot.
-      // Each keeps its own spot (slot) so a squad doesn't share one point.
+      // Ranged flyers (drones, wyrms, snipers) keep their distance and shoot
+      // (spread out from each other: navSpread)
       const side = ec.x < pc.x ? -1 : 1;
-      const slot = e.bob / (Math.PI * 2);
-      const high = (e.type === "dragon" ? 330 : e.type === "sniper" ? 400 : 250) * (0.85 + 0.3 * slot);
-      const tx = blind ? tgt.x : pc.x + side * def.keepDistance * (0.85 + 0.3 * ((slot * 7.3) % 1));
+      const high = e.type === "dragon" ? 330 : e.type === "sniper" ? 400 : 250;
+      const tx = blind ? tgt.x : pc.x + side * def.keepDistance;
       // (near the top of the city it can't get above you: it hovers beside you)
       const ty = blind ? tgt.y : Math.max(pc.y - high + Math.sin(game.time * 1.4 + e.bob) * 70, WORLD_TOP + 70 + e.h / 2);
       const ddx = tx - ec.x;

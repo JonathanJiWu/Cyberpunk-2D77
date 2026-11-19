@@ -321,7 +321,7 @@ const ENEMY_TYPES = {
     maxAlive: 2,
     from: 110,
     weight: 1.5,
-    desc: "Heavy riot mech. Its shield blocks shots from the front: hit it from behind, from above, or with fire and explosions.",
+    desc: "Heavy riot mech. Its shield blocks shots from the front: hit it from behind, from above, or with fire and explosions. Hauls itself up onto rooftops with a grapple line.",
     lore: "Riot control unit. Its training data was a decade of protests. It learned the wrong lessons.",
   },
   sniper: {
