@@ -2443,14 +2443,14 @@ body.touch.portrait .breach {
    colour, --r: its resource colour. Wide panels put the tiles in a column
    beside the stage; narrower ones (phones, small windows) in a row above it. */
 #overlay .panel {
-  width: min(100%, 68em);
+  width: min(100%, 80em);
   container-type: inline-size;
 }
 
 .char-select {
   --t: max(8px, 0.58em); /* dossier text: never below the font's crisp 8px */
   display: grid;
-  grid-template-columns: minmax(0, 14em) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 12.5em) minmax(0, 1fr);
   grid-template-rows: repeat(3, minmax(0, 1fr));
   gap: 0.6em 0.9em;
   margin: 0 0 1.2em;
@@ -2628,10 +2628,10 @@ body.touch .char-select {
 .cs-stage {
   position: relative;
   display: grid;
-  grid-template-columns: 21em minmax(0, 1fr);
+  grid-template-columns: 17.5em minmax(0, 1fr) minmax(0, 1.15fr);
   grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas: "art head" "art body";
-  column-gap: 1.3em;
+  grid-template-areas: "art head kit" "art about kit";
+  column-gap: 1.4em;
   min-width: 0;
   padding: 1em 1.2em 1em 0;
   border: 2px solid var(--c);
@@ -2858,16 +2858,26 @@ body.touch .char-select {
   margin-right: 0;
 }
 
-.cs-body {
-  grid-area: body;
+.cs-about,
+.cs-kit {
   display: flex;
   flex-direction: column;
   gap: 0.8em;
   min-width: 0;
-  margin-top: 1em;
   color: #e7dbff;
   font-size: var(--t);
   line-height: 1.6;
+}
+
+.cs-about {
+  grid-area: about;
+  margin-top: 1em;
+}
+
+.cs-kit {
+  grid-area: kit;
+  padding-left: 1.4em;
+  border-left: 1px solid rgba(var(--c-rgb), 0.35);
 }
 
 .cs-bg {
@@ -2876,10 +2886,9 @@ body.touch .char-select {
 
 .cs-abilities {
   display: grid;
-  gap: 0.6em;
+  gap: 0.8em;
   margin: 0;
-  padding: 0.8em 0;
-  border-top: 1px solid rgba(var(--c-rgb), 0.4);
+  padding: 0 0 0.9em;
   border-bottom: 1px solid rgba(var(--c-rgb), 0.4);
   list-style: none;
 }
@@ -2905,22 +2914,28 @@ body.touch .char-select {
   min-width: 0;
 }
 
-.cs-ab-kind {
+.cs-ab-top {
   display: block;
+  margin-bottom: 0.2em;
+}
+
+.cs-ab-kind {
+  margin-right: 0.8em;
   color: var(--c);
   font-size: 0.85em;
   letter-spacing: 0.1em;
 }
 
 .cs-ab-name {
-  margin-right: 0.7em;
   color: #fff;
   font-weight: 400;
 }
 
 .cs-k {
+  margin-bottom: 0.2em;
   color: var(--c);
-  letter-spacing: 0.08em;
+  font-size: 0.85em;
+  letter-spacing: 0.1em;
 }
 
 .cs-mech {
@@ -2931,6 +2946,10 @@ body.touch .char-select {
   padding: 0;
   color: #f1dcff;
   list-style: none;
+}
+
+.cs-mech:empty {
+  display: none;
 }
 
 .cs-mech li::before {
@@ -3038,12 +3057,17 @@ body.touch .char-select {
 }
 
 .cs-enter .cs-head,
-.cs-enter .cs-body {
+.cs-enter .cs-about,
+.cs-enter .cs-kit {
   animation: cs-text-in 0.35s ease-out both;
 }
 
-.cs-enter .cs-body {
-  animation-delay: 0.06s;
+.cs-enter .cs-about {
+  animation-delay: 0.05s;
+}
+
+.cs-enter .cs-kit {
+  animation-delay: 0.1s;
 }
 
 @keyframes cs-text-in {
@@ -3065,7 +3089,7 @@ body.touch .char-select {
 
 /* Narrower panels (phones, small windows): the tiles in a row above the
    stage, the art beside the name, the dossier full width below */
-@container (max-width: 899px) {
+@container (max-width: 999px) {
   .char-select {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: auto auto;
@@ -3095,7 +3119,8 @@ body.touch .char-select {
   }
   .cs-stage {
     grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
-    grid-template-areas: "art head" "body body";
+    grid-template-rows: auto auto auto;
+    grid-template-areas: "art head" "art about" "kit kit";
     padding: 0 0.9em 0.9em 0;
   }
   .cs-art {
@@ -3111,8 +3136,11 @@ body.touch .char-select {
   .cs-head {
     padding-top: 0.9em;
   }
-  .cs-body {
-    padding-left: 0.9em;
+  .cs-kit {
+    margin-top: 1em;
+    padding: 1em 0 0 0.9em;
+    border-left: 0;
+    border-top: 1px solid rgba(var(--c-rgb), 0.35);
   }
   .cs-name {
     font-size: 2em;
@@ -3158,7 +3186,11 @@ body.touch .char-select {
   }
   .cs-stage {
     grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+    grid-template-areas: "art head" "about about" "kit kit";
     column-gap: 0.9em;
+  }
+  .cs-about {
+    padding-left: 0.9em;
   }
   .cs-name {
     font-size: 1.6em;
@@ -3177,7 +3209,8 @@ body.touch .char-select {
   .cs-enter .cs-bust,
   .cs-enter .cs-art-word,
   .cs-enter .cs-head,
-  .cs-enter .cs-body,
+  .cs-enter .cs-about,
+  .cs-enter .cs-kit,
   .cs-enter .cs-stat-fill,
   .char-card.cs-locked {
     animation: none !important;

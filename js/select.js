@@ -181,7 +181,7 @@ function buildCharSelect() {
   const art = el("div", "cs-art");
   art.setAttribute("aria-hidden", "true");
   art.append(el("span", "cs-art-word"), el("span", "cs-art-glow"), el("span", "cs-art-floor"), el("span", "cs-art-scan"));
-  stage.append(art, el("div", "cs-head"), el("div", "cs-body"));
+  stage.append(art, el("div", "cs-head"), el("div", "cs-about"), el("div", "cs-kit"));
   charSelectEl.append(stage);
   charSel.stage = stage;
   charSel.art = art;
@@ -291,7 +291,9 @@ function abilityRow(kind, name, text, icon) {
   const ic = el("span", "cs-icon");
   ic.setAttribute("style", iconStyle(icon));
   const words = el("span", "cs-ab-text");
-  words.append(el("span", "cs-ab-kind", kind), el("b", "cs-ab-name", name), el("span", "", text));
+  const top = el("span", "cs-ab-top");
+  top.append(el("span", "cs-ab-kind", kind), el("b", "cs-ab-name", name));
+  words.append(top, text);
   li.append(ic, words);
   return li;
 }
@@ -361,29 +363,26 @@ function renderStage(force) {
   head.append(tags, el("div", "cs-name", ch.name), el("div", "cs-title", ch.title.toUpperCase()));
   if (pf.personality) head.append(el("div", "cs-personality", pf.personality));
   head.append(stageStatus(id));
-  // the dossier
-  const body = stage.querySelector(".cs-body");
-  body.textContent = "";
-  if (pf.background) body.append(el("div", "cs-bg", pf.background));
-  const kit = el("ul", "cs-abilities");
-  kit.append(abilityRow("WEAPON", ch.primary.name, pf.weapon || ch.primary.desc[0], ch.primary.icon));
-  const sg = ch.special.guide || {};
-  kit.append(abilityRow(`SPECIAL · USES ${ch.resource.name}`, ch.special.name, sg.what ? `${sg.what}. ${sg.edge}.` : ch.special.desc[0], ch.special.icon));
-  if (pf.passive) kit.append(abilityRow("PASSIVE", passiveName(ch), pf.passive.text, pf.passive.icon));
-  body.append(kit);
+  // the dossier: who they are and how they play...
+  const about = stage.querySelector(".cs-about");
+  about.textContent = "";
+  if (pf.background) about.append(el("div", "cs-bg", pf.background));
   if (pf.playstyle) {
     const play = el("div", "cs-play");
-    play.append(el("span", "cs-k", "PLAYSTYLE "), pf.playstyle);
-    body.append(play);
+    play.append(el("div", "cs-k", "PLAYSTYLE"), pf.playstyle);
+    about.append(play);
   }
-  if (pf.mechanics && pf.mechanics.length) {
-    const mech = el("ul", "cs-mech");
-    pf.mechanics.forEach((m) => mech.append(el("li", "", m)));
-    body.append(mech);
-  }
+  if (ch.quotes && ch.quotes.start) about.append(el("div", "cs-quote", `"${ch.quotes.start[0]}"`));
+  // ...and the kit: weapon, special, passive, resource and base stats
+  const kit = stage.querySelector(".cs-kit");
+  kit.textContent = "";
+  const list = el("ul", "cs-abilities");
+  const sg = ch.special.guide || {};
+  list.append(abilityRow("WEAPON", ch.primary.name, pf.weapon || ch.primary.desc[0], ch.primary.icon));
+  list.append(abilityRow("SPECIAL", ch.special.name, sg.what ? `${sg.what}. ${sg.edge}.` : ch.special.desc[0], ch.special.icon));
+  if (pf.passive) list.append(abilityRow("PASSIVE", passiveName(ch), pf.passive.text, pf.passive.icon));
   const res = el("div", "cs-res");
   res.append(el("span", "cs-res-name", ch.resource.name), pf.resource || "Builds as you deal and take damage.");
-  body.append(res);
   const stats = el("div", "cs-stats");
   stats.append(
     statRow("HP", icStatFrac(ch, "hp"), String(ch.hp), "#ff2f6d"),
@@ -391,10 +390,10 @@ function renderStage(force) {
     statRow("SPEED", icStatFrac(ch, "speed"), String(ch.speed), "#ffe14d"),
     statRow("JUMP", icStatFrac(ch, "jump"), String(ch.jump), "#b06cff")
   );
-  body.append(stats);
-  if (ch.quotes && ch.quotes.start) body.append(el("div", "cs-quote", `"${ch.quotes.start[0]}"`));
-  // the pause menu: what a hot-swap keeps
-  body.append(el("div", "cs-swapnote", "A HOT-SWAP KEEPS YOUR LEVELS, UPGRADES, LIVES AND RESOURCE METER. HP KEEPS ITS %."));
+  const mech = el("ul", "cs-mech");
+  (pf.mechanics || []).forEach((m) => mech.append(el("li", "", m)));
+  // the pause menu: what a hot-swap keeps (lives.js switchCharacter)
+  kit.append(list, res, mech, stats, el("div", "cs-swapnote", "A HOT-SWAP KEEPS YOUR LEVELS, UPGRADES, LIVES AND RESOURCE METER. HP KEEPS ITS %."));
   stage.classList.remove("cs-enter");
   void stage.offsetWidth; // replay the entrance
   stage.classList.add("cs-enter");
