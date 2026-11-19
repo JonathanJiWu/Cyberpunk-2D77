@@ -55,6 +55,7 @@ function makeBoss(type, w, h, x, y) {
     standingOn: null,
     dropTimer: 0,
     airJumps: 0,
+    nav: null, // its route through the platforms (nav.js)
     speech: null,
     speechCd: 3,
     contactCd: 0,
@@ -94,19 +95,13 @@ const bossLocked = () => !!(game.cinematic && game.cinematic.lock);
 // ---------------------------------------------------------- Movement --------
 const BOSS_GRAVITY = 2900;
 
-// Run toward targetX; hop up to a higher player, drop down to a lower one
+// Chase the target through the platforms (nav.js: the same routes the
+// walkers use, with the boss's own double jump); on its floor, run to targetX
 function bossNavigate(e, dt, targetX, speed) {
-  const pc = centerOf(player);
-  const ec = centerOf(e);
-  const dx = targetX - ec.x;
-  const want = Math.abs(dx) < 20 ? 0 : Math.sign(dx) * speed;
-  e.vx += (want - e.vx) * (1 - Math.exp(-10 * dt));
+  const want = navBoss(e, dt, targetX, speed);
+  if (navAirborne(e)) e.vx = want; // a planned jump steers directly
+  else e.vx += (want - e.vx) * (1 - Math.exp(-10 * dt));
   if (Math.abs(e.vx) > 30) e.facing = Math.sign(e.vx);
-  const playerAbove = player.onGround && pc.y < ec.y - 140;
-  const playerBelow = player.onGround && pc.y > ec.y + 160;
-  if (e.onGround && playerAbove && Math.abs(pc.x - ec.x) < 520) bossJump(e, 1350);
-  else if (!e.onGround && e.vy > 0 && e.airJumps > 0 && playerAbove && e.y + e.h > player.y + player.h + 40) bossJump(e, 1150);
-  if (e.onGround && playerBelow && e.standingOn && !e.standingOn.ground) e.dropTimer = 0.3;
 }
 
 function bossJump(e, v) {

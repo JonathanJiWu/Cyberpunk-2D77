@@ -2029,6 +2029,277 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------------------ Navigation ----
+  // (js/nav.js) Walkers and bosses route through a platform graph built from
+  // their own jump physics; flyers spread out. Helpers run in the page.
+  const NAV_HELPERS = `
+    director.nextBossAt = 1e9; // (no boss walking in on a long test)
+    window.__navPut = (i) => {
+      const p = platforms[i];
+      Object.assign(player, { x: p.x + p.w / 2 - player.w / 2, y: p.y - player.h, vx: 0, vy: 0, onGround: true, standingOn: p, invuln: 99 });
+      return p;
+    };
+    // on the player's floor and close, or touching
+    window.__navReached = (e) => overlaps(e, player) || (e.onGround && e.standingOn === player.standingOn && Math.abs(e.x + e.w / 2 - player.x - player.w / 2) < 120);
+    // simulate until cond() (an invulnerable, still player); the seconds it took, or -1
+    window.__navUntil = (cond, max) => {
+      for (let t = 0; t < max; t += 1 / 60) {
+        player.invuln = 99;
+        player.hp = stats.maxHp;
+        update(1 / 60);
+        if (cond()) return t;
+      }
+      return -1;
+    };
+    window.__navWalker = (type, x) => Object.assign(spawnEnemy(type, x, GROUND_Y - ENEMY_TYPES[type].h, { elite: false }), { hp: 1e9, maxHp: 1e9 });
+  `;
+
+  await test("navigation: every floor can be reached from every other by each walker type and each boss (the platform graph)", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      const movers = Object.keys(ENEMY_TYPES)
+        .filter((k) => ENEMY_TYPES[k].walker)
+        .map((type) => navMoverFor({ type, def: ENEMY_TYPES[type] }));
+      [["overseer", OVERSEER.w], ["nullptr", NULLB.w], ["goat", GOAT.w]].forEach(([type, w]) => movers.push(navMoverFor({ type, boss: true, w })));
+      const out = {};
+      for (const m of movers) {
+        const G = navGraph(m);
+        const bad = [];
+        for (let a = 0; a < G.N; a++) for (let b = 0; b < G.N; b++) if (!navReachable(m, a, b)) bad.push(a + ">" + b);
+        out[m.key] = { edges: G.E, kinds: [0, 1, 2].map((k) => G.kind.filter((x) => x === k).length), unreachable: bad.length, some: bad.slice(0, 6) };
+      }
+      // walkers called in while you're on the highest rooftop come in up there, not on the street
+      const top = platforms[30];
+      Object.assign(player, { x: top.x + 140, y: top.y - player.h, vx: 0, vy: 0, onGround: true, standingOn: top });
+      camera.x = clamp(player.x - W / 2, 0, WORLD_W - W);
+      camera.y = WORLD_TOP;
+      enemies.length = 0;
+      for (let i = 0; i < 12; i++) spawnAtEdge(["crawler", "ninja", "enforcer"][i % 3]);
+      out.spawnDrops = enemies.map((e) => Math.round(e.y + e.h - top.y));
+      enemies.length = 0;
+      return out;
+    });
+    assert(r.spawnDrops.length === 12 && r.spawnDrops.every((d) => d < 500), "walkers spawned far below a rooftop player: " + JSON.stringify(r.spawnDrops));
+    delete r.spawnDrops;
+    for (const [k, v] of Object.entries(r)) assert(v.edges > 50 && v.unreachable === 0, `${k} can't get everywhere: ${JSON.stringify(v)}`);
+    assert(r.enforcer.kinds[2] > 0 && r.crawler.kinds[1] > 0, "no grapple (enforcer) or drop-through moves: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("navigation: crawler, ninja and enforcer each climb from the street to a still player on every platform (rooftops and moving ones too)", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { autoFire: false, autoFlame: false } });
+    await page.evaluate(NAV_HELPERS);
+    const r = await page.evaluate(() => {
+      const fails = [];
+      const times = {};
+      const launches = navStats.launches;
+      const misses = navStats.fails;
+      for (const type of ["crawler", "ninja", "enforcer"]) {
+        let worst = 0;
+        let total = 0;
+        platforms.forEach((_, i) => {
+          enemies.length = 0;
+          const p = __navPut(i);
+          const sx = clamp(p.x + p.w / 2 + (i % 2 ? 900 : -900), 60, WORLD_W - 160); // from the street, off to one side
+          const e = __navWalker(type, sx);
+          const t = __navUntil(() => e.dead || __navReached(e), 45);
+          if (t < 0 || e.dead) fails.push(`${type} > #${i}${e.dead ? " (gone)" : ""}`);
+          else {
+            worst = Math.max(worst, t);
+            total += t;
+          }
+        });
+        times[type] = { worst: Math.round(worst), mean: Math.round((total / platforms.length) * 10) / 10 };
+      }
+      return { fails, times, launches: navStats.launches - launches, misses: navStats.fails - misses };
+    });
+    assert(!r.fails.length, "walkers could not reach: " + r.fails.join(", "));
+    assert(r.times.crawler.worst < 30 && r.times.ninja.worst < 30 && r.times.enforcer.worst < 40, "too slow: " + JSON.stringify(r.times));
+    assert(r.misses < r.launches * 0.08, "too many jumps fell short: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("navigation: 15 walkers on one route take turns at the take-off points (no pile-up, no hopping in place)", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { autoFire: false, autoFlame: false } });
+    await page.evaluate(NAV_HELPERS);
+    const r = await page.evaluate(() => {
+      const top = __navPut(30); // the highest rooftop (3850, -280)
+      const types = ["crawler", "ninja", "enforcer"];
+      const list = [];
+      for (let i = 0; i < 15; i++) list.push(__navWalker(types[i % 3], 3300 + (i % 3) * 4));
+      const reached = list.map(() => -1);
+      const misses = navStats.fails;
+      let t = 0;
+      __navUntil(() => {
+        t += 1 / 60;
+        list.forEach((e, i) => reached[i] < 0 && e.onGround && e.standingOn === top && (reached[i] = Math.round(t * 10) / 10));
+        return reached.every((x) => x >= 0);
+      }, 45);
+      const moves = list.map((e) => e.nav.jumps + e.nav.grapples);
+      return { reached, moves, misses: navStats.fails - misses, gone: list.filter((e) => e.dead).length };
+    });
+    assert(r.reached.every((x) => x >= 0) && !r.gone, "not everyone made it to the top: " + JSON.stringify(r));
+    // the route is 5-8 moves: a few spare, never dozens of hops on the spot
+    assert(Math.max(...r.moves) <= 12 && r.misses <= 2, "hopping in place / missed jumps: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("navigation: flyers reach and attack a player on the highest rooftop, and spread out instead of stacking", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { autoFire: false, autoFlame: false } });
+    await page.evaluate(NAV_HELPERS);
+    const r = await page.evaluate(() => {
+      const out = {};
+      const top = __navPut(30);
+      const px = top.x + top.w / 2;
+      __navUntil(() => false, 2); // the camera climbs up with the player
+      const flyer = (type, x, y) => Object.assign(spawnEnemy(type, x, y, { elite: false }), { hp: 1e9, maxHp: 1e9 });
+      for (const [type, dx] of [["drone", 900], ["dragon", -900], ["sniper", 1000]]) {
+        enemies.length = 0;
+        enemyShots.length = 0;
+        const e = flyer(type, px + dx, GROUND_Y - 300); // far below and off to the side
+        const t = __navUntil(() => enemyShots.some((s) => s.owner === e), 20);
+        out[type] = { t: Math.round(t * 10) / 10, gap: Math.round(Math.hypot(e.x - px, e.y - top.y)) };
+      }
+      enemies.length = 0;
+      const reaper = flyer("reaper", px - 700, GROUND_Y - 200);
+      out.reaper = Math.round(__navUntil(() => overlaps(reaper, player), 25) * 10) / 10;
+      enemies.length = 0;
+      const bomber = flyer("bomber", px + 800, 400);
+      bomber.hp = 6;
+      out.bomber = Math.round(__navUntil(() => bomber.fuse > 0 || bomber.exploded, 15) * 10) / 10;
+      // four drones from one point: they spread out
+      enemies.length = 0;
+      const pack = [0, 1, 2, 3].map(() => Object.assign(flyer("drone", px + 500, top.y - 200), { shotCd: 99 }));
+      __navUntil(() => false, 6);
+      let closest = Infinity;
+      pack.forEach((a, i) => pack.forEach((b, j) => j > i && (closest = Math.min(closest, Math.hypot(a.x - b.x, a.y - b.y)))));
+      out.closest = Math.round(closest);
+      return out;
+    });
+    for (const k of ["drone", "dragon", "sniper"]) assert(r[k].t >= 0 && r[k].gap < 1400, `${k} never attacked the rooftop player: ` + JSON.stringify(r));
+    assert(r.reaper >= 0 && r.bomber >= 0, "the reaper / bomber never got to the rooftop player: " + JSON.stringify(r));
+    assert(r.closest > 60, "drones stacked on top of each other: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("navigation: the Overseer, NULL and the GOAT chase a player up to the highest rooftop", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { autoFire: false, autoFlame: false } });
+    await page.evaluate(NAV_HELPERS);
+    const r = await page.evaluate(() => {
+      const out = {};
+      for (const [kind, spawn] of [["overseer", spawnOverseer], ["nullptr", spawnNull], ["goat", spawnGoat]]) {
+        startGame();
+        skipIntro();
+        director.firstSpawn = 1e9;
+        const top = __navPut(30);
+        camera.x = clamp(top.x - W / 2, 0, WORLD_W - W);
+        __navUntil(() => false, 1);
+        // it arrives on the street below you
+        game.time = 10;
+        spawn();
+        const b = game.boss;
+        b.x = clamp(top.x + 700, 0, WORLD_W - b.w);
+        const t = __navUntil(() => !b.parked && ((b.onGround && b.standingOn === top) || overlaps(b, player)), 40);
+        // up there it still fights
+        const states = new Set();
+        __navUntil(() => states.add(b.state) && false, 8);
+        out[kind] = { t: Math.round(t * 10) / 10, states: [...states] };
+      }
+      return out;
+    });
+    for (const k of ["overseer", "nullptr", "goat"]) assert(r[k].t >= 0, `${k} never got up to the rooftop: ` + JSON.stringify(r));
+    assert(["burst", "dash", "slam", "laser"].some((s) => r.overseer.states.includes(s)), "the Overseer stopped attacking up there: " + JSON.stringify(r.overseer));
+    assert(["charge", "leap", "breath"].some((s) => r.goat.states.includes(s)), "the GOAT stopped attacking up there: " + JSON.stringify(r.goat));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("navigation soak: a busy run with the player hopping between random platforms: no walker stuck, few missed jumps, cheap per frame", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { quiet: false, settings: { autoFire: false, autoFlame: false } });
+    await page.evaluate(NAV_HELPERS);
+    const r = await page.evaluate(() => {
+      let ms = 0;
+      let frames = 0;
+      let peak = 0;
+      const upd = updateEnemies;
+      updateEnemies = (dt) => {
+        const t0 = performance.now();
+        upd(dt);
+        ms += performance.now() - t0;
+        frames++;
+      };
+      const s0 = { ...navStats };
+      game.time = 60; // every enemy type is in the mix
+      director.firstSpawn = 0;
+      let worst = 0;
+      let worstWho = "";
+      let next = 0;
+      for (let t = 0; t < 85; t += 1 / 60) {
+        if (t >= next) {
+          next = t + 12;
+          __navPut(Math.floor(Math.random() * platforms.length));
+        }
+        player.invuln = 99;
+        player.hp = stats.maxHp;
+        if (game.state === "levelup") chooseUpgrade(0, true);
+        update(1 / 60);
+        peak = Math.max(peak, enemies.length);
+        // stuck: no closer (by its own route estimate) while not on your floor
+        enemies.forEach((e) => {
+          const n = e.nav;
+          if (e.dead || !n) return;
+          if (n.goal !== e.__goal || n.node === n.goal || n.est < e.__best - 0.05 || n.phase !== NAV_RUN) {
+            e.__goal = n.goal;
+            e.__best = n.node === n.goal ? Infinity : n.est;
+            e.__since = t;
+          }
+          if (t - e.__since > worst) {
+            worst = t - e.__since;
+            worstWho = `${e.type} on ${n.node} > ${n.goal}`;
+          }
+        });
+      }
+      updateEnemies = upd;
+      const d = (k) => navStats[k] - s0[k];
+      return { worst: Math.round(worst * 10) / 10, worstWho, peak, launches: d("launches"), misses: d("fails"), rescues: d("rescues"), ms: Math.round((ms / frames) * 1000) / 1000, state: game.state };
+    });
+    console.log("       soak: " + JSON.stringify(r));
+    assert(r.state === "playing" && r.peak >= 20, "the soak did not get busy: " + JSON.stringify(r));
+    // (waiting out one full swing of a moving platform counts as no progress: up to ~7.5 s)
+    assert(r.worst < 12 && r.rescues === 0, "a walker got stuck: " + JSON.stringify(r));
+    assert(r.launches > 100 && r.misses < r.launches * 0.1, "too many missed jumps: " + JSON.stringify(r));
+    assert(r.ms < 4, "enemy updates are too slow: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("navigation: ?navdebug draws the graph and every route without errors", async () => {
+    const { context, page, problems } = await open(browser, url + "?navdebug", { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { autoFire: false, autoFlame: false } });
+    await page.evaluate(NAV_HELPERS);
+    const r = await page.evaluate(() => {
+      __navPut(26);
+      ["crawler", "ninja", "enforcer"].forEach((t, i) => __navWalker(t, 3000 + i * 300));
+      spawnEnemy("drone", 3600, 200);
+      __navUntil(() => false, 3);
+      render(performance.now() / 1000);
+      return { on: navDebug.on, walkers: enemies.filter((e) => e.nav).length };
+    });
+    assert(r.on && r.walkers === 3, "navdebug: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("bosses: the Overseer (minions derez, no spawns, vents), then NULL, then the GOAT as final boss; beating it wins", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { quiet: false, settings: { autoFire: false, autoFlame: false } });
@@ -3440,6 +3711,49 @@ const fastForward = (page, seconds, bot) =>
     assert(r.m2 > 20 && r.m1 < -20, "walkers did not head for their targets: " + JSON.stringify(r));
     assert(r.shot && r.shot.atP2 < 0.25 && r.shot.atP1 > 0.5, "the drone's shot did not aim at player 2: " + JSON.stringify(r.shot));
     assert(r.down.hidden && r.down.near2 && r.down.drone, "enemies kept chasing a downed player: " + JSON.stringify(r.down));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: a walker climbs toward the nearer player's floor; camo blinds walkers (no climbing) and flyers (no shots)", async () => {
+    const { context, page, problems } = await coopRun({ p2: "tetsu" });
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      const roof = platforms[18]; // (900, 320): close enough that the co-op leash leaves them be
+      const hold = () => {
+        Object.assign(a, { x: roof.x + roof.w / 2 - a.w / 2, y: roof.y - a.h, vx: 0, vy: 0, onGround: true, standingOn: roof, invuln: 99 });
+        Object.assign(b, { x: 2400, y: GROUND_Y - b.h, vx: 0, vy: 0, onGround: true, standingOn: GROUND, invuln: 99 });
+      };
+      hold();
+      step(1);
+      const walker = (x) => Object.assign(spawnEnemy("crawler", x, GROUND_Y - ENEMY_TYPES.crawler.h, { elite: false }), { hp: 1e6, maxHp: 1e6 });
+      const near2 = walker(2200); // right next to player 2 on the street
+      const under1 = walker(roof.x + 100); // under player 1's rooftop
+      let up = -1;
+      for (let i = 0; i < 60 * 25 && up < 0; i++) {
+        hold();
+        step(1);
+        if (under1.onGround && under1.standingOn === roof) up = i / 60;
+      }
+      const out = { t2: near2.coopTarget === c2, goal2: near2.nav.goal, t1: under1.coopTarget === c1, up: Math.round(up * 10) / 10 };
+      // camo on player 1: the walker on the street below loses them and stops climbing
+      under1.dead = true;
+      const blind = walker(roof.x + 60);
+      const drone = Object.assign(spawnEnemy("drone", roof.x + 300, roof.y - 300, { elite: false }), { hp: 1e6, maxHp: 1e6, shotCd: 0 });
+      enemyShots.length = 0;
+      a.camo = 30;
+      for (let i = 0; i < 60 * 4; i++) {
+        hold();
+        step(1);
+      }
+      out.camo = { target: blind.coopTarget === c1, moves: blind.nav ? blind.nav.jumps : 0, floor: navNodeOf(blind.standingOn), shots: enemyShots.filter((s) => s.owner === drone).length };
+      a.camo = 0;
+      return out;
+    });
+    assert(r.t2 && r.goal2 === 0 && r.t1, "walkers did not pick the nearer player: " + JSON.stringify(r));
+    assert(r.up >= 0, "the walker never climbed to player 1's rooftop: " + JSON.stringify(r));
+    assert(r.camo.target && r.camo.moves === 0 && r.camo.floor === 0 && r.camo.shots === 0, "camo did not blind them: " + JSON.stringify(r.camo));
     assert(!problems.length, problems.join("; "));
     await context.close();
   });
