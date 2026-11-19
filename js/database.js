@@ -363,8 +363,8 @@ const BOSSES = {
   nullptr: {
     name: "NULL",
     title: "Second boss",
-    sheet: { img: "nullBoss", fw: 64, fh: 96 },
-    fallback: { img: "nullFallback", fw: 64, fh: 96 }, // painted by null.js until the art lands
+    sheet: { img: "nullBoss2", fw: 64, fh: 96 },
+    fallback: { img: "nullBoss", fw: 64, fh: 96 }, // the v3.1 sheet (null.js also paints one)
     hp: 3200,
     intro: "THE ASSASSIN WHO ISN'T THERE",
     desc: "A glitch-ninja assassin. It splits into holographic copies (only one is real), blinks out and reappears behind or above you to slash, throws fans of shuriken, snipes from the rooftops with a rail shot and vanishes in smoke. Below 60% it makes more copies and blinks faster; below 25% it hits a STACK OVERFLOW and chains its blinks.",

@@ -19,12 +19,17 @@ Sheets:
                               head): 0 idle, 1 blink, 2 talk (mouth open),
                               3 talk (half), 4 smirk, 5 one eyebrow raised
     legend-bust.png  192x240  THE LEGEND, head-and-shoulders bust (same model)
+    null2.png        896x96   NULL, 14 frames of 64x96, the layout of null.png:
+                              0-1 idle, 2-5 run, 6 air, 7 blink out, 8 blink in,
+                              9 slash, 10 throw, 11 rail aim, 12 hurt,
+                              13 defeated; facing right, feet on row 94
 """
 
 import argparse
 import math
 import os
 import random
+import sys
 
 from PIL import Image, ImageDraw
 
@@ -311,24 +316,25 @@ class Paint:
                     if self.cell[y][x]:
                         continue
                     best = None
+                    halo = None
                     for dx, dy in N4:
                         n = self.get(x + dx, y + dy)
-                        if n:
+                        if n and n[0].glow:
+                            halo = n  # glowing things get a soft halo, not a dark line
+                        elif n:
                             # lit side (the neighbour is below / right of us): a softer line
                             lit = dx > 0 or dy > 0
                             k = n[0].line * (1.5 if lit else 1.0)
-                            if n[0].glow:
-                                k = 0.55
-                            cand = (k, n)
-                            if best is None or cand[0] < best[0]:
-                                best = cand
+                            if best is None or k < best[0]:
+                                best = (k, n)
                     if best and not (cut_bottom and y >= h - 1):
                         k, n = best
                         base = n[0].col(n[1])
-                        dark = mix((14, 8, 30), base, k)
-                        marks.append((x, y, dark))
+                        marks.append((x, y, mix((14, 8, 30), base, k) + (255,)))
+                    elif halo:
+                        marks.append((x, y, halo[0].ramp[min(1, len(halo[0].ramp) - 1)] + (120,)))
             for x, y, col in marks:
-                px[x, y] = col + (255,)
+                px[x, y] = col
         return im
 
 
@@ -744,6 +750,325 @@ def make_legend2():
     return sheet
 
 
+# ==================================================================== NULL ===
+# The glitch-ninja assassin (second boss): 14 frames of 64x96 facing right,
+# feet on row 94, in the poses of null.png (js/null.js depends on the frame
+# order and on the hands: the throw at about (52, 38) in frame 10, the rail
+# pistol's muzzle near (60, 57) in frame 11). The joints come from
+# make_sprites.NULL_POSES so the anchors stay put; the figure on them is new:
+# a lean armoured body, a hooded cloak that comes apart into pixels at the
+# hem, a glossy black faceplate with a glowing empty-set sign, twin violet
+# energy blades and a violet rim light.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import make_sprites as MS  # noqa: E402  (NULL_POSES, the old sheet's joints)
+
+NSUIT = Mat(ramp("#08060d", "#151022", "#221a36", "#33284e", "#4a3b6e", "#6b5896"), rim=0.9, line=0.55)
+NARMOR = Mat(ramp("#0e0d19", "#1d1c2e", "#2f2e48", "#47466a", "#6a6896", "#a4a1cf"), rim=0.9, line=0.5)
+NCLOAK = Mat(ramp("#050308", "#0c0814", "#150f24", "#211835", "#30244c"), rim=0.75, line=0.6)
+NLINING = Mat(ramp("#22103f", "#381868", "#542294"), rim=0.3, line=0.5)
+NMASK = Mat(ramp("#020206", "#0b0b14", "#17172b", "#2b2b4a", "#4c4c7c", "#8a8ab8"), rim=0.5, line=0.6)
+NGLOW = Mat(ramp("#5c25ad", "#9c4dff", "#b06cff", "#d9b5ff", "#ffffff"), rim=0, line=0.5, glow=True)
+NCYAN = Mat(ramp("#0e9fc6", "#19f5ff", "#b5fcff", "#ffffff"), rim=0, line=0.5, glow=True)
+NSTEEL = Mat(ramp("#2e2e44", "#5c5c7c", "#9a9ab8", "#dcdcf0"), rim=0.4, line=0.45)
+VIOLET = hx("#b06cff")
+
+
+def unit(v):
+    m = math.hypot(v[0], v[1]) or 1.0
+    return (v[0] / m, v[1] / m)
+
+
+def lerp(a, b, t):
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def capsule(P, a, b, ra, rb, mat, tone_fn, z):
+    """A limb: a tapered capsule from a to b, cylinder-shaded. tone_fn gets
+    s (-1..1 across, +1 facing the key light) and t (0..1 along)."""
+    (ax, ay), (bx, by) = a, b
+    dx, dy = bx - ax, by - ay
+    L2 = dx * dx + dy * dy or 1e-6
+    L = math.sqrt(L2)
+    nx, ny = -dy / L, dx / L
+    if nx * -0.6 + ny * -0.8 < 0:
+        nx, ny = -nx, -ny
+    r = max(ra, rb)
+    out = set()
+    for y in range(int(min(ay, by) - r - 1), int(max(ay, by) + r + 2)):
+        for x in range(int(min(ax, bx) - r - 1), int(max(ax, bx) + r + 2)):
+            qx_, qy_ = x + 0.5, y + 0.5
+            t = min(1.0, max(0.0, ((qx_ - ax) * dx + (qy_ - ay) * dy) / L2))
+            cx_, cy_ = ax + dx * t, ay + dy * t
+            rr = ra + (rb - ra) * t
+            if math.hypot(qx_ - cx_, qy_ - cy_) <= rr:
+                s = ((qx_ - cx_) * nx + (qy_ - cy_) * ny) / max(rr, 0.5)
+                P.put(x, y, mat, tone_fn(x, y, s, t), z)
+                out.add((x, y))
+    return out
+
+
+def lit(base, gain=1.4):
+    return lambda x, y, s, t: base + gain * s
+
+
+def null_frame2(f):
+    J = MS.NULL_POSES[f]
+    W, H = 64, 96
+    P = Paint(W, H)
+    rng = random.Random(SEED + 900 + f)
+    hd, ch, pv = J["head"], J["chest"], J["pelvis"]
+    mode = J["mode"]
+    d = unit((ch[0] - pv[0], ch[1] - pv[1]))  # spine, pelvis -> chest
+    n = (-d[1], d[0])
+    if n[0] < 0:
+        n = (-n[0], -n[1])  # n points forward (right)
+
+    # --- the hooded cloak, flowing behind (z 0)
+    fl = J["flow"]
+    A = (J["sn"][0] + 1, J["sn"][1] - 3)
+    B = (J["sf"][0] - 3, J["sf"][1] - 2)
+    C = (pv[0] - 12 + fl[0], pv[1] + 19 + fl[1])
+    D = (pv[0] - 1 + fl[0] * 0.4, pv[1] + 13 + fl[1] * 0.5)
+    hem = []
+    for i in range(10):  # tattered hem: points alternate long / short
+        p = lerp(C, D, i / 9)
+        hem.append((p[0], p[1] + (3.2 if i % 2 else 0) + (1.5 if i % 3 == 0 else 0)))
+    cloak = poly(W, H, [A, (hd[0] - 6, hd[1] + 1), B] + hem + [D])
+    cl = dome(pv[0] - 6, pv[1] - 8, 16, 24)
+    P.fill(cloak, NCLOAK, lambda x, y: 0.5 + 3.2 * cl(x, y), z=0)
+    for (x, y) in sorted(cloak):  # violet lining along the inner edge
+        if (x + 1, y) not in cloak and (x + 2, y) not in cloak and y > ch[1]:
+            P.put(x, y, NLINING, 1.0, 0)
+    for k in range(3):  # folds running down the cloak
+        a_ = lerp(B, A, 0.25 + 0.25 * k)
+        b_ = hem[2 + 3 * k]
+        P.shift(set(line(a_[0], a_[1] + 3, b_[0], b_[1] - 2)), -1.0, only={NCLOAK})
+
+    # --- far arm and far blade (z 1, 1.5), far leg (z 2)
+    sf, ef, hf = J["sf"], J["ef"], J["hf"]
+    capsule(P, sf, ef, 2.1, 1.8, NSUIT, lit(1.6), 1)
+    capsule(P, ef, hf, 1.9, 1.5, NARMOR, lit(1.9), 1)  # bracer
+    capsule(P, hf, hf, 1.7, 1.7, NSUIT, lit(1.6), 1)
+    hip_f = (pv[0] - 2.5, pv[1] + 2)
+    capsule(P, hip_f, J["kf"], 3.0, 2.4, NSUIT, lit(1.5), 2)
+    capsule(P, J["kf"], J["ff"], 2.3, 1.6, NSUIT, lit(1.5), 2)
+    capsule(P, lerp(J["kf"], J["ff"], 0.12), lerp(J["kf"], J["ff"], 0.7), 2.1, 1.7, NARMOR, lit(1.8), 2.1)
+    null_foot(P, J["ff"], 1.0, 2.2)
+
+    # --- torso (z 3): suit, chest plate, belt, bandolier, glowing seam
+    up = 3.0
+    waist = lerp(pv, ch, 0.38)
+    tp = [(ch[0] + n[0] * 7 + d[0] * up, ch[1] + n[1] * 7 + d[1] * up),
+          (ch[0] - n[0] * 6.5 + d[0] * up, ch[1] - n[1] * 6.5 + d[1] * up),
+          (waist[0] - n[0] * 4.2, waist[1] - n[1] * 4.2),
+          (pv[0] - n[0] * 5 - d[0] * 2.5, pv[1] - n[1] * 5 - d[1] * 2.5),
+          (pv[0] + n[0] * 5 - d[0] * 2.5, pv[1] + n[1] * 5 - d[1] * 2.5),
+          (waist[0] + n[0] * 4.4, waist[1] + n[1] * 4.4)]
+    torso = poly(W, H, tp)
+
+    def across(x, y):
+        return ((x + 0.5 - ch[0]) * n[0] + (y + 0.5 - ch[1]) * n[1]) / 6.5
+    P.fill(torso, NSUIT, lambda x, y: 2.5 - 1.3 * across(x, y), z=3)
+    plate = poly(W, H, [(ch[0] + n[0] * 6 + d[0] * 1.5, ch[1] + n[1] * 6 + d[1] * 1.5),
+                        (ch[0] - n[0] * 5 + d[0] * 1.5, ch[1] - n[1] * 5 + d[1] * 1.5),
+                        (ch[0] - n[0] * 4 - d[0] * 7, ch[1] - n[1] * 4 - d[1] * 7),
+                        (ch[0] + n[0] * 4.5 - d[0] * 8, ch[1] + n[1] * 4.5 - d[1] * 8)])
+    P.fill(plate, NARMOR, lambda x, y: 3.2 - 1.4 * across(x, y), z=3.2)
+    P.shift({(x, y) for (x, y) in plate if (x, y - 1) not in plate}, 1.2, only={NARMOR})  # lit top edge
+    for k in (3.5, 6):  # plate segments
+        a_ = (ch[0] - d[0] * k, ch[1] - d[1] * k)
+        P.shift(set(line(a_[0] - n[0] * 4, a_[1] - n[1] * 4, a_[0] + n[0] * 4, a_[1] + n[1] * 4)), -1.0,
+                only={NARMOR})
+    belt_c = lerp(pv, ch, 0.12)
+    belt = set(thick(line(belt_c[0] - n[0] * 5, belt_c[1] - n[1] * 5, belt_c[0] + n[0] * 5, belt_c[1] + n[1] * 5), 0.8))
+    P.fill({p for p in belt if p in torso}, NARMOR, 1.6, z=3.3)
+    P.fill({(int(belt_c[0] + n[0] * 1.5), int(belt_c[1] + n[1] * 1.5))}, NGLOW, 3.0, z=3.4)
+    # the glowing seam down the front, broken where the plate sits
+    s0 = (ch[0] + n[0] * 2.5 - d[0] * 8.5, ch[1] + n[1] * 2.5 - d[1] * 8.5)
+    s1 = (pv[0] + n[0] * 3 + d[0] * 1.5, pv[1] + n[1] * 3 + d[1] * 1.5)
+    P.fill({p for p in line(*s0, *s1) if p in torso and p not in belt}, NGLOW, 1.5, z=3.4)
+    # a shuriken bandolier across the chest
+    b0 = (J["sn"][0] - 0.5, J["sn"][1] + 0.5)
+    b1 = (pv[0] - n[0] * 4 + d[0] * 5, pv[1] - n[1] * 4 + d[1] * 5)
+    strap = {p for p in line(*b0, *b1) if p in torso}
+    P.fill(strap, NARMOR, 1.2, z=3.5)
+    for t in (0.3, 0.62):
+        q = lerp(b0, b1, t)
+        x, y = int(round(q[0])), int(round(q[1]))
+        P.fill({(x, y)}, NSTEEL, 2.4, z=3.6)
+        P.fill({(x + 1, y + 1), (x - 1, y - 1)}, NSTEEL, 1.0, z=3.6)
+
+    # --- near leg (z 4): thigh, knee pad, shin guard, boot
+    hip_n = (pv[0] + 2.5, pv[1] + 2)
+    capsule(P, hip_n, J["kn"], 3.1, 2.5, NSUIT, lit(2.4), 4)
+    capsule(P, J["kn"], J["fn"], 2.4, 1.7, NSUIT, lit(2.4), 4)
+    capsule(P, lerp(J["kn"], J["fn"], 0.1), lerp(J["kn"], J["fn"], 0.72), 2.2, 1.8, NARMOR, lit(3.0), 4.1)
+    capsule(P, J["kn"], J["kn"], 2.3, 2.3, NARMOR, lit(3.4), 4.2)
+    null_foot(P, J["fn"], 2.2, 4.2)
+
+    # --- head (z 5): hood, faceplate, the empty-set sign
+    hood = ellipse(hd[0] - 0.8, hd[1] - 0.2, 5.6, 6.4, W, H)
+    hood |= poly(W, H, [(hd[0] - 4, hd[1] - 3.5), (hd[0] - 8.5, hd[1] + 3.5), (hd[0] - 3, hd[1] + 5.5)])  # the hood's tail
+    hood |= poly(W, H, [(hd[0] - 3, hd[1] + 3), (hd[0] + 4, hd[1] + 4), (ch[0] + 4, ch[1] - 1), (ch[0] - 5, ch[1] - 1)])
+    hdl = dome(hd[0] - 1.5, hd[1] - 1.5, 7, 8)
+    P.fill(hood, NCLOAK, lambda x, y: 0.4 + 3.8 * hdl(x, y), z=5)
+    face = ellipse(hd[0] + 1.9, hd[1] + 0.9, 3.1, 4.1, W, H)
+    P.fill(face, NMASK, lambda x, y: 1.0 + 1.6 * max(0.0, 1 - math.hypot(x + 0.5 - hd[0] - 0.8, y + 0.5 - hd[1] + 1.4) / 3),
+           z=5.5)
+    P.fill({(int(hd[0]) + 1, int(hd[1]) - 2), (int(hd[0]) + 2, int(hd[1]) - 3)}, NMASK, 5.0, z=5.6)  # gloss
+    sym = 1 if mode not in ("hurt", "defeated") else 0
+    cx_, cy_ = int(round(hd[0] + 2.2)), int(round(hd[1] + 1.0))
+    ring = [(-1, -2), (0, -2), (1, -2), (-2, -1), (2, -1), (-2, 0), (2, 0), (-2, 1), (2, 1), (-1, 2), (0, 2), (1, 2)]
+    P.fill({(cx_ + a, cy_ + b) for a, b in ring}, NGLOW, 1.5 + sym, z=5.7)
+    P.fill({(cx_ + k, cy_ - k) for k in range(-3, 4)}, NGLOW, 2.5 + 1.5 * sym, z=5.8)
+
+    # --- near arm (z 6): pauldron, bracer, fist
+    sn, en, hn = J["sn"], J["en"], J["hn"]
+    capsule(P, sn, en, 2.2, 1.9, NSUIT, lit(2.6), 6)
+    capsule(P, en, hn, 2.0, 1.6, NARMOR, lit(3.2), 6.1)
+    capsule(P, hn, hn, 1.8, 1.8, NSUIT, lit(2.8), 6.2)
+    pa = (sn[0] - 0.5, sn[1] - 0.5)
+    pauldron = ellipse(pa[0], pa[1], 3.3, 2.7, W, H)
+    P.fill(pauldron, NARMOR, lambda x, y: 2.4 + 2.2 * dome(pa[0] - 1, pa[1] - 1, 3.6, 3.2)(x, y), z=6.3)
+    P.shift({(x, y) for (x, y) in pauldron if y == int(pa[1]) + 1}, -1.2, only={NARMOR})
+
+    # --- energy blades: the far one behind the body, the near one in front
+    for hand, ang, z in ((hf, J["bf"], 1.5), (hn, J["bn"], 7)):
+        if ang is None:
+            continue
+        dv = (math.cos(math.radians(ang)), math.sin(math.radians(ang)))
+        P.fill(set(line(hand[0], hand[1], hand[0] + dv[0] * 2.5, hand[1] + dv[1] * 2.5)), NARMOR, 0.5, z=z)
+        a_ = (hand[0] + dv[0] * 2.5, hand[1] + dv[1] * 2.5)
+        b_ = (hand[0] + dv[0] * 14, hand[1] + dv[1] * 14)
+        capsule(P, a_, b_, 1.3, 0.5, NGLOW, lambda x, y, s, t: 2.6 + 1.4 * (abs(s) < 0.45) - 0.8 * t, z)
+
+    # --- effects baked into a few frames
+    kind = J["fx"]
+    if kind == "slash":
+        for y in range(H):
+            for x in range(W):
+                dd = math.hypot(x + 0.5 - 38, y + 0.5 - 46)
+                a = math.degrees(math.atan2(y + 0.5 - 46, x + 0.5 - 38))
+                if -80 <= a <= 50 and 16.6 <= dd <= 21 and not P.get(x, y):
+                    P.put(x, y, NGLOW, 4.0 if dd < 17.8 else 3.0 if dd < 19.2 else 1.6 - (a + 80) / 130, 8)
+    elif kind == "throw":
+        hx_, hy_ = hn
+        for a, dist in ((-24, 9), (-4, 12), (16, 9)):
+            sx = int(round(hx_ + dist * math.cos(math.radians(a))))
+            sy = int(round(hy_ + dist * math.sin(math.radians(a))))
+            P.fill({(sx, sy)}, NSTEEL, 3.0, z=8)
+            P.fill({(sx + 1, sy), (sx - 1, sy), (sx, sy + 1), (sx, sy - 1)}, NSTEEL, 2.0, z=8)
+            P.fill({(sx + 2, sy - 1), (sx - 2, sy + 1), (sx + 1, sy + 2), (sx - 1, sy - 2)}, NSTEEL, 1.0, z=8)
+            for k in range(3, 6):
+                P.fill({(sx - k, sy - int(round(k * math.sin(math.radians(a)))))}, NGLOW, 0.0, z=8)
+    elif kind == "rail":
+        hx_, hy_ = int(hn[0]), int(hn[1])
+        P.fill({(x, y) for x in range(hx_ - 1, hx_ + 9) for y in (hy_ - 1, hy_)}, NARMOR, 3.0, z=8)
+        P.fill({(x, hy_ - 1) for x in range(hx_, hx_ + 8)}, NARMOR, 4.2, z=8)
+        P.fill({(hx_ + 1, hy_ + 1), (hx_ + 1, hy_ + 2)}, NARMOR, 1.0, z=8)
+        P.fill({(hx_ + 3, hy_), (hx_ + 5, hy_)}, NGLOW, 3.0, z=8.1)
+        mx, my = hx_ + 10, hy_
+        P.fill(ellipse(mx + 0.5, my, 2.2, 2.2, W, H), NCYAN, 1.0, z=8)
+        P.fill({(mx, my), (mx, my - 1), (mx + 1, my), (mx - 1, my), (mx, my + 1)}, NCYAN, 3.0, z=8.1)
+
+    im = P.finish(VIOLET, rim_from=0.45)
+    # feet on row 94: move the solid figure so its lowest pixel sits there
+    low = max(y for y in range(H) for x in range(W) if im.getpixel((x, y))[3] > 200)
+    if low != 94:
+        moved = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        moved.paste(im, (0, 94 - low))
+        im = moved
+    return null_glitch(im, mode, rng)
+
+
+def null_foot(P, F, tone, z):
+    """A split-toe boot, toe forward (right)."""
+    fx_, fy_ = F
+    boot = poly(64, 96, [(fx_ - 2.6, fy_ - 1.4), (fx_ + 2.2, fy_ - 1.2), (fx_ + 6.2, fy_ + 2.2), (fx_ + 6, fy_ + 3.2),
+                         (fx_ - 2.6, fy_ + 3.2)])
+    P.fill(boot, NSUIT, lambda x, y: tone + (0.8 if y < fy_ + 1 else 0), z=z)
+    P.fill({(int(fx_ + 3), int(fy_ + 2)), (int(fx_ + 3), int(fy_ + 3))}, NSUIT, 0.0, z=z)
+
+
+GLITCH_COLS = [(156, 77, 255), (217, 181, 255), (25, 245, 255), (92, 37, 173)]
+
+
+def null_glitch(im, mode, rng):
+    """Clean glitch styling: an RGB-split scan row or two, pixels shed from the
+    cloak's hem, and the dissolve / reassembly frames."""
+    W, H = im.size
+    src = im.load()
+    solid = [[src[x, y][3] > 0 for x in range(W)] for y in range(H)]
+    rows = [y for y in range(H) if any(solid[y])]
+    top = rows[0] if rows else 0
+    out = im.copy()
+    px = out.load()
+
+    def put(x, y, col, a=255):
+        if 0 <= x < W and 0 <= y < H and px[x, y][3] < a:
+            px[x, y] = col + (a,)
+    if mode in ("blink_out", "blink_in", "defeated"):
+        out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        px = out.load()
+        for y in rows:
+            t = (y - top) / max(1, 94 - top)
+            frac = {"blink_out": 0.08 + 0.75 * t, "blink_in": 0.6 - 0.5 * t, "defeated": 0.1}[mode]
+            if mode == "blink_in":
+                frac = 0.05 + 0.5 * (1 - t) ** 1.5
+            shift = rng.choice((-3, -2, 2, 3)) if rng.random() < 0.22 else 0
+            for x in range(W):
+                if not solid[y][x]:
+                    continue
+                keep = rng.random() > frac or (y >= 92 and rng.random() < 0.5)
+                if keep:
+                    if 0 <= x + shift < W:
+                        px[x + shift, y] = src[x, y]
+                elif rng.random() < 0.3:
+                    ox = x + rng.randint(-6, 6) + (3 if mode == "blink_out" else 0)
+                    oy = y - rng.randint(2, 11) if mode != "blink_in" else y + rng.randint(-4, 4)
+                    col = rng.choice(GLITCH_COLS)
+                    put(ox, oy, col)
+                    if rng.random() < 0.5:
+                        put(ox + 1, oy, col)
+        if mode == "blink_in":  # streams of pixels converging on the body
+            for k in range(10):
+                a = rng.uniform(0, 2 * math.pi)
+                r0 = rng.uniform(18, 26)
+                for i in range(0, 8, 2):
+                    put(int(round(34 + (r0 - i) * math.cos(a))), int(round(60 + (r0 - i) * math.sin(a) * 1.4)),
+                        GLITCH_COLS[2] if i > 4 else GLITCH_COLS[0])
+        return out
+    # a split scan row: the row slides a pixel, cyan leading, magenta trailing
+    for y in rng.sample(rows[8:-8], 2 if mode == "hurt" else 1):
+        xs = [x for x in range(W) if solid[y][x]]
+        if not xs:
+            continue
+        x0, x1 = xs[0], xs[-1]
+        sh = 2 if mode == "hurt" else 1
+        for x in range(x1, x0 - 1, -1):
+            if 0 <= x + sh < W:
+                px[x + sh, y] = src[x, y]
+        for k in range(sh):
+            put(x1 + sh - k, y, (25, 245, 255), 230)
+            px[x0 + k, y] = (255, 47, 140, 200)
+    # pixels shed from the lowest edge of the cloak and the trailing side
+    for _ in range(14 if mode == "hurt" else 7):
+        y = rng.randint(top + 20, 90)
+        xs = [x for x in range(W) if solid[y][x]]
+        if not xs:
+            continue
+        x = xs[0] - rng.randint(1, 5)
+        put(x, y - rng.randint(0, 3), rng.choice(GLITCH_COLS), 220)
+    return out
+
+
+def make_null2():
+    sheet = Image.new("RGBA", (64 * 14, 96), (0, 0, 0, 0))
+    for f in range(14):
+        sheet.paste(null_frame2(f), (f * 64, 0))
+    return sheet
+
+
 # ================================================================== main ===
 def preview(im, path, scale=6, bg=(24, 20, 40)):
     big = im.resize((im.width * scale, im.height * scale), Image.NEAREST)
@@ -756,6 +1081,7 @@ def build_all():
     return {
         "legend2.png": make_legend2(),
         "legend-bust.png": make_legend_bust(),
+        "null2.png": make_null2(),
     }
 
 

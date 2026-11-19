@@ -87,6 +87,7 @@ loadImage("nullBoss", "img/null.png"); // 14 frames of 64x96
 // v3.2: redrawn NPCs (tools/art_npcs.py). The older sheets above stay as fallbacks.
 loadImage("legend2", "img/legend2.png"); // THE LEGEND's talking head: 6 frames of 96x96 (shown via CSS)
 loadImage("legendBust", "img/legend-bust.png"); // THE LEGEND, 192x240 bust
+loadImage("nullBoss2", "img/null2.png"); // NULL, same layout as null.png
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64

@@ -1008,7 +1008,8 @@ function resetNull() {
 }
 
 // ------------------------------------------------------------- Drawing ------
-const nullImg = () => (isReady(IMG.nullBoss) ? IMG.nullBoss : IMG.nullFallback);
+// the v3.2 sheet, then the v3.1 one, then the one painted below
+const nullImg = () => (isReady(IMG.nullBoss2) ? IMG.nullBoss2 : isReady(IMG.nullBoss) ? IMG.nullBoss : IMG.nullFallback);
 
 function nullFrame(e) {
   switch (e.state) {
