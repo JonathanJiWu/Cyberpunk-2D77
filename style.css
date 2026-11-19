@@ -3134,7 +3134,7 @@ body.touch .char-select {
   .cs-stage {
     grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
-    grid-template-areas: "art head" "art about" "kit kit";
+    grid-template-areas: "art head" "art kit" "about about";
     padding: 0 0.9em 0.9em 0;
   }
   .cs-stage::before,
@@ -3155,10 +3155,13 @@ body.touch .char-select {
     padding-top: 0.9em;
   }
   .cs-kit {
-    margin-top: 1em;
-    padding: 1em 0 0 0.9em;
+    margin-top: 0.9em;
+    padding: 0.9em 0 0;
     border-left: 0;
     border-top: 1px solid rgba(var(--c-rgb), 0.35);
+  }
+  .cs-about {
+    padding-left: 0.9em;
   }
   .cs-name {
     font-size: 2em;
@@ -3207,7 +3210,7 @@ body.touch .char-select {
     grid-template-areas: "art head" "about about" "kit kit";
     column-gap: 0.9em;
   }
-  .cs-about {
+  .cs-kit {
     padding-left: 0.9em;
   }
   .cs-name {
