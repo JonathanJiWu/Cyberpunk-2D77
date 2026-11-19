@@ -4021,11 +4021,16 @@ const fastForward = (page, seconds, bot) =>
       const drone = Object.assign(spawnEnemy("drone", roof.x + 300, roof.y - 300, { elite: false }), { hp: 1e6, maxHp: 1e6, shotCd: 0 });
       enemyShots.length = 0;
       a.camo = 30;
+      hold();
+      step(1);
+      // (checked now: a blinded walker wanders, and a long random wander can
+      // legitimately bring it nearer to player 2, who it then targets)
+      const target = blind.coopTarget === c1;
       for (let i = 0; i < 60 * 4; i++) {
         hold();
         step(1);
       }
-      out.camo = { target: blind.coopTarget === c1, moves: blind.nav ? blind.nav.jumps : 0, floor: navNodeOf(blind.standingOn), shots: enemyShots.filter((s) => s.owner === drone).length };
+      out.camo = { target, moves: blind.nav ? blind.nav.jumps : 0, floor: navNodeOf(blind.standingOn), shots: enemyShots.filter((s) => s.owner === drone).length };
       a.camo = 0;
       return out;
     });
