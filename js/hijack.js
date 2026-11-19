@@ -21,6 +21,8 @@
 // go through the team-aware paths (body contact in updateEnemy,
 // fireEnemyShot(..., owner), spawnShockwave(..., { owner }), bomber blasts);
 // hijackInherit(parent, child) for anything spawned by a hijacked enemy.
+// (updateHijack owns e.forcedTarget: a pawn gets the enemy it fights, an
+// enemy the pawn that taunts it; anything else there is cleared.)
 // =============================================================================
 
 // Every number in one place, for balancing (bot sims). [base, per level, max]
@@ -56,7 +58,8 @@ const hijackResists = (e) => !!(e.elite || (e.def && e.def.compromise === "resis
 // who fired it). One roll per burst; on a hit the nearest enemies inside go.
 const hijackPick = [];
 function tryHijack(x, y, r) {
-  let room = hijackCap() - hijackPawns.length;
+  let room = hijackCap();
+  for (const e of enemies) if (!e.dead && e.hijackT > 0) room--;
   hijackPick.length = 0;
   for (const e of enemies) {
     if (e.dead || isHijacked(e)) continue;
@@ -102,7 +105,7 @@ function hijack(e, time, fromX, fromY) {
   const c = centerOf(e);
   if (fromX !== undefined) kitFx.push({ type: "tether", x: fromX, y: fromY, e, life: 0.35, max: 0.35 });
   burst(c.x, c.y, 12, HIJACK_COLOR, 260);
-  popup("PWNED", c.x, e.y - 30, HIJACK_COLOR, 22, 0.9);
+  popup("ACCESS GRANTED", c.x, e.y - 52, HIJACK_COLOR, 18, 0.9);
   synth.play("hijack");
 }
 
