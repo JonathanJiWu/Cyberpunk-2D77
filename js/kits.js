@@ -181,7 +181,7 @@ function updateHeatWave(dt) {
   if (p.heatLocked && p.heat >= H.cost) p.heatLocked = false;
   const pressed = specialPressed();
   let want = pressed;
-  if (!want && settings.autoFlame && p.specialCd <= 0 && p.heat >= H.cost) {
+  if (!want && settings.autoFlame && !bossLocked() && p.specialCd <= 0 && p.heat >= H.cost) {
     const pc = centerOf(p);
     const close = enemies.filter((e) => !e.dead && circleHitsBox(pc.x, pc.y, H.radius * 0.7, e)).length;
     const shots = enemyShots.some((s) => s.kind !== "meteor" && Math.hypot(s.x - pc.x, s.y - pc.y) < 220);
@@ -343,7 +343,7 @@ function updateDilation(dt) {
   }
   const pressed = specialPressed();
   let want = pressed;
-  if (!want && settings.autoFlame && !(p.dilation > 0) && p.specialCd <= 0 && p.heat >= D.cost) {
+  if (!want && settings.autoFlame && !bossLocked() && !(p.dilation > 0) && p.specialCd <= 0 && p.heat >= D.cost) {
     const pc = centerOf(p);
     const near = enemies.filter((e) => !e.dead && Math.hypot(centerOf(e).x - pc.x, centerOf(e).y - pc.y) < 520).length;
     const danger = enemyShots.filter((s) => Math.hypot(s.x - pc.x, s.y - pc.y) < 400).length >= 3 || !!(game.boss && game.boss.beam && game.boss.beam.on);
@@ -367,6 +367,16 @@ function updateDilation(dt) {
   if (Math.random() < 0.5) say("special");
 }
 
+// A hero who goes down or swaps out drops whatever the kit was doing.
+// (updateDilation only runs for Hackerman, so a Time Dilation left running
+// by a hot-swap or a death would otherwise slow the world forever.)
+function resetKitState() {
+  const p = player;
+  if (p.dilation > 0) endDilation();
+  p.draw = null;
+  p.releaseT = 0;
+}
+
 function endDilation() {
   const p = player;
   p.dilation = 0;
@@ -379,12 +389,14 @@ function endDilation() {
 // ======================================================= Enemy effects ======
 // Damage over time: "bleed" (arrows on bosses) and "burn" (heat wave)
 function applyDot(e, kind, dps, dur) {
+  // (a stronger DoT that is still running keeps its strength; an expired
+  // one doesn't, so check before refreshing the timer)
   if (kind === "bleed") {
-    e.bleedT = dur;
     e.bleedDps = Math.max(e.bleedT > 0 ? e.bleedDps || 0 : 0, dps);
+    e.bleedT = dur;
   } else {
-    e.burnT = dur;
     e.burnDps = Math.max(e.burnT > 0 ? e.burnDps || 0 : 0, dps);
+    e.burnT = dur;
   }
 }
 

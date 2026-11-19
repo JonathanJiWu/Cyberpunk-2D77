@@ -84,7 +84,7 @@ function update(dt) {
     updateMissiles(dt);
   });
   updateEnemyShots(edt);
-  updateBossFx(edt);
+  updateBossFx(edt, dt);
   updateGoatDeath(dt);
   updatePickups(dt);
   sweepDead();

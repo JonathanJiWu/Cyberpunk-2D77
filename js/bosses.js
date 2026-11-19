@@ -267,11 +267,13 @@ function drawBossCard(VW, VH) {
   ctx.globalAlpha = 1;
 }
 
-// Boss-fight odds and ends that run every frame
-function updateBossFx(dt) {
+// Boss-fight odds and ends that run every frame. dt is the enemies' (slowed
+// by Time Dilation and friends); realDt drives the intro card, which must
+// not last 4x longer because someone was in bullet time.
+function updateBossFx(dt, realDt = dt) {
   updateShockwaves(dt);
   updateNullFx(dt);
-  if (game.cinematic && (game.cinematic.time -= dt) <= 0) game.cinematic = null;
+  if (game.cinematic && (game.cinematic.time -= realDt) <= 0) game.cinematic = null;
   if (game.goatSky) game.goatSky = Math.min(1, game.goatSky + dt * 0.5);
 }
 function resetBossFx() {

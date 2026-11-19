@@ -193,6 +193,11 @@ function drawBar(x, y, w, h, frac, ghostFrac, color) {
   ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
 }
 
+// Pixel size of one square cell in each icon sheet (most are 24x24). The
+// v3.1 kit icons live on fx2, whose cells are 32x32 like fx.
+const ICON_CELL = { fx: 32, fx2: 32, pickups: 16 };
+const iconCell = (sheet) => ICON_CELL[sheet] || 24;
+
 function drawIcon(sheet, size, cell, x, y, s) {
   if (!drawCell(sheet, cell, size, x + s / 2, y + s / 2, s, s)) {
     ctx.fillStyle = "#3d3560";
@@ -285,7 +290,7 @@ function drawHUD(time) {
     const level = lv(u.id);
     if (!level) return;
     const icon = upgradeInfo(u).icon;
-    drawIcon(icon.sheet, icon.sheet === "fx" ? 32 : 24, icon.cell, ux, uy, 44);
+    drawIcon(icon.sheet, iconCell(icon.sheet), icon.cell, ux, uy, 44);
     hudText(String(level), ux + 40, uy + 30, 14, "#ffe14d", "right");
     ux += 50;
   });
@@ -358,7 +363,8 @@ function drawHints(VW, VH) {
   if (touchMode && !pad) {
     // with auto-fire on, the right stick still aims and fires (twin-stick)
     const right = settings.touchAim === "tap" && !settings.autoFire ? "TAP: FIRE   HOLD: RAPID FIRE" : "RIGHT STICK: AIM + FIRE";
-    hudText(`LEFT STICK: MOVE (FLICK UP: JUMP)   ${right}   CORNER: ${CH().special.label}`, VW / 2, VH - 150, 20, "#ffffff", "center");
+    hudText(`LEFT STICK: MOVE (FLICK UP: JUMP)`, VW / 2, VH - 176, 20, "#ffffff", "center");
+    hudText(`${right}   CORNER: ${CH().special.label}`, VW / 2, VH - 150, 20, "#ffffff", "center");
   } else {
     const rows = pad || [
       ["A D", "MOVE    W S  AIM"],

@@ -13,6 +13,8 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 // ------------------------------------------------------------ Tiny harness ---
 const results = [];
 async function test(name, fn) {
+  // ONLY="part of a test name" runs just the matching tests
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
   const started = Date.now();
   try {
     await fn();
@@ -1821,6 +1823,73 @@ const fastForward = (page, seconds, bot) =>
     assert(r.cut > 0, "blade did no damage: " + JSON.stringify(r));
     assert(r.dashing && r.moved > 200, "dash did not move Tetsu: " + JSON.stringify(r));
     assert(r.spent > 0 && r.guard > 0, "dash did not cost focus or grant guard: " + JSON.stringify(r));
+    await context.close();
+  });
+
+  await test("kit states end cleanly: a hot-swap or a death ends Time Dilation, expired DoTs don't keep their strength, boss intros run on real time and hold auto-specials", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "sudo", autoFire: false, autoFlame: false } });
+    const r = await page.evaluate(() => {
+      const out = {};
+      const dilate = () => {
+        player.heat = 100;
+        player.specialCd = 0;
+        input.specialQueued = true;
+        for (let i = 0; i < 3; i++) update(1 / 60);
+      };
+      // hot-swap mid-dilation
+      dilate();
+      out.on = { dilation: player.dilation > 0, scale: enemyTimeScale() };
+      switchCharacter("tetsu");
+      update(1 / 60);
+      out.swapped = { char: player.char, dilation: player.dilation, scale: enemyTimeScale() };
+      // dying mid-dilation (with a life to spare)
+      switchCharacter("sudo");
+      player.specialCd = 0;
+      dilate();
+      out.before = player.dilation > 0;
+      player.invuln = 0;
+      player.hp = 0;
+      update(1 / 60);
+      out.died = { intro: intro.active, dilation: player.dilation, scale: enemyTimeScale() };
+      skipIntro();
+      // DoTs: a strong bleed that has run out doesn't stick around
+      const e = spawnEnemy("enforcer", player.x + 400, GROUND_Y - 116);
+      e.hp = e.maxHp = 1e6;
+      applyDot(e, "bleed", 10, 0.5);
+      for (let i = 0; i < 60; i++) update(1 / 60);
+      applyDot(e, "bleed", 4, 2);
+      out.dot = { expiredThenWeak: e.bleedDps };
+      applyDot(e, "bleed", 2, 2);
+      out.dot.activeKeepsStrong = e.bleedDps;
+      // a boss entrance lasts its real length under slow-mo, and auto-specials wait for it
+      settings.autoFlame = true;
+      player.hp = 10;
+      player.heat = 100;
+      player.specialCd = 0;
+      game.slowmo = { time: 99, scale: 0.25 };
+      spawnOverseer();
+      const len = game.cinematic.max;
+      let t = 0;
+      let dilatedDuringIntro = false;
+      while (game.cinematic && t < 20) {
+        update(1 / 60);
+        t += 1 / 60;
+        if (game.cinematic && player.dilation > 0) dilatedDuringIntro = true;
+      }
+      out.intro = { len, took: Math.round(t * 10) / 10, dilatedDuringIntro };
+      game.slowmo = null;
+      for (let i = 0; i < 30; i++) update(1 / 60);
+      out.intro.dilatedAfter = player.dilation > 0;
+      return out;
+    });
+    assert(r.on.dilation && r.on.scale < 1, "Time Dilation did not start: " + JSON.stringify(r.on));
+    assert(r.swapped.char === "tetsu" && r.swapped.dilation === 0 && r.swapped.scale === 1, "a hot-swap left the world in slow motion: " + JSON.stringify(r.swapped));
+    assert(r.before && r.died.intro && r.died.dilation === 0 && r.died.scale === 1, "a death left the world in slow motion: " + JSON.stringify(r.died));
+    assert(r.dot.expiredThenWeak === 4 && r.dot.activeKeepsStrong === 4, "bleed strength: " + JSON.stringify(r.dot));
+    assert(Math.abs(r.intro.took - r.intro.len) < 0.3 && !r.intro.dilatedDuringIntro, "boss intro under slow-mo: " + JSON.stringify(r.intro));
+    assert(r.intro.dilatedAfter, "auto Time Dilation never fired after the intro: " + JSON.stringify(r.intro));
+    assert(!problems.length, problems.join("; "));
     await context.close();
   });
 

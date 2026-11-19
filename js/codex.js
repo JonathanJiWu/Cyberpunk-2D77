@@ -196,7 +196,7 @@ function skillEntry(name, icon, desc, tag, color) {
   const card = entry(false);
   card.classList.add("skill");
   card.style.setProperty("--c", color);
-  const size = icon.sheet === "fx" ? 32 : 24;
+  const size = iconCell(icon.sheet); // (render.js)
   card.append(spriteCanvas(icon.sheet, icon.cell * size, 0, size, size, 56));
   const info = el("div", "codex-info");
   info.append(el("h3", "", `${name} // ${tag}`));
