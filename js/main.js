@@ -289,6 +289,7 @@ function handleMenuKey(e) {
     return true;
   }
   if (overlay.hidden) return false;
+  if (charSelectKey(e)) return true; // arrows between the IC tiles (select.js)
   if (e.code === "Enter" || e.code === "Space") {
     const el = document.activeElement;
     if (el && (el.dataset.setting || el.dataset.music || el.tagName === "SUMMARY" || el.classList.contains("secret") || el.classList.contains("char-card") || el.id === "codex-btn" || el.id === "respec-btn" || el.id === "overlay-btn-2" || el.id === "coop-join-btn" || el.id === "coop-leave-btn")) return true; // let it click
