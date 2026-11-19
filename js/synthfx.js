@@ -617,6 +617,26 @@ const synth = (() => {
     },
 
     // ------------------------------------------------- BOSS: NULL ---
+    // Hackerman's hijack (hijack.js): access granted...
+    hijack: {
+      gap: 0.12, max: 2, vary: 0.02, g: 1.1,
+      fn(k) {
+        const c = k.crush(5, 0.3);
+        k.noise({ filt: { t: "bandpass", f: [[0, 900], [0.1, 5200]], q: 3 }, e: hit(0.4, 0.1), to: c }); // a modem chirp
+        [72, 76, 79, 84].forEach((n, i) => k.osc({ at: 0.06 + i * 0.045, type: "square", f: midi(n), e: perc(0.5, 0.05), to: c }));
+        k.osc({ at: 0.24, type: "triangle", f: midi(91), e: perc(0.35, 0.14) });
+      },
+    },
+    // ...and the patch lands: back to its old side
+    hijackEnd: {
+      gap: 0.12, max: 2, vary: 0.02, g: 1,
+      fn(k) {
+        const c = k.crush(5, 0.3);
+        [84, 79, 76, 72].forEach((n, i) => k.osc({ at: i * 0.04, type: "square", f: midi(n), e: perc(0.45, 0.04), to: c }));
+        k.noise({ at: 0.17, filt: { t: "bandpass", f: 2200, q: 4 }, e: hit(0.3, 0.03), to: c });
+        k.thump(0.18, 140, 60, 0.12, 0.35);
+      },
+    },
     nullBlink: {
       gap: 0.1, max: 2, vary: 0.04, wet: 0.15, g: 1.4,
       fn(k) {

@@ -202,7 +202,7 @@ function applyPowerup(type) {
       ring(pc.x, pc.y, W * 0.7, "#b06cff");
       camera.shake = Math.max(camera.shake, 14);
       enemies.forEach((e) => {
-        if (onScreen(e)) {
+        if (onScreen(e) && !(e.hijackT > 0)) {
           damageEnemy(e, e.boss ? 40 : 60, { source: "emp" });
           e.stun = 1.2;
         }

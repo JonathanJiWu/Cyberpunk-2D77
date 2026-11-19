@@ -73,13 +73,15 @@ function computeKitStats(z, f, cdMul, costMul) {
   };
 }
 
-// The passive line on the HUD
-function passiveLine() {
+// The passive on the HUD: one line, or two for Hackerman (glitch, then the
+// hijack chance of each glitch); passiveLine() joins them for small panels
+function passiveLines() {
   const p = player;
-  if (p.char === "paine") return `PIERCE ${Math.round(pierceChance() * 100)}%`;
-  if (p.char === "tetsu") return `REFLECT ${Math.round(reflectPct() * 100)}%`;
-  return `GLITCH ${Math.round(glitchChance() * 100)}%`; // (radius: see the DATABASE)
+  if (p.char === "paine") return [`PIERCE ${Math.round(pierceChance() * 100)}%`];
+  if (p.char === "tetsu") return [`REFLECT ${Math.round(reflectPct() * 100)}%`];
+  return [`GLITCH ${Math.round(glitchChance() * 100)}%`, `HIJACK ${Math.round(hijackChance() * 100)}%`]; // (radius, caps: see the DATABASE)
 }
+const passiveLine = () => passiveLines().join(" ");
 
 // ========================================================= CYBER WIDOW ======
 // Cyber Bow: hold to draw (the aim keeps tracking), release at full draw
@@ -221,7 +223,7 @@ function updateHeatWaves(dt) {
     w.r = 20 + (w.max - 20) * (1 - (1 - k) * (1 - k));
     if (k < 1) {
       enemies.forEach((e) => {
-        if (e.dead || w.hit.has(e)) return;
+        if (e.dead || e.hijackT > 0 || w.hit.has(e)) return; // (it doesn't shove your hijacked ones)
         const c = centerOf(e);
         if (Math.hypot(c.x - w.x, c.y - w.y) - Math.min(e.w, e.h) * 0.4 > w.r) return;
         w.hit.add(e);
@@ -321,12 +323,15 @@ function systemGlitch(x, y) {
   const t = glitchTime();
   let n = 0;
   enemies.forEach((e) => {
-    if (e.dead) return;
+    if (e.dead || e.hijackT > 0) return; // (your hijacked ones don't stutter)
     const c = centerOf(e);
     if (Math.hypot(c.x - x, c.y - y) > r) return;
+    if (e.boss && !hijackBossGlitch(e)) return; // (a boss stutters every so often, not all fight long)
     e.glitchT = Math.max(e.glitchT || 0, e.boss ? t * 0.4 : t);
     n++;
   });
+  // ...and it's an EMP: a chance to hijack the nearest ones (hijack.js)
+  tryHijack(x, y, r);
   kitFx.push({ type: "glitch", x, y, r, life: 0.4, max: 0.4 });
   glyphBurst(x, y, 6);
   synth.play("glitch");
@@ -533,6 +538,17 @@ function drawKitFx(time) {
   });
   kitFx.forEach((f) => {
     const k = f.life / f.max;
+    if (f.type === "tether") {
+      // the hijack: a green line from the burst to its new pawn
+      if (f.e.dead) return;
+      ctx.strokeStyle = `rgba(90,255,122,${0.9 * k})`;
+      ctx.lineWidth = 2 + 4 * k;
+      ctx.beginPath();
+      ctx.moveTo(f.x, f.y);
+      ctx.lineTo(f.e.x + f.e.w / 2, f.e.y + f.e.h / 2);
+      ctx.stroke();
+      return;
+    }
     if (f.type === "reflect") {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";

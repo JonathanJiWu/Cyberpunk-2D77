@@ -84,6 +84,12 @@ function spawnEnemy(type, x, y, opts = {}) {
     nav: null, // walkers: the route through the platforms (nav.js)
     forcedTarget: null, // who it goes after instead of the player (see enemyTarget)
     bubble: null, // a Hotfix's one-hit shield: the Hotfix (enemies2.js)
+    // Hackerman's hijack (hijack.js): > 0 while it fights for the players
+    hijackT: 0,
+    hijackMax: 0,
+    patchT: 0, // immune to another hijack while > 0
+    patchFx: 0,
+    retargetT: 0,
   };
   if (def.v2) initEnemy2(e); // the v3.2 enemies' own state (enemies2.js)
   if (def.walker) e.y = y - (e.h - def.h); // keep elites standing on the surface
@@ -186,11 +192,15 @@ function updateDirector(dt) {
 
 // --------------------------------------------------------------- Update -----
 function updateEnemies(dtAll) {
+  // Hijacked enemies run on real time: Time Dilation and slow-mo don't slow your pawns
+  const real = dtAll / Math.max(0.05, enemyTimeScale());
+  updateHijack(real);
   for (const e of enemies) {
     if (e.dead) continue;
+    const dt = e.hijackT > 0 ? real : dtAll;
     // `player` is its target while it thinks: in co-op, the nearest player (coop.js)
-    if (coop.players.length < 2) updateEnemy(e, dtAll);
-    else withPlayer(coopTargetFor(e), () => updateEnemy(e, dtAll));
+    if (coop.players.length < 2) updateEnemy(e, dt);
+    else withPlayer(coopTargetFor(e), () => updateEnemy(e, dt));
   }
 
   // Keep walkers from stacking into one blob: only ones standing on the same
@@ -215,8 +225,8 @@ function updateEnemies(dtAll) {
 // bound `player`: in co-op the nearest live one (updateEnemies binds it).
 // Movement, aiming and the despawn check go through here, so a later feature
 // can point an enemy at another body with e.forcedTarget (Hackerman's EMP
-// will turn enemies on a "compromised" one; contact damage and enemy shots
-// still only hit players: see the notes at the end of nav.js).
+// hijack sets it: a hijacked enemy goes after other enemies, and enemies near
+// it go after the hijacked one; see hijack.js).
 function enemyTarget(e) {
   const t = e.forcedTarget;
   return t && !t.dead ? t : player;
@@ -265,6 +275,9 @@ function updateEnemy(e, dtAll) {
     const d = Math.hypot(dx, dy) || 1;
     const steer = Math.min(1, 3 * dt);
     let contactMul = 1;
+    // hijacked with nobody to fight: it trails you, but doesn't attack you
+    const pawn = e.hijackT > 0;
+    const calm = blind || (pawn && !e.forcedTarget);
 
     if (def.v2) contactMul = updateEnemy2(e, dt, target, blind ? tgt : null, stunned); // the v3.2 enemies (enemies2.js)
     else if (def.walker) {
@@ -274,7 +287,7 @@ function updateEnemy(e, dtAll) {
       let want = stunned || e.windup > 0 ? 0 : navWalker(e, dt, target, blind ? tgt : null);
       const steering = navAirborne(e); // (a planned jump steers at full speed)
       if (!steering) want *= sm;
-      const busy = stunned || blind || navBusy(e);
+      const busy = stunned || calm || navBusy(e);
       if (e.type === "ninja") want = updateNinja(e, dt, dx, dy, want, busy);
       if (e.type === "enforcer") {
         want = updateEnforcer(e, dt, dx, dy, want, busy);
@@ -305,7 +318,7 @@ function updateEnemy(e, dtAll) {
       e.y += (e.vy + e.kbY) * dt + Math.sin(game.time * 2.5 + e.bob) * 25 * dt;
       e.facing = dx > 0 ? 1 : -1;
     } else if (def.kind === "bomber") {
-      if (updateBomber(e, dt, dx, dy, d, stunned || blind, sm)) return;
+      if (updateBomber(e, dt, dx, dy, d, stunned || calm, sm)) return;
     } else {
       // Ranged flyers (drones, wyrms, snipers) keep their distance and shoot
       // (spread out from each other: navSpread)
@@ -326,17 +339,17 @@ function updateEnemy(e, dtAll) {
       e.x += (e.vx + e.kbX) * dt;
       e.y += (e.vy + e.kbY) * dt;
       e.facing = dx > 0 ? 1 : -1;
-      if (e.type === "sniper") updateSniper(e, dt, stunned || blind, sm);
+      if (e.type === "sniper") updateSniper(e, dt, stunned || calm, sm);
       else {
         // Charge up (glowing) for a moment before every shot so it can be dodged
-        if (!stunned && !blind && onScreen(e)) e.shotCd -= dt * sm;
+        if (!stunned && !calm && onScreen(e)) e.shotCd -= dt * sm;
         if (e.charge > 0) {
           e.charge -= dt;
           if (e.charge <= 0 && !stunned) {
             fireEnemyShot(ec.x + e.facing * 20, ec.y, def.shot, undefined, e.dmgMul, e);
             e.shotCd = rand(def.shot.cooldown[0], def.shot.cooldown[1]);
           }
-        } else if (e.shotCd <= 0 && !stunned && !blind) {
+        } else if (e.shotCd <= 0 && !stunned && !calm) {
           e.charge = 0.45;
         }
       }
@@ -348,15 +361,30 @@ function updateEnemy(e, dtAll) {
     if (!def.walker) e.y = clamp(e.y, WORLD_TOP + 40, GROUND_Y - e.h - 10);
     e.anim += dt * def.sheet.fps * sm;
 
-    // Body contact: whoever it runs into (either player in co-op)
+    // Body contact: whoever it runs into (either player in co-op). A hijacked
+    // one hits the enemy it's after instead; an enemy it taunted hits it back.
     if (!stunned && e.hitCd <= 0) {
-      eachTarget(() => {
-        if (e.hitCd > 0 || player.camo > 0 || player.flameOn || !overlaps(e, player)) return;
-        if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
+      const foe = e.forcedTarget;
+      if (pawn) {
+        if (foe && !foe.dead && overlaps(e, foe)) {
+          damageEnemy(foe, def.damage * e.dmgMul * contactMul, { source: "hijack", fromX: ec.x, kbX: Math.sign(foe.x - e.x) * 220 });
+          e.hitCd = 0.9;
+          e.kbX = -Math.sign(dx) * 200;
+        }
+      } else {
+        eachTarget(() => {
+          if (e.hitCd > 0 || player.camo > 0 || player.flameOn || !overlaps(e, player)) return;
+          if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
+            e.hitCd = 0.9;
+            e.kbX = -Math.sign(dx) * 300;
+          }
+        });
+        if (e.hitCd <= 0 && foe && isHijacked(foe) && overlaps(e, foe)) {
+          damageEnemy(foe, def.damage * e.dmgMul * contactMul, { source: "enemy", fromX: ec.x });
           e.hitCd = 0.9;
           e.kbX = -Math.sign(dx) * 300;
         }
-      });
+      }
     }
 
     // Enemies left far behind just leave (and so does a walker hopelessly
@@ -457,10 +485,14 @@ function explodeBomber(e) {
   burst(c.x, c.y, 10, "#ffe14d", 300);
   camera.shake = Math.max(camera.shake, 10);
   sfx.stomp.play({ rate: 0.8 });
-  eachTarget(() => circleHitsBox(c.x, c.y, B.radius, player) && hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y, e));
-  // the blast hurts other enemies too
+  // a hijacked bomber's blast only hurts enemies; anyone else's hurts players,
+  // other enemies and the hijacked ones
+  const pawn = isHijacked(e);
+  if (!pawn) eachTarget(() => circleHitsBox(c.x, c.y, B.radius, player) && hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y, e));
   enemies.forEach((o) => {
-    if (o !== e && !o.dead && circleHitsBox(c.x, c.y, B.radius, o)) damageEnemy(o, 30, { source: "blast" });
+    if (o === e || o.dead || !circleHitsBox(c.x, c.y, B.radius, o)) return;
+    if (pawn) !o.boss && !isHijacked(o) && damageEnemy(o, 30 * e.dmgMul, { source: "hijack" });
+    else damageEnemy(o, 30, { source: isHijacked(o) ? "enemy" : "blast" });
   });
   e.dead = true;
 }
@@ -505,7 +537,9 @@ function wanderTarget(e, ec, dt) {
 function fireEnemyShot(x, y, shot, angle, dmgMul = 1, owner = null) {
   const pc = centerOf(owner ? enemyTarget(owner) : player);
   const a = angle !== undefined ? angle : Math.atan2(pc.y - y, pc.x - x);
-  enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4, owner });
+  // (a hijacked enemy's shot is green and only hits enemies: updateEnemyShots)
+  const pawn = isHijacked(owner);
+  enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4, owner, pawn, color: pawn ? HIJACK_COLOR : undefined });
   sfx.enemyShot.play({ rate: shot.kind === "laser" ? 1.6 : shot.kind === "snipe" ? 2.2 : 0.55 });
 }
 
@@ -525,13 +559,28 @@ function updateEnemyShots(dt) {
     }
     s.life -= dt;
     let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 300 || s.x < camera.x - 300 || s.x > camera.x + W + 300;
-    // a shot hits whichever player it reaches first (either one in co-op)
-    if (!gone) {
+    if (!gone && s.pawn) {
+      // a hijacked enemy's shot: the first enemy it reaches (never a player)
+      for (const o of enemies) {
+        if (o === s.owner || o.dead || o.boss || o.hijackT > 0 || !circleHitsBox(s.x, s.y, s.r, o)) continue;
+        damageEnemy(o, s.damage, { source: "hijack", fromX: s.x - s.vx * 0.05 });
+        gone = true;
+        break;
+      }
+    } else if (!gone) {
+      // a shot hits whichever player it reaches first (either one in co-op)...
       eachTarget(() => {
         if (gone || !circleHitsBox(s.x, s.y, s.r, player) || player.invuln > 0) return;
         hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy, s.owner);
         gone = true;
       });
+      // ...or a hijacked enemy in its way
+      for (let j = 0; !gone && j < hijackPawns.length; j++) {
+        const o = hijackPawns[j];
+        if (o.dead || !(o.hijackT > 0) || !circleHitsBox(s.x, s.y, s.r, o)) continue;
+        damageEnemy(o, s.damage, { source: "enemy" });
+        gone = true;
+      }
     }
     if (gone) {
       const color = s.color || (s.kind === "laser" || s.kind === "snipe" ? "#ff2f6d" : s.kind === "ring" ? "#19f5ff" : "#ff9b21");
@@ -543,11 +592,17 @@ function updateEnemyShots(dt) {
 
 // ------------------------------------------------------- Damage & death -----
 const SHIELD_BLOCKS = new Set(["zap", "orb", "arrow", "em", "blade", "missile", "chain"]);
-// Damage that doesn't come from the player's attacks (no Time Dilation bonus)
-const NOT_PLAYER_DAMAGE = new Set(["fall", "bleed", "reflect", "blast", "test"]);
+// Damage that doesn't come from the player's attacks (no Time Dilation bonus).
+// "hijack": a hijacked enemy hitting an enemy; "enemy": an enemy hitting a hijacked one.
+const NOT_PLAYER_DAMAGE = new Set(["fall", "bleed", "reflect", "blast", "test", "hijack", "enemy"]);
+// A hijacked enemy is on your side: only these still hurt it (player attacks pass through)
+const HURTS_PAWNS = new Set(["enemy", "fall", "bleed", "test"]);
+// Damage that earns the players nothing (heat/focus/RAM): no farming with your pawns
+const NO_RESOURCE = new Set(["flame", "heat", "hijack", "enemy"]);
 
 function damageEnemy(e, amount, opts = {}) {
   if (e.dead || amount <= 0) return;
+  if (e.hijackT > 0 && !HURTS_PAWNS.has(opts.source)) return; // friendly now
   if (e.type === "nullptr" && nullIntercept(e)) return; // NULL's copies pop instead
   if (!e.boss && (e.bubble || e.def.v2)) {
     amount = preDamage2(e, amount, opts); // Hotfix shields, Monolith plates (enemies2.js)
@@ -573,21 +628,21 @@ function damageEnemy(e, amount, opts = {}) {
   if (opts.knock || Math.abs(opts.kbX || 0) >= 250) e.knockT = 1.5; // knocked off a ledge? fall damage
   e.hp -= amount;
   e.hurt = 0.08;
-  // Heat is earned by dealing damage - but not with the flame itself
-  if (opts.source !== "flame" && opts.source !== "heat") gainHeat(amount * TUNING.heat.perDamageDealt);
+  // Heat is earned by dealing damage - but not with the flame itself (or by your pawns)
+  if (!NO_RESOURCE.has(opts.source)) gainHeat(amount * TUNING.heat.perDamageDealt);
   const resist = e.boss ? 0.1 : e.def.kbResist !== undefined ? e.def.kbResist : e.def.shielded ? 0.4 : 1;
   if (opts.kbX) e.kbX += opts.kbX * resist;
   if (opts.kbY) e.kbY += opts.kbY * resist;
   const c = centerOf(e);
   if (!opts.quiet) damageNumber(amount, c.x, e.y - 6, opts.source === "chain" ? "#9ffcff" : e.vulnT > 0 ? "#5aff7a" : "#ffffff");
-  if (e.hp <= 0) killEnemy(e);
+  if (e.hp <= 0) killEnemy(e, opts.source);
 }
 
-function killEnemy(e) {
+function killEnemy(e, source) {
   e.dead = true;
   const c = centerOf(e);
   game.kills++;
-  gainHeat(TUNING.heat.perKill);
+  if (source !== "hijack" && source !== "enemy") gainHeat(TUNING.heat.perKill); // (a pawn's kill earns no heat; XP still drops)
   if (game.kills % 50 === 0) say("kills", { n: game.kills });
   if (e.boss) {
     burst(c.x, c.y, 60, "#ff2457", 700);
@@ -647,8 +702,11 @@ function drawEnemies(time) {
     const frame = enemyFrame(e, s);
     let tint = null;
     if (e.hurt > 0) tint = "rgba(255,255,255,0.85)";
+    else if (e.patchFx > 0) tint = "rgba(255,255,255,0.6)"; // rebooting after a hijack
+    else if (e.hijackT > 0) tint = `rgba(90,255,122,${0.45 + 0.15 * Math.sin(time * 9)})`; // hijacked: on your side
     else if (e.stun > 0) tint = "rgba(176,108,255,0.5)";
     else if (e.slowT > 0) tint = "rgba(90,255,122,0.35)";
+    if (e.hijackT > 0) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.8, "rgba(90,255,122,0.45)");
     if (e.elite) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.9, "rgba(255,200,40,0.45)");
     if (e.def.kind === "ranged") glow(cx, e.y + e.h / 2, 60, e.type === "drone" ? "rgba(255,47,109,0.25)" : "rgba(255,155,33,0.2)");
     if (e.charge > 0) {
@@ -705,6 +763,7 @@ function drawEnemies(time) {
       const a = time * 6;
       if (!drawCell("fx", 6, 32, cx, e.y - 22, 40, 40, a)) hudText("*", cx, e.y - 22, 26, "#ffe14d", "center", "middle");
     }
+    if (e.hijackT > 0) drawHijackTag(e, time);
     // Small health bar once damaged
     if (e.hp < e.maxHp) {
       ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -756,6 +815,13 @@ function drawEnemyShots() {
   ctx.imageSmoothingEnabled = true;
   enemyShots.forEach((s) => {
     if (s.draw) return s.draw(s); // shots that draw themselves (enemies2.js)
+    if (s.pawn) {
+      // a hijacked enemy's shot: green, whatever it is
+      glow(s.x, s.y, 36, "rgba(90,255,122,0.7)");
+      ctx.fillStyle = HIJACK_COLOR;
+      ctx.fillRect(s.x - 9, s.y - 4, 18, 8);
+      return;
+    }
     if (s.kind === "shuriken") return drawShuriken(s); // NULL's
     if (s.kind === "laser") {
       glow(s.x, s.y, 40, "rgba(255,47,109,0.6)");

@@ -21,11 +21,10 @@
 // go after enemyTarget(e). Attacks go through the shared paths (body contact
 // in updateEnemy, spawnShockwave with an owner); the special ones (packets,
 // heal tethers, the 429 field) pick friend or foe by team: an enemy with
-// hijackT > 0 fights for the players (Hackerman's hijack).
+// hijackT > 0 fights for the players (Hackerman's hijack: isHijacked() and
+// sameTeam() in hijack.js).
 // =============================================================================
 
-const hj2 = (e) => !!e && e.hijackT > 0; // hijacked: on the players' side
-const sameTeam2 = (a, b) => hj2(a) === hj2(b);
 const limiters2 = []; // Rate Limiters alive this frame
 const debris2 = []; // armor plates flying off a Monolith
 const PACKET_G = 1700; // packet gravity
@@ -92,11 +91,12 @@ function initEnemy2(e) {
 // updateEnemy() (minion branch): the type's AI and movement. The shared tail
 // there does knockback decay, body contact (times the returned multiplier)
 // and despawning. target: enemyTarget(e); wander: a spot to mill around
-// while camo hides the target (else null).
+// while camo hides the target (else null). busy: no attacks this frame
+// (stunned, blinded, or hijacked with no enemy to fight: it just tags along).
 function updateEnemy2(e, dt, target, wander, stunned) {
   e.firedT -= dt;
   if (e.def.kbResist === 0) e.kbX = e.kbY = 0; // (not even a contact bounce moves a Monolith)
-  const busy = stunned || !!wander;
+  const busy = stunned || !!wander || (isHijacked(e) && !e.forcedTarget);
   if (e.type === "forkbomb") return updateForkBomb(e, dt, target, wander, busy);
   if (e.type === "lobber") return updateLobber(e, dt, target, wander, busy);
   if (e.type === "monolith") return updateMonolith(e, dt, target, wander, busy);
@@ -208,6 +208,7 @@ function forkChildren(e) {
     k.stateT = 0;
     k.dashCd = rand(0.6, 1.1);
     k.hitCd = 0.35;
+    hijackInherit(e, k); // a hijacked parent's children are on your side too
   }
   popup("fork()", cx, e.y - 10, "#ff2fd6", 20, 0.7);
   synth.play("forkSplit");
@@ -373,7 +374,7 @@ function packetFrozen(s) {
 // Shot out of the air by any player's projectile (an arrow stops unless it
 // pierces; EM waves sweep on), or sliced by an Iaido Dash
 function packetShotDown(s) {
-  if (hj2(s.owner)) return false; // (a hijacked Lobber's packets are on your side)
+  if (isHijacked(s.owner)) return false; // (a hijacked Lobber's packets are on your side)
   for (let i = 0; i < coop.players.length; i++) {
     const c = coop.players[i];
     const shots = c.shots;
@@ -393,7 +394,7 @@ function packetShotDown(s) {
 
 // Bursting on contact with a body on the other team
 function packetTouches(s) {
-  if (!hj2(s.owner)) {
+  if (!isHijacked(s.owner)) {
     for (let i = 0; i < coop.players.length; i++) {
       const c = coop.players[i];
       if (inWorld(c) && !c.player.hidden && circleHitsBox(s.x, s.y, s.r, c.player)) return true;
@@ -401,7 +402,7 @@ function packetTouches(s) {
   }
   for (let i = 0; i < enemies.length; i++) {
     const o = enemies[i];
-    if (!o.dead && !o.boss && o !== s.owner && !sameTeam2(o, s.owner) && circleHitsBox(s.x, s.y, s.r, o)) return true;
+    if (!o.dead && !o.boss && o !== s.owner && !sameTeam(o, s.owner) && circleHitsBox(s.x, s.y, s.r, o)) return true;
   }
   return false;
 }
@@ -418,7 +419,7 @@ function packetBlast(s) {
   burst(s.x, y, 8, "#ffe14d", 260);
   camera.shake = Math.max(camera.shake, 6);
   synth.play("packetLand");
-  const ours = hj2(s.owner);
+  const ours = isHijacked(s.owner);
   if (!ours) {
     blastS = s;
     s.ty = y;
@@ -427,13 +428,13 @@ function packetBlast(s) {
   // enemies on the other team caught in it
   for (let i = 0; i < enemies.length; i++) {
     const o = enemies[i];
-    if (o.dead || o.boss || o === s.owner || sameTeam2(o, s.owner) || !circleHitsBox(s.x, y - 10, s.blast, o)) continue;
+    if (o.dead || o.boss || o === s.owner || sameTeam(o, s.owner) || !circleHitsBox(s.x, y - 10, s.blast, o)) continue;
     damageEnemy(o, s.damage, { source: ours ? "hijack" : "enemy", fromX: s.x });
   }
 }
 
 function drawPacket2(s) {
-  const friendly = s.phase === undefined || hj2(s.owner); // (parried back at them, or hijacked)
+  const friendly = s.phase === undefined || isHijacked(s.owner); // (parried back at them, or hijacked)
   if (s.phase === 0) {
     glow(s.x, s.y, 20 + 30 * Math.min(1, s.age / 0.6), "rgba(255,150,40,0.85)"); // the tube glows as it loads
     return;
@@ -461,7 +462,7 @@ function drawMarker2(s, time) {
   const k = clamp(s.age / s.total, 0, 1);
   const R = s.blast;
   const y = s.ty - 3;
-  const ours = hj2(s.owner);
+  const ours = isHijacked(s.owner);
   const pulse = 0.5 + 0.5 * Math.sin(time * (8 + 26 * k));
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -678,7 +679,7 @@ function updateHotfix(e, dt, t, busy) {
   }
   hy += Math.sin(game.time * 2.2 + e.bob) * 26;
   // ...and never near a player (it's a medic, not a fighter)
-  if (!hj2(e)) {
+  if (!isHijacked(e)) {
     let near = P.keepAway;
     for (let i = 0; i < coop.players.length; i++) {
       const c = coop.players[i];
@@ -720,7 +721,7 @@ function updateHotfix(e, dt, t, busy) {
   return 1;
 }
 
-const allyOk2 = (e, o) => !o.dead && !o.boss && !o.downed && o.type !== "hotfix" && sameTeam2(e, o);
+const allyOk2 = (e, o) => !o.dead && !o.boss && !o.downed && o.type !== "hotfix" && sameTeam(e, o);
 
 // The patients: the best two by need (missing HP, elites, Monoliths love it)
 function hotfixPick(e) {
@@ -862,7 +863,7 @@ function applyFields2(dt) {
       const py = p.y + p.h / 2;
       for (let j = 0; j < limiters2.length && !inside; j++) {
         const f = limiters2[j];
-        if (f.dead || hj2(f) || f.fieldR <= 0) continue;
+        if (f.dead || isHijacked(f) || f.fieldR <= 0) continue;
         const fx = f.x + f.w / 2 - px;
         const fy = fieldY2(f) - py;
         inside = fx * fx + fy * fy < f.fieldR * f.fieldR;
@@ -880,10 +881,10 @@ function applyFields2(dt) {
   // hijacked fields jam the enemies instead
   for (let j = 0; j < limiters2.length; j++) {
     const f = limiters2[j];
-    if (f.dead || !hj2(f) || f.fieldR <= 0) continue;
+    if (f.dead || !isHijacked(f) || f.fieldR <= 0) continue;
     for (let i = 0; i < enemies.length; i++) {
       const o = enemies[i];
-      if (o.dead || o.boss || hj2(o)) continue;
+      if (o.dead || o.boss || isHijacked(o)) continue;
       const ox = o.x + o.w / 2 - f.x - f.w / 2;
       const oy = o.y + o.h / 2 - fieldY2(f);
       if (ox * ox + oy * oy < f.fieldR * f.fieldR) slowEnemy(o, 0.6, 0.3);
@@ -1002,10 +1003,12 @@ function drawEnemy2(e, time) {
   const cx = e.x + e.w / 2;
   const dx = cx - dw / 2;
   const dy = e.def.walker ? e.y + e.h - dh : e.y + e.h / 2 - dh / 2;
-  const flip = e.facing < 0;
+  const flip = s.flip && e.facing < 0; // (the Rate Limiter is symmetric: its 429 never shows mirrored)
   const f = frame2(e);
   let tint = null;
   if (e.hurt > 0) tint = "rgba(255,255,255,0.85)";
+  else if (e.patchFx > 0) tint = "rgba(255,255,255,0.6)"; // rebooting after a hijack
+  else if (isHijacked(e)) tint = `rgba(90,255,122,${0.45 + 0.15 * Math.sin(time * 9)})`; // on your side
   else if (e.stun > 0) tint = "rgba(176,108,255,0.5)";
   else if (e.slowT > 0) tint = "rgba(90,255,122,0.35)";
   if (tell2(e) && !tint) {
@@ -1014,7 +1017,7 @@ function drawEnemy2(e, time) {
     glow(cx, e.y + e.h * 0.6, Math.max(e.w, e.h) * 0.8, e.type === "monolith" ? "rgba(255,170,40,0.6)" : "rgba(255,47,214,0.6)", pulse);
   }
   if (e.elite) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.9, "rgba(255,200,40,0.45)");
-  if (hj2(e)) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.8, "rgba(90,255,122,0.4)");
+  if (isHijacked(e)) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.8, "rgba(90,255,122,0.4)");
   drawUnder2(e, time, cx, dx, dy, k);
   const tumbling = e.downed && !e.downed.landed; // a Hotfix shot out of the sky
   if (e.downed) {
@@ -1045,6 +1048,7 @@ function drawEnemy2(e, time) {
     const a = time * 6;
     if (!drawCell("fx", 6, 32, cx, e.y - 22, 40, 40, a)) hudText("*", cx, e.y - 22, 26, "#ffe14d", "center", "middle");
   }
+  if (isHijacked(e)) drawHijackTag(e, time);
   // health bar once damaged (and a Monolith's plates above it)
   if (e.hp < e.maxHp || e.plates) {
     const bw = e.type === "monolith" ? 90 : 60;
@@ -1132,7 +1136,7 @@ function drawField2(e, time) {
   const x = e.x + e.w / 2;
   const y = fieldY2(e);
   if (x + r < camera.x || x - r > camera.x + W) return;
-  const col = hj2(e) ? "#5aff7a" : "#ff9b21";
+  const col = isHijacked(e) ? "#5aff7a" : "#ff9b21";
   ctx.save();
   ctx.globalAlpha = 0.09;
   ctx.fillStyle = col;
@@ -1157,7 +1161,7 @@ function drawField2(e, time) {
   }
   ctx.restore();
   if (perfMode()) return;
-  decorGlow(x, y, r * 0.9, hj2(e) ? "rgba(90,255,122,0.12)" : "rgba(255,150,40,0.12)");
+  decorGlow(x, y, r * 0.9, isHijacked(e) ? "rgba(90,255,122,0.12)" : "rgba(255,150,40,0.12)");
   for (let i = 0; i < 3; i++) {
     const a = time * 0.5 + i * 2.094;
     hudText("429", x + Math.cos(a) * r, y + Math.sin(a) * r, 18, col, "center", "middle");

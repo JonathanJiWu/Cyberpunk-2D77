@@ -38,6 +38,7 @@ function makeBoss(type, w, h, x, y) {
     vulnT: 0,
     // status effects from the IC kits (declared up front so the shape stays stable)
     glitchT: 0,
+    glitchLock: 0, // System Glitch can only stutter a boss every so often (hijack.js)
     knockT: 0,
     bleedT: 0,
     bleedDps: 0,
@@ -174,15 +175,29 @@ function updateShockwaves(dt) {
       continue;
     }
     if (Math.random() < 0.5) dust(s.x, s.y, 1, 0.8);
-    // it hits each player once (s.hit: the players it got)
-    eachTarget(() => {
-      const p = player;
-      const pc = centerOf(p);
-      const feet = p.y + p.h;
-      if (!s.hit.has(p) && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
-        if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y, s.owner)) s.hit.add(p);
+    // it hits each player once (s.hit: the players it got); a hijacked
+    // enemy's wave hits enemies instead, anyone else's the hijacked ones too
+    const pawn = isHijacked(s.owner);
+    if (!pawn) {
+      eachTarget(() => {
+        const p = player;
+        const pc = centerOf(p);
+        const feet = p.y + p.h;
+        if (!s.hit.has(p) && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
+          if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y, s.owner)) s.hit.add(p);
+        }
+      });
+    }
+    if (pawn || hijackPawns.length) {
+      for (const o of enemies) {
+        if (o.dead || o === s.owner || s.hit.has(o) || o.boss || isHijacked(o) === pawn) continue;
+        const feet = o.y + o.h;
+        if (Math.abs(o.x + o.w / 2 - s.x) < 34 + o.w / 2 && feet > s.y - s.h * 0.6 && feet <= s.y + 6) {
+          s.hit.add(o);
+          damageEnemy(o, s.damage, { source: pawn ? "hijack" : "enemy" });
+        }
       }
-    });
+    }
   }
 }
 

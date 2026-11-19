@@ -412,7 +412,7 @@ function renderCharSelect() {
 renderCharSelect();
 // Portraits (and their cut-outs) load after the menu is built: rebuild with
 // the newest sheet, keeping the focus on the same tile
-["portraits", "portraits2"].forEach((name) =>
+["portraits", "portraits2", "portraits3"].forEach((name) =>
   IMG[name] && IMG[name].addEventListener("load", () => {
     const i = charSel.cards.indexOf(document.activeElement);
     buildCharSelect();

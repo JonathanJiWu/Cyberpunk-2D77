@@ -573,9 +573,8 @@ function drawCoopHud(VW, time) {
     ctx.strokeStyle = c.color;
     ctx.lineWidth = 3;
     ctx.strokeRect(x - 12, y - 12, 424, 144);
-    const sheet = isReady(IMG.portraits2) ? "portraits2" : "portraits";
     const ch = CH();
-    drawIcon(sheet, 48, ch.portrait, x, y, 40);
+    drawPortrait(ch.portrait, x, y, 40);
     hudText(`P2 ${ch.name}`, x + 50, y + 10, 20, c.color);
     const status = coopStatus(c);
     drawBar(x, y + 50, 400, 24, status ? 0 : p.hp / stats.maxHp, status ? 0 : p.ghostHp / stats.maxHp, p.hp / stats.maxHp < 0.3 && Math.sin(time * 12) > 0 ? "#ff2f6d" : c.color);

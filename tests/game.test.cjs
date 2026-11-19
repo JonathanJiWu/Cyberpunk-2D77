@@ -698,6 +698,73 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  await test("v3.2 NPC art: the redrawn sheets load and are drawn (older sheets as fallbacks); THE LEGEND talks with legend2's 6 frames", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      const size = (n) => (isReady(IMG[n]) ? `${IMG[n].naturalWidth}x${IMG[n].naturalHeight}` : "missing");
+      const out = { sizes: {}, defs: {} };
+      ["legend2", "legendBust", "nullBoss2", "billboard2", "ninja2"].forEach((n) => (out.sizes[n] = size(n)));
+      out.defs = { ninja: [ENEMY_TYPES.ninja.sheet.img, ENEMY_TYPES.ninja.sheet.fallback], nullptr: [BOSSES.nullptr.sheet.img, BOSSES.nullptr.fallback.img] };
+      // which images a draw call hands to the canvas
+      const drawn = (fn) => {
+        const seen = new Set();
+        const orig = ctx.drawImage;
+        ctx.drawImage = function (img, ...rest) {
+          seen.add(img);
+          return orig.call(this, img, ...rest);
+        };
+        try {
+          fn();
+        } finally {
+          ctx.drawImage = orig;
+        }
+        return seen;
+      };
+      // a fallback: the new sheet "fails to load", the older one is used
+      const without = (name, fn) => {
+        const keep = IMG[name];
+        IMG[name] = new Image();
+        try {
+          return fn();
+        } finally {
+          IMG[name] = keep;
+        }
+      };
+      out.billboard = drawn(() => drawBillboard(1)).has(IMG.billboard2);
+      out.billboardOld = without("billboard2", () => drawn(() => drawBillboard(1)).has(IMG.billboard));
+      out.null = nullImg() === IMG.nullBoss2;
+      out.nullOld = without("nullBoss2", () => nullImg() === IMG.nullBoss);
+      const n = spawnEnemy("ninja", player.x + 300, GROUND_Y - 92, { elite: false });
+      n.hurt = n.stun = 0;
+      out.ninja = drawn(() => drawEnemies(1)).has(IMG.ninja2);
+      out.ninjaOld = without("ninja2", () => drawn(() => drawEnemies(1)).has(IMG.ninja));
+      return out;
+    });
+    assert(r.sizes.legend2 === "576x96" && r.sizes.legendBust === "192x240" && r.sizes.nullBoss2 === "896x96", "sheet sizes: " + JSON.stringify(r.sizes));
+    assert(r.sizes.billboard2 === "576x128" && r.sizes.ninja2 === "160x48", "sheet sizes: " + JSON.stringify(r.sizes));
+    assert(r.defs.ninja.join() === "ninja2,ninja" && r.defs.nullptr.join() === "nullBoss2,nullBoss", "sheet defs: " + JSON.stringify(r.defs));
+    assert(r.billboard && r.billboardOld && r.null && r.nullOld && r.ninja && r.ninjaOld, "drawn with the new sheets, else the old: " + JSON.stringify(r));
+    // THE LEGEND: legend2.png, 6 frames wide; talking animates, done rests on frame 4 (the smirk)
+    await page.evaluate(() => {
+      progress.pending = 1;
+      openLevelUp();
+    });
+    const legend = () =>
+      page.evaluate(() => {
+        const el = document.querySelector("#legend-levelup");
+        const cs = getComputedStyle(el.querySelector(".legend-sprite"));
+        return { talking: el.classList.contains("talking"), done: el.classList.contains("done"), image: cs.backgroundImage, size: cs.backgroundSize, x: cs.backgroundPositionX, anim: cs.animationName };
+      });
+    const talking = await legend();
+    await page.waitForFunction(() => document.querySelector("#legend-levelup").classList.contains("done"), null, { timeout: 8000 });
+    const done = await legend();
+    assert(talking.talking && /legend2\.png/.test(talking.image) && talking.size === "600% 100%" && /legend-talk/.test(talking.anim), "talking legend: " + JSON.stringify(talking));
+    assert(done.done && /legend2\.png/.test(done.image) && done.x === "80%" && !/legend-talk|legend-blink/.test(done.anim), "legend at rest: " + JSON.stringify(done));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("the camera follows the player up to the rooftops", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page);
@@ -1945,6 +2012,217 @@ const fastForward = (page, seconds, bot) =>
     assert(r.dilation.playerMoved > 150, "Hackerman should keep full speed: " + JSON.stringify(r.dilation));
     assert(r.dilation.bonus >= 14, "no damage bonus during dilation: " + JSON.stringify(r.dilation));
     assert(r.ended, "Time Dilation never ended");
+    await context.close();
+  });
+
+  // ------------------------------------------------------- Hijack ----
+  // (js/hijack.js) Hackerman's System Glitch bursts can hijack enemies.
+  // __rng(...values) makes the next Math.random() calls return those values.
+  const HIJACK_HELPERS = `
+    director.nextBossAt = 1e9;
+    window.__rng = (...vals) => {
+      const real = Math.random;
+      Math.random = () => (vals.length ? vals.shift() : (Math.random = real)());
+    };
+    window.__burst = (x, y, r, ...vals) => {
+      __rng(...vals);
+      const n = tryHijack(x, y, r);
+      return n;
+    };
+    window.__mob = (type, x, y) => Object.assign(spawnEnemy(type, x, y !== undefined ? y : GROUND_Y - ENEMY_TYPES[type].h, { elite: false }), { hp: 400, maxHp: 400 });
+    window.__steps = (n) => {
+      for (let i = 0; i < n; i++) {
+        player.hp = stats.maxHp;
+        update(1 / 60);
+      }
+    };
+  `;
+
+  await test("Hackerman hijack: a burst takes over the nearest enemies; the pawn fights for you (contact, shots, blasts) and draws fire; your attacks pass through it; no heat; it reboots patched", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "sudo", autoFire: false, autoFlame: false } });
+    await page.evaluate(HIJACK_HELPERS);
+    const r = await page.evaluate(() => {
+      const out = {};
+      progress.level = 12; // 2 per burst, 3 at once, 5.1s
+      Object.assign(player, { x: 600, y: GROUND_Y - player.h, vx: 0, onGround: true, standingOn: GROUND });
+      const [a, b, c] = [1400, 1450, 1700].map((x) => __mob("crawler", x));
+      out.numbers = { chance: hijackChance(), per: hijackPerBurst(), cap: hijackCap(), time: hijackTime(), taunt: tauntRadius() };
+      out.n = __burst(1380, 960, 300, 0); // (the roll hits)
+      out.who = [a, b, c].map(isHijacked);
+      out.time = Math.round(a.hijackT * 100) / 100;
+      __steps(1);
+      out.targets = { a: a.forcedTarget === c, b: b.forcedTarget === c, c: c.forcedTarget === a || c.forcedTarget === b };
+      // friendly: your attacks pass through it
+      const hp = a.hp;
+      damageEnemy(a, 50, { source: "zap" });
+      damageEnemy(a, 50, { source: "em" });
+      out.friendly = a.hp === hp && !nearestEnemy(a.x, a.y, 50);
+      // they fight: the pawns hurt c, c hurts a pawn; none of it earns heat
+      const heat = player.heat;
+      const c0 = c.hp;
+      const p0 = a.hp + b.hp;
+      __steps(150);
+      out.fight = { cHurt: Math.round(c0 - c.hp), pawnsHurt: Math.round(p0 - a.hp - b.hp), heat: player.heat - heat };
+      // a hijacked drone's shot flies through you and hits an enemy behind you
+      enemies.length = 0;
+      player.invuln = 0;
+      const pc = centerOf(player);
+      const d = __mob("drone", pc.x - 300, pc.y - 20);
+      const foe = Object.assign(__mob("crawler", pc.x + 250), { stun: 99 }); // (stays put)
+      hijack(d, 5);
+      const hp0 = player.hp;
+      const fh = foe.hp;
+      fireEnemyShot(centerOf(d).x, centerOf(d).y, ENEMY_TYPES.drone.shot, Math.atan2(centerOf(foe).y - centerOf(d).y, centerOf(foe).x - centerOf(d).x), 1, d);
+      const shot = enemyShots[enemyShots.length - 1];
+      for (let i = 0; i < 90 && enemyShots.includes(shot); i++) update(1 / 60);
+      out.shot = { pawn: shot.pawn, player: hp0 - player.hp, foe: Math.round(fh - foe.hp) };
+      // ...a normal drone's shot hits the hijacked one
+      Object.assign(d, { stun: 99, vx: 0, vy: 0 }); // (holds still to be shot at)
+      const n = Object.assign(__mob("drone", centerOf(d).x - 400, centerOf(d).y), { shotCd: 99 });
+      const dh = d.hp;
+      fireEnemyShot(centerOf(n).x, centerOf(n).y, ENEMY_TYPES.drone.shot, Math.atan2(centerOf(d).y - centerOf(n).y, centerOf(d).x - centerOf(n).x), 1, n);
+      for (let i = 0; i < 90 && d.hp === dh; i++) update(1 / 60);
+      out.hitPawn = Math.round(dh - d.hp);
+      // a hijacked bomber blows up next to you: only the enemy gets it
+      enemies.length = 0;
+      player.invuln = 0;
+      const bm = __mob("bomber", pc.x - 20, pc.y - 20);
+      const near = __mob("crawler", pc.x + 40);
+      hijack(bm, 5);
+      const h1 = player.hp;
+      const nh = near.hp;
+      explodeBomber(bm);
+      out.blast = { player: h1 - player.hp, enemy: Math.round(nh - near.hp) };
+      // it runs out: a reboot stun, patched (can't be taken again yet), back to its side
+      enemies.length = 0;
+      const p = __mob("crawler", 1500);
+      const q = __mob("crawler", 1600);
+      hijack(p, 1);
+      __steps(2);
+      out.taunted = q.forcedTarget === p;
+      __steps(70);
+      out.after = { hijacked: isHijacked(p), patched: p.patchT > 0, stunned: p.stun > 0, target: p.forcedTarget, qTarget: q.forcedTarget };
+      out.again = __burst(1550, 960, 300, 0) && isHijacked(p);
+      // a pawn killed by an enemy still drops XP
+      enemies.length = 0;
+      gems.length = 0;
+      const xp = __mob("crawler", 1500);
+      hijack(xp, 5);
+      damageEnemy(xp, 9999, { source: "enemy" });
+      out.xp = { dead: xp.dead, gems: gems.length };
+      // the HUD: Hackerman's passive is two short lines that fit before the boss bar
+      ctx.font = fontPx(15);
+      out.hud = passiveLines().map((l) => [l, Math.round(ctx.measureText(l).width)]);
+      return out;
+    });
+    const j = JSON.stringify;
+    assert(r.numbers.per === 2 && r.numbers.cap === 3 && Math.abs(r.numbers.chance - 0.41) < 1e-9, "hijack numbers at level 12: " + j(r.numbers));
+    assert(r.n === 2 && r.who[0] && r.who[1] && !r.who[2] && Math.abs(r.time - r.numbers.time) < 0.01, "the burst did not take the 2 nearest: " + j(r));
+    assert(r.targets.a && r.targets.b && r.targets.c, "pawns and taunt targets: " + j(r.targets));
+    assert(r.friendly, "player attacks hit a hijacked enemy (or auto-aim picks it)");
+    assert(r.fight.cHurt > 0 && r.fight.pawnsHurt > 0 && r.fight.heat === 0, "pawns vs enemies: " + j(r.fight));
+    assert(r.shot.pawn && r.shot.player === 0 && r.shot.foe > 0 && r.hitPawn > 0, "team-aware shots: " + j(r));
+    assert(r.blast.player === 0 && r.blast.enemy > 0, "a hijacked bomber's blast: " + j(r.blast));
+    assert(r.taunted && !r.after.hijacked && r.after.patched && r.after.stunned && r.after.target === null && r.after.qTarget === null && !r.again, "the hijack wearing off: " + j(r));
+    assert(r.xp.dead && r.xp.gems > 0, "a hijacked enemy killed by enemies dropped no XP: " + j(r.xp));
+    assert(r.hud.length === 2 && /^GLITCH \d+%$/.test(r.hud[0][0]) && /^HIJACK \d+%$/.test(r.hud[1][0]) && r.hud.every(([, w]) => w < 175), "HUD passive: " + j(r.hud));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("Hackerman hijack: bosses and NULL's copies are immune, resist halves it, the cap holds, a boss intro clears pawns, slow-mo doesn't slow pawns, bosses glitch less", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "sudo", autoFire: false, autoFlame: false } });
+    await page.evaluate(HIJACK_HELPERS);
+    const r = await page.evaluate(() => {
+      const out = {};
+      progress.level = 1; // 1 per burst, 2 at once, 4s
+      // resist: the enforcer needs a second coin flip and gets half the time
+      const f = __mob("enforcer", 1500);
+      out.resistMiss = __burst(1550, 930, 300, 0, 0.7) === 0 && !isHijacked(f);
+      out.resistHit = __burst(1550, 930, 300, 0, 0.2) === 1 && Math.abs(f.hijackT - hijackTime() * HIJACK.resist) < 0.01;
+      const el = Object.assign(__mob("crawler", 1700), { elite: true });
+      out.elite = __burst(1700, 960, 100, 0, 0.2) === 1 && Math.abs(el.hijackT - hijackTime() * HIJACK.resist) < 0.01;
+      // the cap: never more than 2 at level 1, however many bursts
+      enemies.length = 0;
+      for (let i = 0; i < 8; i++) __mob("crawler", 1200 + i * 60);
+      for (let i = 0; i < 6; i++) __burst(1400, 960, 600, 0, 0, 0, 0);
+      out.capped = enemies.filter(isHijacked).length;
+      // a boss intro derezzes the pawns too (their XP stays behind)
+      gems.length = 0;
+      spawnOverseer();
+      out.derez = { pawns: enemies.filter((e) => !e.dead && isHijacked(e)).length, gems: gems.length };
+      // bosses: ACCESS DENIED (once), never hijacked; System Glitch stutters them every 2.5s at most
+      game.cinematic = null;
+      const o = game.boss;
+      const oc = centerOf(o);
+      const denied = hijackStats.denied;
+      out.boss = __burst(oc.x, oc.y, 400, 0, 0) === 0 && !isHijacked(o) && hijackStats.denied === denied + 1;
+      player.glitchCd = 0;
+      systemGlitch(oc.x, oc.y);
+      const g1 = o.glitchT;
+      o.glitchT = 0;
+      player.glitchCd = 0;
+      systemGlitch(oc.x, oc.y);
+      out.bossGlitch = { first: g1 > 0, second: o.glitchT, lock: o.glitchLock > 0 };
+      // NULL's copies are immune too
+      out.decoy = hijackImmune({ boss: true, decoy: true }) && hijackImmune({ def: { compromise: "immune" } }) && !hijackImmune({ def: {} });
+      // slow-mo (and Time Dilation) don't slow a pawn: its timer and its legs run on real time
+      startGame();
+      skipIntro();
+      director.firstSpawn = director.nextBossAt = 1e9;
+      Object.assign(player, { x: 300, y: GROUND_Y - player.h, vx: 0, onGround: true, standingOn: GROUND });
+      const pawn = __mob("crawler", 1600);
+      const foe = __mob("crawler", 2600);
+      const slow = __mob("crawler", 3600);
+      hijack(pawn, 6);
+      game.slowmo = { time: 99, scale: 0.2 };
+      const x0 = [pawn.x, slow.x];
+      __steps(60);
+      out.slowmo = { left: Math.round(pawn.hijackT * 10) / 10, pawn: Math.round(Math.abs(pawn.x - x0[0])), other: Math.round(Math.abs(slow.x - x0[1])) };
+      game.slowmo = null;
+      return out;
+    });
+    const j = JSON.stringify;
+    assert(r.resistMiss && r.resistHit && r.elite, "resist / elite: " + j(r));
+    assert(r.capped === 2, "the cap did not hold: " + j(r));
+    assert(r.derez.pawns === 0 && r.derez.gems > 0, "a boss intro did not clear the pawns: " + j(r.derez));
+    assert(r.boss && r.decoy, "bosses / copies were not immune: " + j(r));
+    assert(r.bossGlitch.first && r.bossGlitch.second === 0 && r.bossGlitch.lock, "boss glitch cooldown: " + j(r.bossGlitch));
+    assert(Math.abs(r.slowmo.left - 5) < 0.15 && r.slowmo.pawn > r.slowmo.other * 2.5, "slow-mo slowed the pawn: " + j(r.slowmo));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("Hackerman hijack soak: a long busy run at level 25 with auto-fire: hijacks happen, never over the cap, no errors", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { quiet: false, settings: { character: "sudo", autoFire: true, autoFlame: true } });
+    await page.evaluate(HIJACK_HELPERS);
+    const r = await page.evaluate(() => {
+      progress.level = 25;
+      computeStats();
+      game.time = 90; // everything is in the mix
+      director.firstSpawn = 0;
+      const s0 = { ...hijackStats };
+      let over = 0;
+      let peak = 0;
+      for (let t = 0; t < 110 && game.state !== "over"; t += 1 / 60) {
+        player.hp = stats.maxHp;
+        player.heat = Math.max(player.heat, 40);
+        if (game.state === "levelup") chooseUpgrade(0, true);
+        update(1 / 60);
+        const n = enemies.filter((e) => !e.dead && isHijacked(e)).length;
+        peak = Math.max(peak, n);
+        if (n > hijackCap()) over++;
+        if (Math.floor(t * 60) % 300 === 0) render(performance.now() / 1000);
+      }
+      return { hijacks: hijackStats.hijacks - s0.hijacks, ended: hijackStats.ended - s0.ended, peak, over, cap: hijackCap(), kills: game.kills, state: game.state };
+    });
+    console.log("       hijack soak: " + JSON.stringify(r));
+    assert(r.state === "playing" && r.hijacks >= 5 && r.ended >= 3, "too few hijacks: " + JSON.stringify(r));
+    assert(r.over === 0 && r.peak <= r.cap, "more pawns than the cap: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
     await context.close();
   });
 
@@ -3759,6 +4037,33 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  await test("co-op: player 2's Hackerman hijacks too, the cap is shared, and pawns never hurt either player", async () => {
+    const { context, page, problems } = await coopRun({ p1: "paine", p2: "sudo" });
+    await page.evaluate(HIJACK_HELPERS);
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      Object.assign(a, { x: 1000, y: GROUND_Y - a.h, vx: 0 });
+      Object.assign(b, { x: 1300, y: GROUND_Y - b.h, vx: 0 });
+      step(1);
+      [1100, 1250, 1400, 1550, 1700].forEach((x) => __mob("crawler", x));
+      const first = withPlayer(c2, () => __burst(1300, 960, 700, 0));
+      for (let i = 0; i < 5; i++) withPlayer(i % 2 ? c1 : c2, () => __burst(1300, 960, 700, 0));
+      const pawns = enemies.filter(isHijacked);
+      // the rest leave; the pawns (with nobody to fight) stick to you: no damage either way
+      enemies.forEach((e) => !isHijacked(e) && (e.dead = true));
+      a.invuln = b.invuln = 0;
+      const h = [a.hp, b.hp];
+      pawns.forEach((e, i) => Object.assign(e, { x: (i % 2 ? b : a).x, hitCd: 0 }));
+      step(40);
+      return { first, pawns: pawns.length, cap: hijackCap(), hurt: [h[0] - a.hp, h[1] - b.hp] };
+    });
+    assert(r.first === 1 && r.pawns === r.cap && r.cap === 2, "co-op hijacks / shared cap: " + JSON.stringify(r));
+    assert(r.hurt[0] === 0 && r.hurt[1] === 0, "a hijacked enemy hurt a player: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("co-op: shots, contact and bomber blasts hit the right player; Ronin reflects, Hackerman's Time Dilation and Widow's Flame On work per player", async () => {
     const { context, page, problems } = await coopRun({ p1: "paine", p2: "tetsu" });
     const r = await page.evaluate(() => {
@@ -4131,6 +4436,109 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------------------- v3.2 IC art ----
+  // Which frame each IC draws in each state (player = whoever is bound)
+  const IC_FRAMES = () => {
+    const p = player;
+    const name = (f) => (f.sheet && f.sheet.src ? f.sheet.src.split("/").pop() : "?");
+    const pick = (setup) => {
+      Object.assign(p, { onGround: true, moving: false, frameX: 0, frameY: 2, facing: 1, fireAnim: 0, fireAnimMax: 0.24, lookUp: false, draw: null, releaseT: 0 }, setup);
+      const f = heroFrame();
+      return { sheet: name(f), row: f.row, fx: f.fx, fw: f.fw, fh: f.fh };
+    };
+    return {
+      idle: pick({}),
+      run: pick({ moving: true, frameX: 2 }),
+      air: pick({ onGround: false, frameX: 1 }),
+      left: pick({ facing: -1, frameY: 1 }),
+      look: pick({ lookUp: true }),
+      attack: p.char === "paine" ? pick({ draw: { t: 0.4, aim: { x: 1, y: 0 } } }) : pick({ fireAnim: 0.1 }),
+      drawn: drawHeroSprite(p.x + p.w / 2, p.y + p.h, 0),
+    };
+  };
+
+  await test("IC art: the 80x120 sheets, landings, 64px portraits and select busts load; every IC (and co-op player 2) draws from them, the old sheets are the fallback", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await page.waitForFunction(() => ["widow3", "tetsu3", "hackerman3", "heroLanding3", "portraits3"].every((n) => isReady(IMG[n])), null, { timeout: 8000 });
+    const files = await page.evaluate(() =>
+      Promise.all(
+        CHARACTER_ORDER.map(
+          (id) =>
+            new Promise((done) => {
+              const img = new Image();
+              img.onload = () => done([id, img.naturalWidth, img.naturalHeight]);
+              img.onerror = () => done([id, 0, 0]);
+              img.src = CHARACTERS[id].bust;
+            })
+        )
+      ).then((busts) => ({ busts, sizes: ["widow3", "tetsu3", "hackerman3", "heroLanding3", "portraits3"].map((n) => [n, IMG[n].naturalWidth, IMG[n].naturalHeight]), portraits: portraitSheet() }))
+    );
+    assert(files.busts.every((b) => b[1] === 192 && b[2] === 240), "busts: " + JSON.stringify(files.busts));
+    assert(JSON.stringify(files.sizes) === JSON.stringify([["widow3", 480, 720], ["tetsu3", 480, 720], ["hackerman3", 480, 720], ["heroLanding3", 320, 360], ["portraits3", 192, 64]]), "sheets: " + JSON.stringify(files.sizes));
+    assert(files.portraits[0] === "portraits3" && files.portraits[1] === 64, "portrait sheet: " + files.portraits);
+    await startRun(page, { settings: { character: "paine", autoFire: false, autoFlame: false } });
+    const r = await page.evaluate((fn) => {
+      const frames = new Function("return (" + fn + ")()");
+      const out = {};
+      for (const id of CHARACTER_ORDER) {
+        player.char = id;
+        out[id] = frames();
+      }
+      // the superhero landing uses the 80x120 landing sheet
+      player.char = "tetsu";
+      Object.assign(intro, { active: true, phase: "land", t: 0.3 });
+      const land = heroFrame();
+      out.landing = { sheet: land.sheet.src.split("/").pop(), row: land.row, fx: land.fx, fw: land.fw, fh: land.fh };
+      intro.active = false;
+      // a sheet that hasn't loaded: the old 32x48 sheet (and frame size) is used
+      const keep = IMG.tetsu3;
+      IMG.tetsu3 = new Image();
+      out.fallback = frames();
+      IMG.tetsu3 = keep;
+      const keepP = IMG.portraits3;
+      IMG.portraits3 = new Image();
+      out.portraitFallback = portraitSheet();
+      IMG.portraits3 = keepP;
+      // the HUD (and its portrait) draws without errors
+      render(performance.now() / 1000);
+      return out;
+    }, IC_FRAMES.toString());
+    const sheets = { paine: "widow3.png", tetsu: "tetsu3.png", sudo: "hackerman3.png" };
+    for (const id of ["paine", "tetsu", "sudo"]) {
+      const f = r[id];
+      const all = [f.idle, f.run, f.air, f.left, f.look, f.attack];
+      assert(all.every((x) => x.sheet === sheets[id] && x.fw === 80 && x.fh === 120), `${id} sheet/frame size: ` + JSON.stringify(f));
+      assert(f.idle.fx === 4 && f.idle.row === 2 && f.run.fx === 2 && f.air.fx === 5 && f.left.row === 1 && f.look.row === 3 && f.look.fx === 0, `${id} frames: ` + JSON.stringify(f));
+      assert(f.attack.row === 5 && f.attack.fx >= 0 && f.attack.fx <= 3 && f.drawn === true, `${id} attack: ` + JSON.stringify(f.attack));
+    }
+    assert(r.landing.sheet === "hero-landing3.png" && r.landing.row === 1 && r.landing.fx === 2 && r.landing.fw === 80 && r.landing.fh === 120, "landing: " + JSON.stringify(r.landing));
+    assert(r.fallback.idle.sheet === "tetsu.png" && r.fallback.idle.fw === 32 && r.fallback.idle.fh === 48 && r.fallback.drawn === true, "fallback: " + JSON.stringify(r.fallback.idle));
+    assert(r.portraitFallback[0] === "portraits2" && r.portraitFallback[1] === 48, "portrait fallback: " + r.portraitFallback);
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("IC art: co-op player 2 draws their own IC's 80x120 sheet next to player 1's", async () => {
+    const { context, page, problems } = await coopRun({ p1: "paine", p2: "tetsu" });
+    const r = await page.evaluate((fn) => {
+      const frames = new Function("return (" + fn + ")()");
+      const out = [];
+      coop.players.forEach((c) =>
+        withPlayer(c, () => {
+          intro.active = false; // (player 2 may still be landing)
+          out.push({ char: player.char, f: frames() });
+        })
+      );
+      render(performance.now() / 1000); // both heroes, their outlines and the P2 panel
+      return out;
+    }, IC_FRAMES.toString());
+    assert(r.length === 2 && r[0].char === "paine" && r[1].char === "tetsu", "players: " + JSON.stringify(r.map((x) => x.char)));
+    assert(r[0].f.idle.sheet === "widow3.png" && r[1].f.idle.sheet === "tetsu3.png", "sheets: " + JSON.stringify(r.map((x) => x.f.idle)));
+    assert(r.every((x) => x.f.idle.fw === 80 && x.f.idle.fh === 120 && x.f.drawn === true), "frame sizes: " + JSON.stringify(r.map((x) => x.f.idle)));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   // ------------------------------------------------------ IC select ----
   await test("IC select: tiles and a stage with each IC's bust, name, personality, background, weapon, abilities, playstyle, mechanics and stats; hover and arrows preview, a click or Enter picks", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
@@ -4207,6 +4615,9 @@ const fastForward = (page, seconds, bot) =>
       c.getContext("2d").fillRect(40, 20, 112, 220);
       CHARACTERS.tetsu.bust = c.toDataURL();
       CHARACTERS.sudo.bust = "data:image/png;base64,AAAA";
+      // (the real busts were loaded and cached by the stage above: forget them)
+      delete bustImgs.tetsu;
+      delete bustImgs.sudo;
       const out = {};
       for (const id of ["tetsu", "sudo"]) {
         document.querySelector(`.char-card[data-ic="${id}"]`).focus();

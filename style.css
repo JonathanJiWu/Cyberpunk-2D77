@@ -1237,23 +1237,33 @@ body.touch .reroll-key:not(.reroll-pad) {
   gap: 0.8em;
   min-width: 0;
 }
+/* img/legend2.png: one row of 6 frames of 96x96 (0 idle, 1 blink, 2 talk
+   open, 3 talk half, 4 smirk, 5 eyebrow raised). Frame n sits at
+   background-position-x n * 20%. The art has its own colours, a light cyan
+   cast and a cyan rim, so only a glow and the scan lines are added here. */
 .legend-sprite {
   flex: none;
   width: 5.5em;
   height: 5.5em;
-  background: url("img/legend.png") 0 0 / 500% 100% no-repeat;
+  background: url("img/legend2.png") 0 0 / 600% 100% no-repeat;
   image-rendering: pixelated;
   opacity: 0.88;
-  filter: sepia(1) hue-rotate(140deg) saturate(2.5) brightness(1.15) drop-shadow(0 0 8px #19f5ff);
-  -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 3px, rgba(0, 0, 0, 0.55) 3px 4px);
-  mask-image: repeating-linear-gradient(0deg, #000 0 3px, rgba(0, 0, 0, 0.55) 3px 4px);
-  animation: holo-flicker 4s infinite;
+  filter: brightness(1.08) drop-shadow(0 0 6px rgba(25, 245, 255, 0.55));
+  -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 3px, rgba(0, 0, 0, 0.72) 3px 4px);
+  mask-image: repeating-linear-gradient(0deg, #000 0 3px, rgba(0, 0, 0, 0.72) 3px 4px);
+  animation: holo-flicker 4s infinite, legend-blink 4.6s steps(1) infinite;
 }
-.legend.talking .legend-sprite { animation: holo-flicker 4s infinite, legend-talk 0.24s steps(1) infinite; }
-.legend.done .legend-sprite { background-position: 50% 0; }
+/* talking: mouth open / half, with the odd blink; done: the smirk */
+.legend.talking .legend-sprite { animation: holo-flicker 4s infinite, legend-talk 1.92s steps(1) infinite; }
+.legend.done .legend-sprite { animation: holo-flicker 4s infinite; background-position: 80% 0; }
 @keyframes legend-talk {
+  0%, 12.5%, 25%, 37.5%, 50%, 62.5%, 75% { background-position: 40% 0; }
+  6.25%, 18.75%, 31.25%, 43.75%, 56.25%, 68.75%, 81.25%, 93.75% { background-position: 60% 0; }
+  87.5% { background-position: 20% 0; }
+}
+@keyframes legend-blink {
   0% { background-position: 0 0; }
-  50% { background-position: 25% 0; }
+  95% { background-position: 20% 0; }
 }
 @keyframes holo-flicker {
   0%, 46%, 50%, 100% { opacity: 0.88; transform: none; }
@@ -1500,6 +1510,7 @@ body.touch .levelup-foot {
 body.touch .legend-sprite {
   width: 4em;
   height: 4em;
+  image-rendering: auto; /* drawn smaller than 96px here: smooth beats dropped pixels */
 }
 body.touch .loadout-side {
   gap: 0.6em;

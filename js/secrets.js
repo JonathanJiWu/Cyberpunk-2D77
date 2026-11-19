@@ -302,7 +302,7 @@ function updateChrome(dt) {
     p.mantisCd -= dt;
     if (p.mantisCd <= 0) {
       const range = 170;
-      const targets = enemies.filter((e) => !e.dead && circleHitsBox(pc.x, pc.y, range, e));
+      const targets = enemies.filter((e) => !e.dead && !(e.hijackT > 0) && circleHitsBox(pc.x, pc.y, range, e));
       if (targets.length) {
         const sides = new Set();
         targets.forEach((e) => {
@@ -1451,7 +1451,7 @@ function billboardLips() {
 }
 
 function drawBillboard(time) {
-  const img = IMG.billboard;
+  const img = isReady(IMG.billboard2) ? IMG.billboard2 : IMG.billboard; // v3.2 art, else the older sheet
   const r = billboardRect();
   const x = r.x + holo.glitch;
   const hue = (time * 40) % 360;
@@ -1581,12 +1581,12 @@ function drawSecretsBack(time) {
 // Just before the player sprite: Sandevistan afterimages
 function drawPlayerTrail() {
   const colors = ["rgba(90,255,122,0.85)", "rgba(255,225,77,0.85)", "rgba(255,47,214,0.85)", "rgba(25,245,255,0.85)"];
-  const img = isReady(IMG[CH().sprite.img]) ? IMG[CH().sprite.img] : IMG.player;
   player.trail.forEach((t, i) => {
     const cx = t.x + player.w / 2;
     ctx.globalAlpha = Math.max(0, 0.55 * (1 - t.t / 0.4));
     const color = t.dash ? "rgba(255,36,87,0.85)" : colors[i % colors.length];
-    drawFrame(img, t.frameX * 32, t.frameY * 48, 32, 48, cx - 40, t.y + player.h - 115, 80, 120, color);
+    const c = heroCell(t.frameX, t.frameY); // (the v3.2 80x120 sheet once loaded)
+    drawFrame(c.img, c.sx, c.sy, c.sw, c.sh, cx - 40, t.y + player.h - 115, 80, 120, color);
   });
   ctx.globalAlpha = 1;
 }

@@ -206,6 +206,17 @@ function drawIcon(sheet, size, cell, x, y, s) {
   }
 }
 
+// An IC's HUD portrait. The 64px v3.2 portraits are shown smaller than that,
+// so they're smoothed rather than having whole pixel rows dropped.
+function drawPortrait(cell, x, y, s) {
+  const [sheet, size] = portraitSheet();
+  if (size <= s || !isReady(IMG[sheet])) return drawIcon(sheet, size, cell, x, y, s);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(IMG[sheet], cell * size, 0, size, size, x, y, s, s);
+  ctx.imageSmoothingEnabled = false;
+}
+
 // On small screens the HUD is drawn bigger so it stays readable.
 const hudLayout = { scale: 1, killsY: 132 };
 
@@ -229,7 +240,7 @@ function drawHUD(time) {
   // Health + heat
   const lowHp = p.hp / stats.maxHp < 0.3;
   const hpColor = lowHp && Math.sin(time * 12) > 0 ? "#ff2f6d" : "#19f5ff";
-  drawIcon(isReady(IMG.portraits2) ? "portraits2" : "portraits", 48, CH().portrait, 44, 22, 40);
+  drawPortrait(CH().portrait, 44, 22, 40);
   const team = coopActive(); // co-op: tag player 1's panel, show when they're down
   const nameText = `${team ? "P1 " : ""}${CH().name}  LV ${progress.level}`;
   hudText(nameText, 94, 32, 24, team ? coop.players[0].color : "#ffe14d");
@@ -264,7 +275,9 @@ function drawHUD(time) {
   const resLabel = p.heatLocked ? `NO ${res.name}` : res.name;
   hudText(resLabel, 360, 120, 18, heatColor);
   ctx.font = fontPx(18);
-  hudText(passiveLine(), Math.max(460, 360 + ctx.measureText(resLabel).width + 18), 122, 15, "#c9b6ff"); // (ends before the boss bar at x 640) // the IC's passive, as it grows with level
+  // the IC's passive, as it grows with level (ends before the boss bar at x 640;
+  // Hackerman's second line, the hijack chance, goes just below it)
+  passiveLines().forEach((line, i) => hudText(line, Math.max(460, 360 + ctx.measureText(resLabel).width + 18), 122 + i * 19, 15, i ? "#5aff7a" : "#c9b6ff"));
   drawEnemiesHud2(VW, time); // v3.2: "429 THROTTLED" (enemies2.js)
 
   // Active power-ups

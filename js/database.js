@@ -14,6 +14,10 @@
 const CHARACTERS = {
   paine: {
     name: "PAINE",
+    bust: "img/bust-paine.png", // 192x240 select-screen bust (tools/art_ics.py)
+    // v3.2 sheet: 80x120 frames drawn 1:1, idle/air in cols 4/5, effect anchors
+    // (from the feet, facing right) where the art's hands are; `sprite` is the fallback
+    art: { img: "widow3", fw: 80, fh: 120, idle: 4, air: 5, fx: { bow: [28, -72] } },
     title: "Cyber Widow",
     color: "#ff2457",
     portrait: 0,
@@ -74,6 +78,8 @@ const CHARACTERS = {
   },
   tetsu: {
     name: "TETSU",
+    bust: "img/bust-tetsu.png", // 192x240 select-screen bust (tools/art_ics.py)
+    art: { img: "tetsu3", fw: 80, fh: 120, idle: 4, air: 5, fx: { gleam: [-7, -94] } },
     title: "Chrome Ronin",
     color: "#4da6ff",
     portrait: 1,
@@ -135,6 +141,8 @@ const CHARACTERS = {
 
   sudo: {
     name: "SUDO",
+    bust: "img/bust-sudo.png", // 192x240 select-screen bust (tools/art_ics.py)
+    art: { img: "hackerman3", fw: 80, fh: 120, idle: 4, air: 5, fx: { muzzle: [22, -64], keys: [12, -50], glint: [9, -81] } },
     title: "Hackerman",
     color: "#5aff7a",
     portrait: 2,
@@ -178,7 +186,7 @@ const CHARACTERS = {
       ],
       guide: { role: "UTILITY", what: "Bullet time: all but you slows", edge: "Dodge anything, hit 40%+ harder", mechanic: "Slows enemies, bullets, bosses", note: "Costs lots of RAM: save it" },
     },
-    passive: "System Glitch: every EM hit has a 15% chance (+1.2% per level) to glitch the area around it: enemies stutter like a lagging stream. Radius 150px, growing with level.",
+    passive: "System Glitch: every EM hit has a 15% chance (+1.2% per level) to glitch the area around it: enemies stutter like a lagging stream. Radius 150px, growing with level. Each glitch is an EMP: a 30% chance (+1% per level) to HIJACK the nearest enemy for 4s+: it fights for you and draws enemy fire. Bosses are immune.",
     quotes: {
       start: ["sudo make me a sandwich.", "Booting up. Ready.", "Hello, world. Goodbye, world."],
       levelUp: ["Patch notes: I'm better.", "+1 to everything.", "New exploit unlocked!", "Updated deps. Nothing broke. Suspicious."],
@@ -229,7 +237,7 @@ CHARACTERS.sudo.profile = {
   personality: "Wired, chatty and fearless online. One bad joke away from a breakthrough.",
   background: "Jacked into the city's security net on a dare and found out who it really watches. Now he leaks what he finds and fries whatever they send after him.",
   weapon: "Tall EM waves that pass through everything in a line and slow it down.",
-  passive: { icon: { sheet: "fx2", cell: 3 }, text: "EM hits can glitch an area: enemies in it stutter like a lagging stream." },
+  passive: { icon: { sheet: "fx2", cell: 3 }, text: "EM hits can glitch an area (enemies stutter) and hijack enemies to fight for you." },
   playstyle: "Stay back, keep moving and hit whole lines at once. Save RAM for Time Dilation when the screen fills up.",
   mechanics: ["Waves pierce and slow every enemy they cross", "Time Dilation: the world crawls, you hit 40% harder", "Glass cannon: the lowest HP and armor"],
   resource: "Builds as you deal and take damage. Time Dilation spends it.",
@@ -301,7 +309,7 @@ const ENEMY_TYPES = {
     xp: 2,
     w: 52,
     h: 92,
-    sheet: { img: "ninja", fw: 40, fh: 48, frames: 3, dashFrame: 3, scale: 2.1, flip: true, fps: 12 },
+    sheet: { img: "ninja2", fallback: "ninja", fw: 40, fh: 48, frames: 3, dashFrame: 3, scale: 2.1, flip: true, fps: 12 },
     dash: { range: 420, windup: 0.4, speed: 1150, time: 0.32, cooldown: [2.2, 3.2] },
     maxAlive: 4,
     from: 45,
@@ -320,6 +328,7 @@ const ENEMY_TYPES = {
     h: 78,
     sheet: { img: "dragonCyber", fallback: "dragon", fw: 96, fh: 96, frames: 4, scale: 1.3, rowLeft: 1, rowRight: 2, fps: 7 },
     keepDistance: 560,
+    compromise: "resist", // (Hackerman's hijack: half the chance and the time)
     shot: { kind: "fireball", damage: 7, speed: 380, radius: 18, cooldown: [3.6, 5.2] },
     maxAlive: 2,
     from: 60,
@@ -349,6 +358,7 @@ const ENEMY_TYPES = {
     kind: "melee",
     walker: true,
     shielded: true, // blocks most frontal damage from projectiles
+    compromise: "resist", // (Hackerman's hijack: half the chance and the time)
     hp: 70,
     speed: 105,
     damage: 16,
@@ -464,7 +474,7 @@ const ENEMY_TYPES = {
     w: 58,
     h: 150,
     kbResist: 0.5,
-    sheet: { img: "ratelimiter", fw: 36, fh: 72, frames: 2, scale: 2.2, flip: true, fps: 5 },
+    sheet: { img: "ratelimiter", fw: 36, fh: 72, frames: 2, scale: 2.2, flip: false, rowLeft: 0, rowRight: 0, fps: 5 },
     nav: { jump: 1100, air: 280, think: 0.35 },
     field: { radius: 260, pulse: 430, every: 5.5, eliteEvery: 4, throttle: 0.5, collapse: 2.5, approach: 210 },
     maxAlive: 1,
@@ -518,8 +528,8 @@ const BOSSES = {
   nullptr: {
     name: "NULL",
     title: "Second boss",
-    sheet: { img: "nullBoss", fw: 64, fh: 96 },
-    fallback: { img: "nullFallback", fw: 64, fh: 96 }, // painted by null.js until the art lands
+    sheet: { img: "nullBoss2", fw: 64, fh: 96 },
+    fallback: { img: "nullBoss", fw: 64, fh: 96 }, // the v3.1 sheet (null.js also paints one)
     hp: 3200,
     intro: "THE ASSASSIN WHO ISN'T THERE",
     desc: "A glitch-ninja assassin. It splits into holographic copies (only one is real), blinks out and reappears behind or above you to slash, throws fans of shuriken, snipes from the rooftops with a rail shot and vanishes in smoke. Below 60% it makes more copies and blinks faster; below 25% it hits a STACK OVERFLOW and chains its blinks.",
