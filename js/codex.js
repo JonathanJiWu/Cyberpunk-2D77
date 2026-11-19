@@ -59,8 +59,8 @@ function icStatFrac(ch, key) {
 }
 
 function portraitCanvas(ch, size) {
-  const sheet = isReady(IMG.portraits2) ? "portraits2" : "portraits";
-  return isReady(IMG[sheet]) ? spriteCanvas(sheet, ch.portrait * 48, 0, 48, 48, size) : spriteCanvas(CHARACTERS.paine.sprite.img, 0, 0, 32, 48, size);
+  const [sheet, cell] = portraitSheet(); // (64px v3.2 portraits once loaded)
+  return isReady(IMG[sheet]) ? spriteCanvas(sheet, ch.portrait * cell, 0, cell, cell, size) : spriteCanvas(CHARACTERS.paine.sprite.img, 0, 0, 32, 48, size);
 }
 
 // ---------------------------------------------------------------- Codex -----

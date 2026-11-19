@@ -14,6 +14,10 @@
 const CHARACTERS = {
   paine: {
     name: "PAINE",
+    bust: "img/bust-paine.png", // 192x240 select-screen bust (tools/art_ics.py)
+    // v3.2 sheet: 80x120 frames drawn 1:1, idle/air in cols 4/5, effect anchors
+    // (from the feet, facing right) where the art's hands are; `sprite` is the fallback
+    art: { img: "widow3", fw: 80, fh: 120, idle: 4, air: 5, fx: { bow: [28, -72] } },
     title: "Cyber Widow",
     color: "#ff2457",
     portrait: 0,
@@ -74,6 +78,8 @@ const CHARACTERS = {
   },
   tetsu: {
     name: "TETSU",
+    bust: "img/bust-tetsu.png", // 192x240 select-screen bust (tools/art_ics.py)
+    art: { img: "tetsu3", fw: 80, fh: 120, idle: 4, air: 5, fx: { gleam: [-7, -94] } },
     title: "Chrome Ronin",
     color: "#4da6ff",
     portrait: 1,
@@ -135,6 +141,8 @@ const CHARACTERS = {
 
   sudo: {
     name: "SUDO",
+    bust: "img/bust-sudo.png", // 192x240 select-screen bust (tools/art_ics.py)
+    art: { img: "hackerman3", fw: 80, fh: 120, idle: 4, air: 5, fx: { muzzle: [22, -64], keys: [12, -50], glint: [9, -81] } },
     title: "Hackerman",
     color: "#5aff7a",
     portrait: 2,

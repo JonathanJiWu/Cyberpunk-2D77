@@ -4197,6 +4197,109 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------------------- v3.2 IC art ----
+  // Which frame each IC draws in each state (player = whoever is bound)
+  const IC_FRAMES = () => {
+    const p = player;
+    const name = (f) => (f.sheet && f.sheet.src ? f.sheet.src.split("/").pop() : "?");
+    const pick = (setup) => {
+      Object.assign(p, { onGround: true, moving: false, frameX: 0, frameY: 2, facing: 1, fireAnim: 0, fireAnimMax: 0.24, lookUp: false, draw: null, releaseT: 0 }, setup);
+      const f = heroFrame();
+      return { sheet: name(f), row: f.row, fx: f.fx, fw: f.fw, fh: f.fh };
+    };
+    return {
+      idle: pick({}),
+      run: pick({ moving: true, frameX: 2 }),
+      air: pick({ onGround: false, frameX: 1 }),
+      left: pick({ facing: -1, frameY: 1 }),
+      look: pick({ lookUp: true }),
+      attack: p.char === "paine" ? pick({ draw: { t: 0.4, aim: { x: 1, y: 0 } } }) : pick({ fireAnim: 0.1 }),
+      drawn: drawHeroSprite(p.x + p.w / 2, p.y + p.h, 0),
+    };
+  };
+
+  await test("IC art: the 80x120 sheets, landings, 64px portraits and select busts load; every IC (and co-op player 2) draws from them, the old sheets are the fallback", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await page.waitForFunction(() => ["widow3", "tetsu3", "hackerman3", "heroLanding3", "portraits3"].every((n) => isReady(IMG[n])), null, { timeout: 8000 });
+    const files = await page.evaluate(() =>
+      Promise.all(
+        CHARACTER_ORDER.map(
+          (id) =>
+            new Promise((done) => {
+              const img = new Image();
+              img.onload = () => done([id, img.naturalWidth, img.naturalHeight]);
+              img.onerror = () => done([id, 0, 0]);
+              img.src = CHARACTERS[id].bust;
+            })
+        )
+      ).then((busts) => ({ busts, sizes: ["widow3", "tetsu3", "hackerman3", "heroLanding3", "portraits3"].map((n) => [n, IMG[n].naturalWidth, IMG[n].naturalHeight]), portraits: portraitSheet() }))
+    );
+    assert(files.busts.every((b) => b[1] === 192 && b[2] === 240), "busts: " + JSON.stringify(files.busts));
+    assert(JSON.stringify(files.sizes) === JSON.stringify([["widow3", 480, 720], ["tetsu3", 480, 720], ["hackerman3", 480, 720], ["heroLanding3", 320, 360], ["portraits3", 192, 64]]), "sheets: " + JSON.stringify(files.sizes));
+    assert(files.portraits[0] === "portraits3" && files.portraits[1] === 64, "portrait sheet: " + files.portraits);
+    await startRun(page, { settings: { character: "paine", autoFire: false, autoFlame: false } });
+    const r = await page.evaluate((fn) => {
+      const frames = new Function("return (" + fn + ")()");
+      const out = {};
+      for (const id of CHARACTER_ORDER) {
+        player.char = id;
+        out[id] = frames();
+      }
+      // the superhero landing uses the 80x120 landing sheet
+      player.char = "tetsu";
+      Object.assign(intro, { active: true, phase: "land", t: 0.3 });
+      const land = heroFrame();
+      out.landing = { sheet: land.sheet.src.split("/").pop(), row: land.row, fx: land.fx, fw: land.fw, fh: land.fh };
+      intro.active = false;
+      // a sheet that hasn't loaded: the old 32x48 sheet (and frame size) is used
+      const keep = IMG.tetsu3;
+      IMG.tetsu3 = new Image();
+      out.fallback = frames();
+      IMG.tetsu3 = keep;
+      const keepP = IMG.portraits3;
+      IMG.portraits3 = new Image();
+      out.portraitFallback = portraitSheet();
+      IMG.portraits3 = keepP;
+      // the HUD (and its portrait) draws without errors
+      render(performance.now() / 1000);
+      return out;
+    }, IC_FRAMES.toString());
+    const sheets = { paine: "widow3.png", tetsu: "tetsu3.png", sudo: "hackerman3.png" };
+    for (const id of ["paine", "tetsu", "sudo"]) {
+      const f = r[id];
+      const all = [f.idle, f.run, f.air, f.left, f.look, f.attack];
+      assert(all.every((x) => x.sheet === sheets[id] && x.fw === 80 && x.fh === 120), `${id} sheet/frame size: ` + JSON.stringify(f));
+      assert(f.idle.fx === 4 && f.idle.row === 2 && f.run.fx === 2 && f.air.fx === 5 && f.left.row === 1 && f.look.row === 3 && f.look.fx === 0, `${id} frames: ` + JSON.stringify(f));
+      assert(f.attack.row === 5 && f.attack.fx >= 0 && f.attack.fx <= 3 && f.drawn === true, `${id} attack: ` + JSON.stringify(f.attack));
+    }
+    assert(r.landing.sheet === "hero-landing3.png" && r.landing.row === 1 && r.landing.fx === 2 && r.landing.fw === 80 && r.landing.fh === 120, "landing: " + JSON.stringify(r.landing));
+    assert(r.fallback.idle.sheet === "tetsu.png" && r.fallback.idle.fw === 32 && r.fallback.idle.fh === 48 && r.fallback.drawn === true, "fallback: " + JSON.stringify(r.fallback.idle));
+    assert(r.portraitFallback[0] === "portraits2" && r.portraitFallback[1] === 48, "portrait fallback: " + r.portraitFallback);
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("IC art: co-op player 2 draws their own IC's 80x120 sheet next to player 1's", async () => {
+    const { context, page, problems } = await coopRun({ p1: "paine", p2: "tetsu" });
+    const r = await page.evaluate((fn) => {
+      const frames = new Function("return (" + fn + ")()");
+      const out = [];
+      coop.players.forEach((c) =>
+        withPlayer(c, () => {
+          intro.active = false; // (player 2 may still be landing)
+          out.push({ char: player.char, f: frames() });
+        })
+      );
+      render(performance.now() / 1000); // both heroes, their outlines and the P2 panel
+      return out;
+    }, IC_FRAMES.toString());
+    assert(r.length === 2 && r[0].char === "paine" && r[1].char === "tetsu", "players: " + JSON.stringify(r.map((x) => x.char)));
+    assert(r[0].f.idle.sheet === "widow3.png" && r[1].f.idle.sheet === "tetsu3.png", "sheets: " + JSON.stringify(r.map((x) => x.f.idle)));
+    assert(r.every((x) => x.f.idle.fw === 80 && x.f.idle.fh === 120 && x.f.drawn === true), "frame sizes: " + JSON.stringify(r.map((x) => x.f.idle)));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   // ------------------------------------------------------ IC select ----
   await test("IC select: tiles and a stage with each IC's bust, name, personality, background, weapon, abilities, playstyle, mechanics and stats; hover and arrows preview, a click or Enter picks", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
@@ -4273,6 +4376,9 @@ const fastForward = (page, seconds, bot) =>
       c.getContext("2d").fillRect(40, 20, 112, 220);
       CHARACTERS.tetsu.bust = c.toDataURL();
       CHARACTERS.sudo.bust = "data:image/png;base64,AAAA";
+      // (the real busts were loaded and cached by the stage above: forget them)
+      delete bustImgs.tetsu;
+      delete bustImgs.sudo;
       const out = {};
       for (const id of ["tetsu", "sudo"]) {
         document.querySelector(`.char-card[data-ic="${id}"]`).focus();
