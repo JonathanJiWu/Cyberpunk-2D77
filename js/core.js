@@ -103,6 +103,9 @@ loadImage("endGame", "img/endgame.jpg");
 loadImage("wasd", "img/wasd.png");
 loadImage("fire", "img/fire.png");
 loadImage("blueFlame", "img/blue-flame.png");
+// The big select busts (192x240), for the co-op join screen: IMG.bust_paine...
+// Only the ICs that have one (ch.bust); js/select.js falls back to the portrait.
+CHARACTER_ORDER.forEach((id) => CHARACTERS[id].bust && loadImage("bust_" + id, CHARACTERS[id].bust));
 
 // fire.png and blue-flame.png are ~900px wide but drawn tiny; shrink them once
 // (and let the full-size decoded images go: ~7 MB of memory).

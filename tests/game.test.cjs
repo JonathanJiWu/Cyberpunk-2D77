@@ -3786,6 +3786,206 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------------------ IC select ----
+  await test("IC select: tiles and a stage with each IC's bust, name, personality, background, weapon, abilities, playstyle, mechanics and stats; hover and arrows preview, a click or Enter picks", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const dossier = await page.evaluate(() =>
+      CHARACTER_ORDER.map((id, i) => {
+        const card = document.querySelectorAll(".char-card")[i];
+        card.focus();
+        const st = document.querySelector("#char-select .cs-stage");
+        const text = (sel) => [...st.querySelectorAll(sel)].map((n) => n.textContent).join(" | ");
+        const ch = CHARACTERS[id];
+        const dpr = devicePixelRatio || 1;
+        // pixel art at a whole number of device pixels per art pixel
+        const whole = (node, w) => {
+          const k = node ? (parseFloat(node.style.width) * dpr) / w : 0;
+          return k >= 1 && Math.abs(k - Math.round(k)) < 1e-6;
+        };
+        const art = st.querySelector(".cs-art .cs-bust");
+        const armor = [...st.querySelectorAll(".cs-stat")].find((r) => r.textContent.startsWith("ARMOR"));
+        return {
+          id,
+          shown: st.dataset.ic,
+          checked: card.getAttribute("aria-checked"),
+          tileArt: whole(card.querySelector(".cs-tile-art canvas"), 48),
+          art: !!art && whole(art, art.classList.contains("cs-cutout") ? art.width : 192),
+          name: text(".cs-name"),
+          personality: text(".cs-personality"),
+          background: text(".cs-bg"),
+          abilities: text(".cs-ability"),
+          play: text(".cs-play"),
+          mech: st.querySelectorAll(".cs-mech li").length,
+          res: text(".cs-res"),
+          stats: st.querySelectorAll(".cs-stat").length,
+          quote: text(".cs-quote"),
+          armor: parseFloat(armor.querySelector(".cs-stat-fill").style.width),
+          want: { name: ch.name, p: ch.profile, primary: ch.primary.name, special: ch.special.name, passive: ch.passive.split(":")[0], res: ch.resource.name, quote: ch.quotes.start[0] },
+        };
+      })
+    );
+    dossier.forEach((d) => {
+      const w = d.want;
+      assert(d.shown === d.id && d.name === w.name && d.tileArt && d.art, `${d.id}: the stage does not show its art / name: ` + JSON.stringify(d));
+      assert(d.personality === w.p.personality && d.background === w.p.background && d.play.includes(w.p.playstyle), `${d.id}: personality / background / playstyle: ` + JSON.stringify(d));
+      assert([w.primary, w.special, w.passive, w.p.weapon].every((s) => d.abilities.includes(s)), `${d.id}: weapon and abilities: ` + d.abilities);
+      assert(d.mech === w.p.mechanics.length && d.res.includes(w.res) && d.stats === 4 && d.quote.includes(w.quote), `${d.id}: mechanics / resource / stats / quote: ` + JSON.stringify(d));
+    });
+    const [paine, tetsu, sudo] = dossier.map((d) => d.armor);
+    assert(tetsu > paine && paine > sudo && tetsu < 100, `armor bars are not normalized: ${paine} ${tetsu} ${sudo}`);
+    assert(dossier.filter((d) => d.checked === "true").length === 1, "one tile is checked");
+    // The mouse: hovering previews, leaving shows the pick again
+    await page.evaluate(() => document.activeElement.blur());
+    await page.hover(".char-card:nth-child(3)");
+    const hover = await page.evaluate(() => document.querySelector(".cs-stage").dataset.ic);
+    await page.mouse.move(4, 4);
+    const left = await page.evaluate(() => document.querySelector(".cs-stage").dataset.ic);
+    // The keyboard: arrows move between the tiles (wrapping), Enter picks
+    await page.focus(".char-card:nth-child(1)");
+    await page.keyboard.press("ArrowRight");
+    const state = () => page.evaluate(() => ({ focus: document.activeElement.dataset.ic, shown: document.querySelector(".cs-stage").dataset.ic, picked: settings.character, tabs: [...document.querySelectorAll(".char-card")].map((c) => c.tabIndex).join() }));
+    const k1 = await state();
+    await page.keyboard.press("Enter");
+    const k2 = await state();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    const k3 = await state();
+    assert(hover === "sudo" && left === "paine", `hover preview: ${hover}, after leaving: ${left}`);
+    assert(k1.focus === "tetsu" && k1.shown === "tetsu" && k1.picked === "paine" && k1.tabs === "-1,0,-1", "ArrowRight: " + JSON.stringify(k1));
+    assert(k2.picked === "tetsu" && k2.focus === "tetsu", "Enter did not pick: " + JSON.stringify(k2));
+    assert(k3.focus === "sudo" && k3.shown === "sudo" && k3.picked === "tetsu", "ArrowLeft did not wrap: " + JSON.stringify(k3));
+    // The bust contract: ch.bust shows the 192x240 bust (pixelated, whole scale); a broken one keeps the portrait
+    const bust = await page.evaluate(async () => {
+      const c = document.createElement("canvas");
+      c.width = 192;
+      c.height = 240;
+      c.getContext("2d").fillRect(40, 20, 112, 220);
+      CHARACTERS.tetsu.bust = c.toDataURL();
+      CHARACTERS.sudo.bust = "data:image/png;base64,AAAA";
+      const out = {};
+      for (const id of ["tetsu", "sudo"]) {
+        document.querySelector(`.char-card[data-ic="${id}"]`).focus();
+        renderStage(true);
+        await new Promise((r) => setTimeout(r, 200));
+        const art = document.querySelector(".cs-art .cs-bust");
+        const k = (parseFloat(art.style.width) * (devicePixelRatio || 1)) / (art.naturalWidth || art.width);
+        out[id] = { tag: art.tagName, cut: art.classList.contains("cs-cutout"), pixelated: getComputedStyle(art).imageRendering === "pixelated", k, natural: art.naturalWidth };
+      }
+      return out;
+    });
+    assert(bust.tetsu.tag === "IMG" && !bust.tetsu.cut && bust.tetsu.pixelated && bust.tetsu.natural === 192 && bust.tetsu.k >= 1 && Number.isInteger(Math.round(bust.tetsu.k * 1e6) / 1e6), "the bust is not shown at a whole scale: " + JSON.stringify(bust));
+    assert(bust.sudo.cut && bust.sudo.tag === "CANVAS", "a broken bust did not fall back to the portrait: " + JSON.stringify(bust));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("IC select by gamepad and in the pause menu: up reaches the tiles, left / right cycle them, A picks; mid-run A hot-swaps, with the stage saying what a swap keeps", async () => {
+    const { context, page, problems } = await openPad();
+    await silence(page);
+    await page.evaluate((spec) => __padPlug(0, spec), PAD_IDS.xbox);
+    const focus = () => page.evaluate(() => ({ ic: document.activeElement.dataset.ic || null, shown: document.querySelector(".cs-stage").dataset.ic, picked: settings.character, char: player.char, state: game.state }));
+    await padPress(page, "UP");
+    const up = await focus();
+    let f = up;
+    for (let i = 0; i < 3 && f.ic !== "tetsu"; i++) {
+      await padPress(page, "RIGHT");
+      f = await focus();
+    }
+    await padPress(page, "A");
+    const picked = await focus();
+    await padPress(page, "LEFT");
+    const back = await focus();
+    assert(up.ic && up.shown === up.ic, "UP did not reach a tile: " + JSON.stringify(up));
+    assert(f.ic === "tetsu" && f.shown === "tetsu" && f.picked === "paine", "RIGHT did not cycle the tiles: " + JSON.stringify(f));
+    assert(picked.picked === "tetsu", "A did not pick: " + JSON.stringify(picked));
+    assert(back.ic === "paine" && back.shown === "paine", "LEFT did not cycle back: " + JSON.stringify(back));
+    // Mid-run: the pause menu's tiles hot-swap
+    await startRun(page, { settings: { character: "paine" } });
+    await page.evaluate(() => {
+      player.hp = stats.maxHp / 2;
+      pauseGame();
+    });
+    await page.waitForTimeout(450);
+    await page.focus(".char-card:nth-child(3)");
+    const swap = await page.evaluate(() => {
+      const st = document.querySelector(".cs-stage");
+      return { label: document.getElementById("ic-label").textContent, status: st.querySelector(".cs-status").textContent, note: getComputedStyle(st.querySelector(".cs-swapnote")).display, active: document.querySelector('.char-card[aria-checked="true"] .cs-tile-state').textContent };
+    });
+    await padPress(page, "A");
+    const after = await page.evaluate(() => ({ char: player.char, state: game.state, ratio: player.hp / stats.maxHp, status: document.querySelector(".cs-stage .cs-status").textContent, note: getComputedStyle(document.querySelector(".cs-swapnote")).display }));
+    assert(/HOT-SWAP/.test(swap.label) && /HOT-SWAP TO SUDO/.test(swap.status) && swap.note !== "none" && swap.active === "ACTIVE", "the pause stage: " + JSON.stringify(swap));
+    assert(after.char === "sudo" && after.state === "paused" && Math.abs(after.ratio - 0.5) < 0.02 && /DEPLOYED/.test(after.status) && after.note === "none", "A did not hot-swap: " + JSON.stringify(after));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("IC select on phones and small windows: no sideways scroll, the tiles and stage fit, a tap picks and Start works", async () => {
+    const sizes = { "phone portrait": devices["iPhone 13"], "phone landscape": devices["iPhone 13 landscape"], "small window": { viewport: { width: 1024, height: 640 } } };
+    for (const [name, opts] of Object.entries(sizes)) {
+      const { context, page, problems } = await open(browser, url, opts);
+      const r = await page.evaluate(() => {
+        const panel = document.querySelector("#overlay .panel");
+        const fits = (b) => b.left >= -0.5 && b.right <= innerWidth + 0.5;
+        const tiles = [...document.querySelectorAll(".char-card")].map((c) => c.getBoundingClientRect());
+        return {
+          side: panel.scrollWidth > panel.clientWidth + 1 || document.scrollingElement.scrollWidth > innerWidth + 1,
+          stage: fits(document.querySelector(".cs-stage").getBoundingClientRect()),
+          tiles: tiles.every((b) => fits(b) && b.width >= 60 && b.height >= 44),
+          name: getComputedStyle(document.querySelector(".cs-name")).fontSize,
+          text: parseFloat(getComputedStyle(document.querySelector(".cs-bg")).fontSize),
+        };
+      });
+      await page.click(".char-card:nth-child(3)");
+      await page.click("#overlay-btn");
+      await page.waitForSelector("#loadout:not([hidden])", { timeout: 3000 });
+      const picked = await page.evaluate(() => settings.character);
+      assert(!r.side && r.stage && r.tiles && r.text >= 8, `${name}: the select does not fit: ` + JSON.stringify(r));
+      assert(picked === "sudo", `${name}: the tap did not pick: ${picked}`);
+      assert(!problems.length, `${name}: ` + problems.join("; "));
+      await context.close();
+    }
+  });
+
+  await test("co-op: the join screen holds the world while player 2 picks (busts, names, the pick's kit, prompts, clock); the clock drops them in", async () => {
+    const { context, page, problems } = await openPad();
+    await startRun(page, { settings: { character: "paine", autoFire: false, autoFlame: false } });
+    await page.evaluate(COOP_HELPERS);
+    const r = await page.evaluate(
+      ([xbox, ds]) => {
+        const e = spawnEnemy("crawler", player.x + 500, GROUND_Y - ENEMY_TYPES.crawler.h);
+        __padPlug(0, xbox);
+        __padPlug(1, ds);
+        press(0, "X");
+        press(1, "START");
+        const ctx = coop.players[1];
+        const t0 = game.time;
+        const ex = e.x;
+        step(90);
+        const held = { time: game.time - t0, moved: Math.abs(e.x - ex), joining: !!ctx.joining, clock: ctx.joining && ctx.joining.t };
+        const texts = hudTexts();
+        const shown = CHARACTERS[ctx.joining.char];
+        const panel = {
+          header: texts.some((t) => /PLAYER 2 \/\/ CHOOSE/.test(t)),
+          names: CHARACTER_ORDER.every((id) => texts.includes(CHARACTERS[id].name)),
+          kit: [shown.primary.name, shown.special.name].every((n) => texts.includes(n.toUpperCase())),
+          prompts: texts.includes("DROP IN") && texts.includes("LEAVE") && texts.some((t) => /^DROP IN \d+$/.test(t)),
+          art: CHARACTER_ORDER.every((id) => !!icBustArt(id)),
+        };
+        press(1, "RIGHT");
+        const next = ctx.joining.char;
+        panel.follows = next !== shown.name.toLowerCase() && hudTexts().includes(CHARACTERS[next].primary.name.toUpperCase());
+        step(Math.ceil((COOP.joinTimeout + 0.5) * 60)); // nobody presses A: the clock runs out
+        return { held, panel, next, after: { joining: !!ctx.joining, char: ctx.player.char, time: game.time - t0, n: coop.players.length } };
+      },
+      [PAD_IDS.xbox, PAD_IDS.dualsense]
+    );
+    assert(r.held.time === 0 && r.held.moved === 0 && r.held.joining && r.held.clock > 1.4, "the world did not hold while player 2 picks: " + JSON.stringify(r.held));
+    assert(Object.values(r.panel).every(Boolean), "the join screen is missing something: " + JSON.stringify(r.panel));
+    assert(r.after.n === 2 && !r.after.joining && r.after.char === r.next && r.after.time > 0, "the clock did not drop player 2 in: " + JSON.stringify(r.after));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await browser.close();
   server.close();
   const failed = results.filter((r) => !r.ok);
