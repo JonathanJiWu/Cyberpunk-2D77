@@ -2443,8 +2443,22 @@ body.touch.portrait .breach {
    colour, --r: its resource colour. Wide panels put the tiles in a column
    beside the stage; narrower ones (phones, small windows) in a row above it. */
 #overlay .panel {
+  display: flex;
+  flex-direction: column;
   width: min(100%, 80em);
   container-type: inline-size;
+}
+
+#overlay .panel > * {
+  flex-shrink: 0;
+}
+
+/* Narrow panels (phones, small windows): the buttons come up under the
+   title, so Start is on the first screen; the select follows */
+@container (max-width: 999px) {
+  #overlay .panel > :is(h1, #overlay-text, #overlay-stats, #lb-entry, .overlay-actions) {
+    order: -1;
+  }
 }
 
 .char-select {
@@ -3119,9 +3133,13 @@ body.touch .char-select {
   }
   .cs-stage {
     grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas: "art head" "art about" "kit kit";
     padding: 0 0.9em 0.9em 0;
+  }
+  .cs-stage::before,
+  .cs-stage::after {
+    display: none;
   }
   .cs-art {
     align-self: start;
