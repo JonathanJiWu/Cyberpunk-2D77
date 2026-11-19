@@ -2014,6 +2014,217 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  // ------------------------------------------------------- Hijack ----
+  // (js/hijack.js) Hackerman's System Glitch bursts can hijack enemies.
+  // __rng(...values) makes the next Math.random() calls return those values.
+  const HIJACK_HELPERS = `
+    director.nextBossAt = 1e9;
+    window.__rng = (...vals) => {
+      const real = Math.random;
+      Math.random = () => (vals.length ? vals.shift() : (Math.random = real)());
+    };
+    window.__burst = (x, y, r, ...vals) => {
+      __rng(...vals);
+      const n = tryHijack(x, y, r);
+      return n;
+    };
+    window.__mob = (type, x, y) => Object.assign(spawnEnemy(type, x, y !== undefined ? y : GROUND_Y - ENEMY_TYPES[type].h, { elite: false }), { hp: 400, maxHp: 400 });
+    window.__steps = (n) => {
+      for (let i = 0; i < n; i++) {
+        player.hp = stats.maxHp;
+        update(1 / 60);
+      }
+    };
+  `;
+
+  await test("Hackerman hijack: a burst takes over the nearest enemies; the pawn fights for you (contact, shots, blasts) and draws fire; your attacks pass through it; no heat; it reboots patched", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "sudo", autoFire: false, autoFlame: false } });
+    await page.evaluate(HIJACK_HELPERS);
+    const r = await page.evaluate(() => {
+      const out = {};
+      progress.level = 12; // 2 per burst, 3 at once, 5.1s
+      Object.assign(player, { x: 600, y: GROUND_Y - player.h, vx: 0, onGround: true, standingOn: GROUND });
+      const [a, b, c] = [1400, 1450, 1700].map((x) => __mob("crawler", x));
+      out.numbers = { chance: hijackChance(), per: hijackPerBurst(), cap: hijackCap(), time: hijackTime(), taunt: tauntRadius() };
+      out.n = __burst(1380, 960, 300, 0); // (the roll hits)
+      out.who = [a, b, c].map(isHijacked);
+      out.time = Math.round(a.hijackT * 100) / 100;
+      __steps(1);
+      out.targets = { a: a.forcedTarget === c, b: b.forcedTarget === c, c: c.forcedTarget === a || c.forcedTarget === b };
+      // friendly: your attacks pass through it
+      const hp = a.hp;
+      damageEnemy(a, 50, { source: "zap" });
+      damageEnemy(a, 50, { source: "em" });
+      out.friendly = a.hp === hp && !nearestEnemy(a.x, a.y, 50);
+      // they fight: the pawns hurt c, c hurts a pawn; none of it earns heat
+      const heat = player.heat;
+      const c0 = c.hp;
+      const p0 = a.hp + b.hp;
+      __steps(150);
+      out.fight = { cHurt: Math.round(c0 - c.hp), pawnsHurt: Math.round(p0 - a.hp - b.hp), heat: player.heat - heat };
+      // a hijacked drone's shot flies through you and hits an enemy behind you
+      enemies.length = 0;
+      player.invuln = 0;
+      const pc = centerOf(player);
+      const d = __mob("drone", pc.x - 300, pc.y - 20);
+      const foe = Object.assign(__mob("crawler", pc.x + 250), { stun: 99 }); // (stays put)
+      hijack(d, 5);
+      const hp0 = player.hp;
+      const fh = foe.hp;
+      fireEnemyShot(centerOf(d).x, centerOf(d).y, ENEMY_TYPES.drone.shot, Math.atan2(centerOf(foe).y - centerOf(d).y, centerOf(foe).x - centerOf(d).x), 1, d);
+      const shot = enemyShots[enemyShots.length - 1];
+      for (let i = 0; i < 90 && enemyShots.includes(shot); i++) update(1 / 60);
+      out.shot = { pawn: shot.pawn, player: hp0 - player.hp, foe: Math.round(fh - foe.hp) };
+      // ...a normal drone's shot hits the hijacked one
+      Object.assign(d, { stun: 99, vx: 0, vy: 0 }); // (holds still to be shot at)
+      const n = Object.assign(__mob("drone", centerOf(d).x - 400, centerOf(d).y), { shotCd: 99 });
+      const dh = d.hp;
+      fireEnemyShot(centerOf(n).x, centerOf(n).y, ENEMY_TYPES.drone.shot, Math.atan2(centerOf(d).y - centerOf(n).y, centerOf(d).x - centerOf(n).x), 1, n);
+      for (let i = 0; i < 90 && d.hp === dh; i++) update(1 / 60);
+      out.hitPawn = Math.round(dh - d.hp);
+      // a hijacked bomber blows up next to you: only the enemy gets it
+      enemies.length = 0;
+      player.invuln = 0;
+      const bm = __mob("bomber", pc.x - 20, pc.y - 20);
+      const near = __mob("crawler", pc.x + 40);
+      hijack(bm, 5);
+      const h1 = player.hp;
+      const nh = near.hp;
+      explodeBomber(bm);
+      out.blast = { player: h1 - player.hp, enemy: Math.round(nh - near.hp) };
+      // it runs out: a reboot stun, patched (can't be taken again yet), back to its side
+      enemies.length = 0;
+      const p = __mob("crawler", 1500);
+      const q = __mob("crawler", 1600);
+      hijack(p, 1);
+      __steps(2);
+      out.taunted = q.forcedTarget === p;
+      __steps(70);
+      out.after = { hijacked: isHijacked(p), patched: p.patchT > 0, stunned: p.stun > 0, target: p.forcedTarget, qTarget: q.forcedTarget };
+      out.again = __burst(1550, 960, 300, 0) && isHijacked(p);
+      // a pawn killed by an enemy still drops XP
+      enemies.length = 0;
+      gems.length = 0;
+      const xp = __mob("crawler", 1500);
+      hijack(xp, 5);
+      damageEnemy(xp, 9999, { source: "enemy" });
+      out.xp = { dead: xp.dead, gems: gems.length };
+      // the HUD: Hackerman's passive is two short lines that fit before the boss bar
+      ctx.font = fontPx(15);
+      out.hud = passiveLines().map((l) => [l, Math.round(ctx.measureText(l).width)]);
+      return out;
+    });
+    const j = JSON.stringify;
+    assert(r.numbers.per === 2 && r.numbers.cap === 3 && Math.abs(r.numbers.chance - 0.41) < 1e-9, "hijack numbers at level 12: " + j(r.numbers));
+    assert(r.n === 2 && r.who[0] && r.who[1] && !r.who[2] && Math.abs(r.time - r.numbers.time) < 0.01, "the burst did not take the 2 nearest: " + j(r));
+    assert(r.targets.a && r.targets.b && r.targets.c, "pawns and taunt targets: " + j(r.targets));
+    assert(r.friendly, "player attacks hit a hijacked enemy (or auto-aim picks it)");
+    assert(r.fight.cHurt > 0 && r.fight.pawnsHurt > 0 && r.fight.heat === 0, "pawns vs enemies: " + j(r.fight));
+    assert(r.shot.pawn && r.shot.player === 0 && r.shot.foe > 0 && r.hitPawn > 0, "team-aware shots: " + j(r));
+    assert(r.blast.player === 0 && r.blast.enemy > 0, "a hijacked bomber's blast: " + j(r.blast));
+    assert(r.taunted && !r.after.hijacked && r.after.patched && r.after.stunned && r.after.target === null && r.after.qTarget === null && !r.again, "the hijack wearing off: " + j(r));
+    assert(r.xp.dead && r.xp.gems > 0, "a hijacked enemy killed by enemies dropped no XP: " + j(r.xp));
+    assert(r.hud.length === 2 && /^GLITCH \d+%$/.test(r.hud[0][0]) && /^HIJACK \d+%$/.test(r.hud[1][0]) && r.hud.every(([, w]) => w < 175), "HUD passive: " + j(r.hud));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("Hackerman hijack: bosses and NULL's copies are immune, resist halves it, the cap holds, a boss intro clears pawns, slow-mo doesn't slow pawns, bosses glitch less", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "sudo", autoFire: false, autoFlame: false } });
+    await page.evaluate(HIJACK_HELPERS);
+    const r = await page.evaluate(() => {
+      const out = {};
+      progress.level = 1; // 1 per burst, 2 at once, 4s
+      // resist: the enforcer needs a second coin flip and gets half the time
+      const f = __mob("enforcer", 1500);
+      out.resistMiss = __burst(1550, 930, 300, 0, 0.7) === 0 && !isHijacked(f);
+      out.resistHit = __burst(1550, 930, 300, 0, 0.2) === 1 && Math.abs(f.hijackT - hijackTime() * HIJACK.resist) < 0.01;
+      const el = Object.assign(__mob("crawler", 1700), { elite: true });
+      out.elite = __burst(1700, 960, 100, 0, 0.2) === 1 && Math.abs(el.hijackT - hijackTime() * HIJACK.resist) < 0.01;
+      // the cap: never more than 2 at level 1, however many bursts
+      enemies.length = 0;
+      for (let i = 0; i < 8; i++) __mob("crawler", 1200 + i * 60);
+      for (let i = 0; i < 6; i++) __burst(1400, 960, 600, 0, 0, 0, 0);
+      out.capped = enemies.filter(isHijacked).length;
+      // a boss intro derezzes the pawns too (their XP stays behind)
+      gems.length = 0;
+      spawnOverseer();
+      out.derez = { pawns: enemies.filter((e) => !e.dead && isHijacked(e)).length, gems: gems.length };
+      // bosses: ACCESS DENIED (once), never hijacked; System Glitch stutters them every 2.5s at most
+      game.cinematic = null;
+      const o = game.boss;
+      const oc = centerOf(o);
+      const denied = hijackStats.denied;
+      out.boss = __burst(oc.x, oc.y, 400, 0, 0) === 0 && !isHijacked(o) && hijackStats.denied === denied + 1;
+      player.glitchCd = 0;
+      systemGlitch(oc.x, oc.y);
+      const g1 = o.glitchT;
+      o.glitchT = 0;
+      player.glitchCd = 0;
+      systemGlitch(oc.x, oc.y);
+      out.bossGlitch = { first: g1 > 0, second: o.glitchT, lock: o.glitchLock > 0 };
+      // NULL's copies are immune too
+      out.decoy = hijackImmune({ boss: true, decoy: true }) && hijackImmune({ def: { compromise: "immune" } }) && !hijackImmune({ def: {} });
+      // slow-mo (and Time Dilation) don't slow a pawn: its timer and its legs run on real time
+      startGame();
+      skipIntro();
+      director.firstSpawn = director.nextBossAt = 1e9;
+      Object.assign(player, { x: 300, y: GROUND_Y - player.h, vx: 0, onGround: true, standingOn: GROUND });
+      const pawn = __mob("crawler", 1600);
+      const foe = __mob("crawler", 2600);
+      const slow = __mob("crawler", 3600);
+      hijack(pawn, 6);
+      game.slowmo = { time: 99, scale: 0.2 };
+      const x0 = [pawn.x, slow.x];
+      __steps(60);
+      out.slowmo = { left: Math.round(pawn.hijackT * 10) / 10, pawn: Math.round(Math.abs(pawn.x - x0[0])), other: Math.round(Math.abs(slow.x - x0[1])) };
+      game.slowmo = null;
+      return out;
+    });
+    const j = JSON.stringify;
+    assert(r.resistMiss && r.resistHit && r.elite, "resist / elite: " + j(r));
+    assert(r.capped === 2, "the cap did not hold: " + j(r));
+    assert(r.derez.pawns === 0 && r.derez.gems > 0, "a boss intro did not clear the pawns: " + j(r.derez));
+    assert(r.boss && r.decoy, "bosses / copies were not immune: " + j(r));
+    assert(r.bossGlitch.first && r.bossGlitch.second === 0 && r.bossGlitch.lock, "boss glitch cooldown: " + j(r.bossGlitch));
+    assert(Math.abs(r.slowmo.left - 5) < 0.15 && r.slowmo.pawn > r.slowmo.other * 2.5, "slow-mo slowed the pawn: " + j(r.slowmo));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("Hackerman hijack soak: a long busy run at level 25 with auto-fire: hijacks happen, never over the cap, no errors", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { quiet: false, settings: { character: "sudo", autoFire: true, autoFlame: true } });
+    await page.evaluate(HIJACK_HELPERS);
+    const r = await page.evaluate(() => {
+      progress.level = 25;
+      computeStats();
+      game.time = 90; // everything is in the mix
+      director.firstSpawn = 0;
+      const s0 = { ...hijackStats };
+      let over = 0;
+      let peak = 0;
+      for (let t = 0; t < 110 && game.state !== "over"; t += 1 / 60) {
+        player.hp = stats.maxHp;
+        player.heat = Math.max(player.heat, 40);
+        if (game.state === "levelup") chooseUpgrade(0, true);
+        update(1 / 60);
+        const n = enemies.filter((e) => !e.dead && isHijacked(e)).length;
+        peak = Math.max(peak, n);
+        if (n > hijackCap()) over++;
+        if (Math.floor(t * 60) % 300 === 0) render(performance.now() / 1000);
+      }
+      return { hijacks: hijackStats.hijacks - s0.hijacks, ended: hijackStats.ended - s0.ended, peak, over, cap: hijackCap(), kills: game.kills, state: game.state };
+    });
+    console.log("       hijack soak: " + JSON.stringify(r));
+    assert(r.state === "playing" && r.hijacks >= 5 && r.ended >= 3, "too few hijacks: " + JSON.stringify(r));
+    assert(r.over === 0 && r.peak <= r.cap, "more pawns than the cap: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("every runner can fire, use the special and jump with no errors", async () => {
     const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     for (const ch of ["paine", "tetsu", "sudo"]) {
@@ -3821,6 +4032,33 @@ const fastForward = (page, seconds, bot) =>
     assert(r.t2 && r.goal2 === 0 && r.t1, "walkers did not pick the nearer player: " + JSON.stringify(r));
     assert(r.up >= 0, "the walker never climbed to player 1's rooftop: " + JSON.stringify(r));
     assert(r.camo.target && r.camo.moves === 0 && r.camo.floor === 0 && r.camo.shots === 0, "camo did not blind them: " + JSON.stringify(r.camo));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("co-op: player 2's Hackerman hijacks too, the cap is shared, and pawns never hurt either player", async () => {
+    const { context, page, problems } = await coopRun({ p1: "paine", p2: "sudo" });
+    await page.evaluate(HIJACK_HELPERS);
+    const r = await page.evaluate(() => {
+      const [c1, c2] = coop.players;
+      const [a, b] = [c1.player, c2.player];
+      Object.assign(a, { x: 1000, y: GROUND_Y - a.h, vx: 0 });
+      Object.assign(b, { x: 1300, y: GROUND_Y - b.h, vx: 0 });
+      step(1);
+      [1100, 1250, 1400, 1550, 1700].forEach((x) => __mob("crawler", x));
+      const first = withPlayer(c2, () => __burst(1300, 960, 700, 0));
+      for (let i = 0; i < 5; i++) withPlayer(i % 2 ? c1 : c2, () => __burst(1300, 960, 700, 0));
+      const pawns = enemies.filter(isHijacked);
+      // the rest leave; the pawns (with nobody to fight) stick to you: no damage either way
+      enemies.forEach((e) => !isHijacked(e) && (e.dead = true));
+      a.invuln = b.invuln = 0;
+      const h = [a.hp, b.hp];
+      pawns.forEach((e, i) => Object.assign(e, { x: (i % 2 ? b : a).x, hitCd: 0 }));
+      step(40);
+      return { first, pawns: pawns.length, cap: hijackCap(), hurt: [h[0] - a.hp, h[1] - b.hp] };
+    });
+    assert(r.first === 1 && r.pawns === r.cap && r.cap === 2, "co-op hijacks / shared cap: " + JSON.stringify(r));
+    assert(r.hurt[0] === 0 && r.hurt[1] === 0, "a hijacked enemy hurt a player: " + JSON.stringify(r));
     assert(!problems.length, problems.join("; "));
     await context.close();
   });

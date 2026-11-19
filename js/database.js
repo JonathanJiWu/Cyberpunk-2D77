@@ -186,7 +186,7 @@ const CHARACTERS = {
       ],
       guide: { role: "UTILITY", what: "Bullet time: all but you slows", edge: "Dodge anything, hit 40%+ harder", mechanic: "Slows enemies, bullets, bosses", note: "Costs lots of RAM: save it" },
     },
-    passive: "System Glitch: every EM hit has a 15% chance (+1.2% per level) to glitch the area around it: enemies stutter like a lagging stream. Radius 150px, growing with level.",
+    passive: "System Glitch: every EM hit has a 15% chance (+1.2% per level) to glitch the area around it: enemies stutter like a lagging stream. Radius 150px, growing with level. Each glitch is an EMP: a 30% chance (+1% per level) to HIJACK the nearest enemy for 4s+: it fights for you and draws enemy fire. Bosses are immune.",
     quotes: {
       start: ["sudo make me a sandwich.", "Booting up. Ready.", "Hello, world. Goodbye, world."],
       levelUp: ["Patch notes: I'm better.", "+1 to everything.", "New exploit unlocked!", "Updated deps. Nothing broke. Suspicious."],
@@ -237,7 +237,7 @@ CHARACTERS.sudo.profile = {
   personality: "Wired, chatty and fearless online. One bad joke away from a breakthrough.",
   background: "Jacked into the city's security net on a dare and found out who it really watches. Now he leaks what he finds and fries whatever they send after him.",
   weapon: "Tall EM waves that pass through everything in a line and slow it down.",
-  passive: { icon: { sheet: "fx2", cell: 3 }, text: "EM hits can glitch an area: enemies in it stutter like a lagging stream." },
+  passive: { icon: { sheet: "fx2", cell: 3 }, text: "EM hits can glitch an area (enemies stutter) and hijack enemies to fight for you." },
   playstyle: "Stay back, keep moving and hit whole lines at once. Save RAM for Time Dilation when the screen fills up.",
   mechanics: ["Waves pierce and slow every enemy they cross", "Time Dilation: the world crawls, you hit 40% harder", "Glass cannon: the lowest HP and armor"],
   resource: "Builds as you deal and take damage. Time Dilation spends it.",
@@ -328,6 +328,7 @@ const ENEMY_TYPES = {
     h: 78,
     sheet: { img: "dragonCyber", fallback: "dragon", fw: 96, fh: 96, frames: 4, scale: 1.3, rowLeft: 1, rowRight: 2, fps: 7 },
     keepDistance: 560,
+    compromise: "resist", // (Hackerman's hijack: half the chance and the time)
     shot: { kind: "fireball", damage: 7, speed: 380, radius: 18, cooldown: [3.6, 5.2] },
     maxAlive: 2,
     from: 60,
@@ -357,6 +358,7 @@ const ENEMY_TYPES = {
     kind: "melee",
     walker: true,
     shielded: true, // blocks most frontal damage from projectiles
+    compromise: "resist", // (Hackerman's hijack: half the chance and the time)
     hp: 70,
     speed: 105,
     damage: 16,

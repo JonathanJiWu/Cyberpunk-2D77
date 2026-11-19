@@ -275,7 +275,9 @@ function drawHUD(time) {
   const resLabel = p.heatLocked ? `NO ${res.name}` : res.name;
   hudText(resLabel, 360, 120, 18, heatColor);
   ctx.font = fontPx(18);
-  hudText(passiveLine(), Math.max(460, 360 + ctx.measureText(resLabel).width + 18), 122, 15, "#c9b6ff"); // (ends before the boss bar at x 640) // the IC's passive, as it grows with level
+  // the IC's passive, as it grows with level (ends before the boss bar at x 640;
+  // Hackerman's second line, the hijack chance, goes just below it)
+  passiveLines().forEach((line, i) => hudText(line, Math.max(460, 360 + ctx.measureText(resLabel).width + 18), 122 + i * 19, 15, i ? "#5aff7a" : "#c9b6ff"));
 
   // Active power-ups
   let ix = 44;
