@@ -60,6 +60,7 @@ function updateCamera(dt) {
 // Per-player systems run once per player with the globals bound to them
 // (coop.js); with one player that is simply player 1, as it always was.
 function update(dt) {
+  if (coopJoinHold(dt)) return; // co-op: the world holds still while player 2 picks an IC
   game.time += dt;
   updateWorld(dt, game.time);
   refreshMouseWorld();

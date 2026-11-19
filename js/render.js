@@ -328,6 +328,7 @@ function drawHUD(time) {
   }
   drawBossCard(VW, H / k);
   drawNullTear(VW, H / k);
+  drawCoopJoin(VW, H / k, time); // co-op: player 2's IC select, over everything
   ctx.restore();
 
   if (boss && !boss.dead && !boss.cloaked && !onScreen(boss)) drawBossArrow(boss, time);
