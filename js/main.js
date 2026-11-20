@@ -178,10 +178,11 @@ function setState(state) {
   if (state === "menu") {
     showOverlay({
       title: "Cyberpunk 2D77",
-      text: "It's year 2D77. You're a Cyber Badass. Survive the streets, level up, and don't kiss the Demon Goat.",
+      text: "",
       button: "Start Game",
       help: true,
     });
+    narrator.menuIntro(overlayText); // THE LEGEND sets the scene (narrator.js)
   } else if (state === "paused") {
     showOverlay({ title: "Paused", text: "Catch your breath. Hot-swap your Individual Contributor or respec below.", button: "Resume", secondary: "Restart", help: true });
   }
@@ -233,7 +234,7 @@ function showGameOver() {
   if (game.won) {
     showOverlay({
       title: "Cyber City Is Free!",
-      text: `${CH().name}: "${CH().quotes.win}" The Overseer is scrap, NULL is freed and the Demon GOAT is lamb chops. Ship it.`,
+      text: `${CH().name}: "${CH().quotes.win}" The Overseer is scrap, NULL is freed and the Demon GOAT is lamb chops. The cameras are off. For now.`,
       button: "Play Again",
       stats: lines,
     });
@@ -241,10 +242,14 @@ function showGameOver() {
     const boss = game.boss;
     if (boss && !boss.dead) lines.push([`${BOSSES[boss.type].name} HP left`, Math.ceil((boss.hp / boss.maxHp) * 100) + "%"]);
     const rain = weather.amount > 0.5;
-    const joke = HUMOR.gameOver[Math.floor(Math.random() * HUMOR.gameOver.length)];
+    // A boss that ended the run gets its own joke (and the IC's line for it)
+    const by = boss && !boss.dead ? boss.type : null;
+    const jokes = (by && HUMOR.gameOverBy[by]) || HUMOR.gameOver;
+    const joke = jokes[Math.floor(Math.random() * jokes.length)];
+    const last = (by && CH().quotes.loseTo && CH().quotes.loseTo[by]) || CH().quotes.lose;
     showOverlay({
       title: rain ? "Like tears in rain..." : director.stage >= STAGE.goat ? "The GOAT Got Your Soul!" : director.stage === STAGE.nullptr ? "NullPointerException!" : "Process Terminated",
-      text: rain ? "Time to die. The rain washes the street clean." : `${CH().name}: "${CH().quotes.lose}" // ${joke}`,
+      text: rain ? "Time to die. The rain washes the street clean." : `${CH().name}: "${last}" // ${joke}`,
       button: "Try Again",
       stats: lines,
     });

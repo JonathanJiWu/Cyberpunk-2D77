@@ -101,7 +101,30 @@ const descAt = (u, level) => {
 function describe(u, steps = 1) {
   const lines = [];
   for (let k = 1; k <= steps; k++) lines.push(descAt(u, lv(u.id) + k));
-  return [...new Set(lines)].join(" + ");
+  const unique = [...new Set(lines)];
+  // A one-line passive reads the same every level: a rare card says what
+  // its two levels add up to ("Take 16% less damage.")
+  if (unique.length === 1 && steps > 1) {
+    const total = unique[0].replace(/\d+/g, (n) => String(Number(n) * steps));
+    return total !== unique[0] ? total : `${unique[0]} (x${steps})`;
+  }
+  return unique.join(" + ");
+}
+
+// Co-op: the primary / special card upgrades every player's own IC. When
+// their ICs differ it names and describes each one; null otherwise.
+function teamCard(u, steps) {
+  if (!coopActive() || (u.id !== "zap" && u.id !== "flame")) return null;
+  const seen = new Set();
+  const names = [];
+  const descs = [];
+  forEachPlayer(() => {
+    if (seen.has(player.char)) return;
+    seen.add(player.char);
+    names.push(upgradeInfo(u).name);
+    descs.push(`${CH().name}: ${describe(u, steps)}`);
+  });
+  return names.length > 1 ? { name: names.join(" + "), desc: descs.join(" ") } : null;
 }
 
 // ------------------------------------------------------ Skill guidance ------
@@ -210,8 +233,8 @@ function openLevelUp() {
   sfx.flame.stopLoop();
   clearInput();
   setState("levelup");
-  legendSay(levelUpLegend, pick(currentChoices.some((c) => c.rare) ? HUMOR.rare : HUMOR.legend));
-  if (!touchMode) cardsEl.firstElementChild.focus({ preventScroll: true });
+  narrator.levelUpOpen(currentChoices); // THE LEGEND reacts to the offer (narrator.js)
+  if (!touchMode) narrator.quietly(() => cardsEl.firstElementChild.focus({ preventScroll: true }));
 }
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -225,10 +248,15 @@ function renderCards() {
     const tag = c.rare ? "RARE // +2 LEVELS" : isPreferred(c.id) ? "LOADOUT PICK" : coopActive() && (c.id === "zap" || c.id === "flame") ? "BOTH ICs" : null;
     const card = hardwareCard(c.u, { rare: c.rare, key: i + 1, tag });
     card.querySelector(".card-level").textContent = owned ? `LV ${owned} > ${owned + steps}` : c.id === "_heal" ? "" : c.rare ? `NEW! LV ${steps}` : "NEW!";
-    card.querySelector(".card-desc").textContent = c.id === "_heal" ? HEAL_CARD.desc[0] : describe(c.u, steps);
+    const team = teamCard(c.u, steps); // co-op: each IC's own primary / special
+    if (team) card.querySelector(".card-name").textContent = team.name;
+    card.querySelector(".card-desc").textContent = c.id === "_heal" ? HEAL_CARD.desc[0] : team ? team.desc : describe(c.u, steps);
     if (!owned && c.id !== "_heal") card.classList.add("is-new");
     card.style.setProperty("--d", `${i * 70}ms`);
     card.addEventListener("click", () => chooseUpgrade(i));
+    // THE LEGEND explains the card you point at (a long press on touch: narrator.js)
+    card.addEventListener("pointerenter", (e) => e.pointerType === "mouse" && narrator.levelUpFocus(i, "hover"));
+    card.addEventListener("focus", () => narrator.levelUpFocus(i, "focus"));
     cardsEl.appendChild(card);
   });
   updateRerollBtn();
@@ -259,6 +287,7 @@ function rerollChoices() {
   if (game.state !== "levelup" || pickLock) return;
   if (progress.rerolls <= 0) {
     replayClass(rerollBtn, "denied");
+    narrator.reroll(true);
     return;
   }
   progress.rerolls--;
@@ -269,9 +298,9 @@ function rerollChoices() {
   if (typeof synth !== "undefined") synth.play("reroll");
   else sfx.zapHit.play({ rate: 1.6 });
   vibrate(15);
-  legendSay(levelUpLegend, pick(HUMOR.reroll));
+  narrator.reroll(false);
   // Keep focus on the button if that's what was used (Enter again rerolls again)
-  if (!touchMode && (document.activeElement !== rerollBtn || rerollBtn.disabled)) cardsEl.firstElementChild.focus({ preventScroll: true });
+  if (!touchMode && (document.activeElement !== rerollBtn || rerollBtn.disabled)) narrator.quietly(() => cardsEl.firstElementChild.focus({ preventScroll: true }));
 }
 rerollBtn.addEventListener("click", rerollChoices);
 
@@ -299,6 +328,7 @@ function chooseUpgrade(i, instant) {
   const c = currentChoices[i];
   if (!c) return;
   applyChoice(c);
+  narrator.levelUpPick(c);
   if (instant) {
     finishLevelUp(c);
     return;
@@ -371,27 +401,10 @@ function handleLevelUpKey(e) {
 }
 
 // ---------------------------------------------------------- THE LEGEND ------
-// A hologram that types out a line, talking while it types
+// A hologram that types out his lines, talking while he types: his lines,
+// moods and voice hooks live in narrator.js (narrator.say)
 const levelUpLegend = document.getElementById("legend-levelup");
 const loadoutLegend = document.getElementById("legend-loadout");
-function legendSay(el, text) {
-  if (!el) return;
-  const line = el.querySelector(".legend-line");
-  clearInterval(el._typing);
-  el.classList.add("talking");
-  el.classList.remove("done");
-  line.textContent = "";
-  let n = 0;
-  el._typing = setInterval(() => {
-    n += 2;
-    line.textContent = text.slice(0, n);
-    if (n >= text.length) {
-      clearInterval(el._typing);
-      el.classList.remove("talking");
-      el.classList.add("done");
-    }
-  }, 28);
-}
 
 // ------------------------------------------------------- Pre-drop loadout ---
 const loadoutEl = document.getElementById("loadout");
@@ -404,7 +417,7 @@ function openLoadout() {
   renderLoadout();
   loadoutEl.hidden = false;
   overlay.hidden = true;
-  legendSay(loadoutLegend, pick(HUMOR.loadout));
+  narrator.loadoutOpen();
   if (!touchMode) dropBtn.focus({ preventScroll: true });
 }
 
@@ -425,10 +438,17 @@ function renderLoadout() {
     const level = card.querySelector(".card-level");
     level.innerHTML = `<span class="lv-kind">${u.weapon ? "WEAPON" : "PASSIVE"} · </span>`;
     level.append(`LV ${startLevel(u)}`);
-    card.querySelector(".card-desc").textContent = descAt(u, startLevel(u));
+    card.querySelector(".card-desc").textContent = descAt(u, 1); // what it does (the spec sheet adds the loadout level)
     card.addEventListener("click", () => toggleLoadout(u.id));
-    card.addEventListener("pointerenter", (e) => e.pointerType === "mouse" && showLoadoutSpec(u.id));
-    card.addEventListener("focus", () => showLoadoutSpec(u.id));
+    card.addEventListener("pointerenter", (e) => {
+      if (e.pointerType !== "mouse") return;
+      showLoadoutSpec(u.id);
+      narrator.loadoutFocus(u.id, "hover");
+    });
+    card.addEventListener("focus", () => {
+      showLoadoutSpec(u.id);
+      narrator.loadoutFocus(u.id, "focus");
+    });
     loadoutGrid.append(card);
   });
   loadoutCount.textContent = `${chosen.length}/2`;
@@ -453,25 +473,33 @@ function showLoadoutSpec(id) {
   loadoutSpec.querySelector(".role-tag").textContent = role;
   loadoutSpec.querySelector(".spec-name").textContent = info.name.toUpperCase();
   loadoutSpec.querySelector(".spec-sub").textContent = `${hw.part} · ${u.weapon ? "WEAPON" : "PASSIVE"} · STARTS AT LV ${startLevel(u)} OF ${info.max}`;
-  loadoutSpec.querySelector(".spec-desc").textContent = descAt(u, startLevel(u));
+  const start = startLevel(u);
+  loadoutSpec.querySelector(".spec-desc").textContent = descAt(u, 1) + (start > 1 ? ` LV ${start}: ${descAt(u, start)}` : "");
   fillGuide(loadoutSpec.querySelector(".spec-rows"), skillGuideRows(u));
   loadoutSpec.querySelector(".spec-slot").textContent = slot >= 0 ? `IN SLOT ${slot + 1}` : touchMode ? "TAP TO ADD" : "CLICK TO ADD";
 }
 
 function toggleLoadout(id) {
   let l = validLoadout();
-  if (l.includes(id)) l = l.filter((x) => x !== id);
-  else {
+  let kind = "add";
+  if (l.includes(id)) {
+    l = l.filter((x) => x !== id);
+    kind = "remove";
+  } else {
     l.push(id);
-    if (l.length > 2) l.shift(); // replace the oldest pick
+    if (l.length > 2) {
+      l.shift(); // replace the oldest pick
+      kind = "swap";
+    }
   }
   loadoutSpecId = id;
   settings.loadout = l;
   applySettings();
   const focusedIdx = [...loadoutGrid.children].indexOf(document.activeElement);
   renderLoadout();
-  if (focusedIdx >= 0) loadoutGrid.children[focusedIdx].focus({ preventScroll: true });
+  if (focusedIdx >= 0) narrator.quietly(() => loadoutGrid.children[focusedIdx].focus({ preventScroll: true }));
   sfx.zapHit.play({ rate: 1.4 });
+  narrator.loadoutToggle(id, kind, l.length);
 }
 
 function dropIn() {
@@ -520,6 +548,7 @@ function openRespec() {
   respecEl.hidden = false;
   overlay.hidden = true;
   renderRespec();
+  narrator.respecOpen();
 }
 
 function closeRespec() {
@@ -565,12 +594,13 @@ function applyRespec() {
     player.hp = Math.min(player.hp, stats.maxHp);
   });
   closeRespec();
-  overlayText.textContent = pick(HUMOR.respec);
+  narrator.respecApply(overlayText);
   sfx.levelUp.play({ rate: 1.1 });
 }
 respecApply.addEventListener("click", applyRespec);
 document.getElementById("respec-reset").addEventListener("click", () => {
   UPGRADES.forEach((u) => (respec.draft[u.id] = baseLevel(u.id)));
   renderRespec();
+  narrator.respecReset();
 });
 document.getElementById("respec-cancel").addEventListener("click", closeRespec);

@@ -3827,3 +3827,65 @@ body:is(.pad-xbox, .pad-ps, .pad-generic) .overlay {
   color: #14051f;
   animation: none;
 }
+
+/* ============================================= THE LEGEND, narrator (js/narrator.js) */
+/* Moods: the face he rests on once a line is typed out. img/legend2.png has
+   6 frames of 96x96 (0 idle, 1 blink, 2 talk open, 3 talk half, 4 smirk,
+   5 one eyebrow raised) at 600% 100%: frame n sits at n * 20%. Talking still
+   cycles frames 2 and 3 (the base .legend rules above). */
+.legend.mood-neutral.done .legend-sprite { background-position: 0 0; }
+.legend.mood-smirk.done .legend-sprite { background-position: 80% 0; }
+.legend.mood-skeptic.done .legend-sprite { background-position: 100% 0; }
+
+/* The bubble: the line itself in the condensed body font (readable on a
+   phone), laid out in full from the first letter (the untyped rest is just
+   invisible) with room for the longest line reserved, so the cards never
+   shift under the pointer while he talks. A click finishes the line. */
+.levelup-foot .legend,
+.respec-legend {
+  flex: 1 1 auto;
+}
+.legend-bubble {
+  flex: 1 1 auto;
+  cursor: pointer;
+}
+.legend-line {
+  display: block;
+  min-height: calc(var(--legend-rows, 2) * 1.25em);
+  font-family: var(--body-font, "Bahnschrift SemiCondensed", "Bahnschrift", "Roboto Condensed", "Arial Narrow", sans-serif);
+  font-size: var(--legend-font, 1.6em);
+  font-weight: 600;
+  line-height: 1.25;
+  color: #e9fdff;
+}
+.legend-rest {
+  visibility: hidden;
+}
+.legend-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.loadout-side .legend-line {
+  --legend-rows: 3;
+}
+body.touch .loadout-side .legend-line {
+  --legend-rows: 4; /* next to the buttons: a narrow bubble */
+}
+.respec-legend {
+  margin: 0 0 1em;
+  text-align: left;
+}
+.respec-legend .legend-sprite {
+  width: 4em;
+  height: 4em;
+}
+/* a long press explains a card on touch: no callout or text selection */
+body.touch .cards .card {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

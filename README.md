@@ -4,7 +4,7 @@
 **▶ Play it: https://jonathanjiwu.github.io/Cyberpunk-2D77/**
 (old site: https://cyberpunk-2d77.netlify.app)
 
-It's year 2D77 and you're a cyber badass running the neon streets of Cyber City. **Cyberpunk 2D77** is a side-scrolling action platformer with a Vampire Survivors-style run. Each run goes like this:
+It's 2D77. The corps own the city, the cameras and the truth, and they rent all three back to you. Stop paying. **Cyberpunk 2D77** is a side-scrolling action platformer with a Vampire Survivors-style run. Each run goes like this:
 
 1. Pick an **Individual Contributor** (IC) and two starting skills.
 2. Drop into the city with a superhero landing.
@@ -101,7 +101,7 @@ Swap ICs from the pause menu at any time: levels, upgrades, lives and resource c
 
   All the while the ICE traces you.
 - **Leaderboard**: enter a display name at the end of a run. Scores, with time, kills, level, IC and result, are saved in your browser and survive refreshes and restarts.
-- **THE LEGEND**, a hologram on the loadout and level-up screens, dispenses zen and debugging wisdom.
+- **THE LEGEND**, a burned-out hologram rebel, narrates the menu, the run start and the loadout, level-up and respec screens: he sizes up every offer, explains each card (point at it, or hold it on a phone) and has an opinion about your pick. Every line has a stable id and a voice hook (`js/narrator.js`) for future voice acting.
 - **The DATABASE** screen lists every IC, enemy, boss and skill. Enemies and bosses stay encrypted until you meet them.
 - **Feel**: your IC faces the way they're firing. You get attack animations, squash and stretch, dust, muzzle flashes and speech bubbles.
 - **Software-developer humor** throughout: tips, respawns, game over screens, bosses, ICs and the Legend.
@@ -407,7 +407,8 @@ To sign, add the certificates as repository secrets (`CSC_LINK` and `CSC_KEY_PAS
 | `js/overseer.js` | The Overseer, the first boss |
 | `js/null.js` | NULL, the second boss |
 | `js/goat.js` | The Demon GOAT, the final boss |
-| `js/upgrades.js` | XP, levels, hardware cards, rerolls, the pre-drop loadout, respec and THE LEGEND |
+| `js/upgrades.js` | XP, levels, hardware cards, rerolls, the pre-drop loadout and respec |
+| `js/narrator.js` | THE LEGEND: his lines (with stable ids), moods, the `narrator:line` event and the voice hook |
 | `js/secrets.js` | The easter eggs, the billboard hologram, the hacking terminal and the neon notes |
 | `js/codex.js` | The IC cards and the DATABASE screen |
 | `js/leaderboard.js` | Scoring runs, name entry and the leaderboard panel (saved in localStorage) |

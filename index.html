@@ -48,7 +48,7 @@
       <div id="overlay" class="overlay">
         <div class="panel" role="dialog" aria-labelledby="overlay-title">
           <h1 id="overlay-title">Cyberpunk 2D77</h1>
-          <p id="overlay-text">It's year 2D77. You're a Cyber Badass. Don't kiss the Demon Goat.</p>
+          <p id="overlay-text">It's 2D77. The corps own the city, the cameras and the truth, and they rent all three back to you. Stop paying. Don't kiss the Demon Goat.</p>
           <dl id="overlay-stats" class="stats" hidden></dl>
           <div id="lb-entry" class="lb-entry" hidden>
             <div class="lb-score">SCORE <b id="lb-score">0</b></div>
@@ -214,7 +214,7 @@
           <div id="loadout-grid" class="loadout-grid"></div>
           <div class="loadout-side">
             <h2 id="loadout-title">PRE-DROP LOADOUT</h2>
-            <p>Pick 2 starting skills (<b id="loadout-count">0/2</b>). They start a level up and show up more often, and rarer, in the run.</p>
+            <p>Pick 2 starting skills (<b id="loadout-count">0/2</b>). They start a level up, show up 3x as often and roll RARE 3x as often.</p>
             <div id="loadout-spec" class="loadout-spec"></div>
             <div class="levelup-foot">
               <div id="legend-loadout" class="legend" aria-live="polite">
@@ -235,6 +235,10 @@
           <h2 id="respec-title">RESPEC</h2>
           <p id="respec-points">0 POINTS FREE</p>
           <div id="respec-list" class="respec-list"></div>
+          <div id="legend-respec" class="legend respec-legend" aria-live="polite">
+            <span class="legend-sprite" aria-hidden="true"></span>
+            <span class="legend-bubble"><b>THE LEGEND</b><span class="legend-line"></span></span>
+          </div>
           <div class="loadout-actions">
             <button id="respec-cancel" class="secondary-btn" type="button">Cancel</button>
             <button id="respec-reset" class="secondary-btn" type="button">Reset all</button>
@@ -343,6 +347,7 @@
     <script src="js/goat.js"></script>
     <script src="js/null.js"></script>
     <script src="js/upgrades.js"></script>
+    <script src="js/narrator.js"></script>
     <script src="js/secrets.js"></script>
     <script src="js/codex.js"></script>
     <script src="js/select.js"></script>
