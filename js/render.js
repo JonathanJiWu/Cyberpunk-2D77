@@ -353,7 +353,9 @@ function drawHUD(time) {
 
   if (game.toast) {
     ctx.globalAlpha = clamp(game.toast.time / 0.5, 0, 1);
-    hudText(game.toast.text, VW / 2, 190, 24, "#ffe14d", "center");
+    // (below the Rate Limiter's "429 THROTTLED" banner when it's up: enemies2.js)
+    const throttled = coop.players[0].player.throttleT > 0;
+    hudText(game.toast.text, VW / 2, throttled ? 206 : 190, 24, "#ffe14d", "center");
     ctx.globalAlpha = 1;
   }
 
