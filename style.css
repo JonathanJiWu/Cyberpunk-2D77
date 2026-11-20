@@ -340,11 +340,6 @@ body.touch.state-playing .touch-controls {
   filter: brightness(1.3);
 }
 
-.btn-flame.overheated {
-  color: #ff3b3b;
-  opacity: 0.55;
-}
-
 /* Right stick (twin-stick aim + fire) */
 .aim-zone {
   position: fixed;

@@ -50,7 +50,6 @@ function makePlayerContext(id, body, own) {
       shots: [],
       missiles: [],
       slashFx: [],
-      hackFx: [],
       heatWaves: [],
       codeRain: [],
       kitFx: [],
@@ -65,7 +64,7 @@ function makePlayerContext(id, body, own) {
 
 // Player 1 owns the globals the rest of the game was written against
 const coop = {
-  players: [makePlayerContext(0, player, { stats, input, intro, shots: playerShots, missiles, slashFx, hackFx, heatWaves, codeRain, kitFx })],
+  players: [makePlayerContext(0, player, { stats, input, intro, shots: playerShots, missiles, slashFx, heatWaves, codeRain, kitFx })],
   active: null, // the context the globals point at right now
   seat: null, // player 2's seat while their pad is assigned: { char }
   menuSlot: 0, // which player a pad-driven menu click is for
@@ -83,7 +82,6 @@ function bindPlayer(ctx) {
   playerShots = ctx.shots;
   missiles = ctx.missiles;
   slashFx = ctx.slashFx;
-  hackFx = ctx.hackFx;
   heatWaves = ctx.heatWaves;
   codeRain = ctx.codeRain;
   kitFx = ctx.kitFx;
@@ -580,7 +578,7 @@ function drawCoopHud(VW, time) {
     drawBar(x, y + 50, 400, 24, status ? 0 : p.hp / stats.maxHp, status ? 0 : p.ghostHp / stats.maxHp, p.hp / stats.maxHp < 0.3 && Math.sin(time * 12) > 0 ? "#ff2f6d" : c.color);
     hudText(status || `${Math.ceil(p.hp)}/${stats.maxHp}`, x + 10, y + 55, 16, "#ffffff");
     const res = ch.resource;
-    drawBar(x, y + 86, 240, 12, p.heat / TUNING.heat.max, 0, p.heatLocked ? "#ff3b3b" : res.color);
+    drawBar(x, y + 86, 240, 12, p.heat / TUNING.heat.max, 0, res.color);
     hudText(res.name, x + 254, y + 84, 14, res.color);
     hudText(passiveLine(), x, y + 108, 12, "#c9b6ff");
   });

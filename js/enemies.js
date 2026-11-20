@@ -373,7 +373,7 @@ function updateEnemy(e, dtAll) {
         }
       } else {
         eachTarget(() => {
-          if (e.hitCd > 0 || player.camo > 0 || player.flameOn || !overlaps(e, player)) return;
+          if (e.hitCd > 0 || player.camo > 0 || !overlaps(e, player)) return;
           if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
             e.hitCd = 0.9;
             e.kbX = -Math.sign(dx) * 300;
@@ -591,7 +591,8 @@ function updateEnemyShots(dt) {
 }
 
 // ------------------------------------------------------- Damage & death -----
-const SHIELD_BLOCKS = new Set(["zap", "orb", "arrow", "em", "blade", "missile", "chain"]);
+// (explosions, lightning arcs, fire and attacks from behind or above get past it)
+const SHIELD_BLOCKS = new Set(["zap", "arrow", "em", "blade"]);
 // Damage that doesn't come from the player's attacks (no Time Dilation bonus).
 // "hijack": a hijacked enemy hitting an enemy; "enemy": an enemy hitting a hijacked one.
 const NOT_PLAYER_DAMAGE = new Set(["fall", "bleed", "reflect", "blast", "test", "hijack", "enemy"]);

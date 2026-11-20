@@ -180,7 +180,6 @@ function updateHeatWave(dt) {
   const H = stats.heatwave;
   p.specialCd -= dt;
   p.flameFlash = Math.max(0, (p.flameFlash || 0) - dt);
-  if (p.heatLocked && p.heat >= H.cost) p.heatLocked = false;
   const pressed = specialPressed();
   let want = pressed;
   if (!want && settings.autoFlame && !bossLocked() && p.specialCd <= 0 && p.heat >= H.cost) {

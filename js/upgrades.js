@@ -230,7 +230,6 @@ function openLevelUp() {
   pickLock = false;
   levelUpShownAt = performance.now();
   sfx.levelUp.play({ rate: 1.3 });
-  sfx.flame.stopLoop();
   clearInput();
   setState("levelup");
   narrator.levelUpOpen(currentChoices); // THE LEGEND reacts to the offer (narrator.js)

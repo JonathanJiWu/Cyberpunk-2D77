@@ -21,7 +21,6 @@ function startIntro(kind = "drop") {
   intro.t = 0;
   // glitched out this long before the drop ("join": co-op player 2 dropping in)
   intro.downFor = kind === "join" ? 0.35 : coopActive() ? COOP.respawnDelay : 1.3;
-  p.flameOn = false;
   p.dash = null;
   p.vx = p.vy = 0;
   input.buttons.flame = false;
@@ -181,7 +180,6 @@ function playerDown() {
     });
     p.hp = p.ghostHp = stats.maxHp;
     p.heat = Math.max(p.heat, 40);
-    p.heatLocked = false;
     p.invuln = 3;
     p.lowHpSaid = false;
     startIntro("respawn");
@@ -205,14 +203,11 @@ function switchCharacter(id) {
   }
   resetKitState(); // the old kit's Time Dilation / bow draw (kits.js)
   p.char = id;
-  p.flameOn = false;
   p.dash = null;
   p.guard = 0;
   p.combo = 0;
-  p.heatLocked = false;
   input.buttons.flame = false;
   input.specialQueued = false;
-  sfx.flame.stopLoop();
   computeStats();
   p.hp = p.ghostHp = Math.max(1, Math.round(ratio * stats.maxHp));
   const pc = centerOf(p);

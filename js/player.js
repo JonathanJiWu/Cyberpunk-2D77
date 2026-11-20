@@ -36,8 +36,6 @@ function makePlayerBody() {
     hp: TUNING.player.maxHp,
     ghostHp: TUNING.player.maxHp,
     heat: TUNING.heat.start,
-    heatLocked: false,
-    flameOn: false,
     invuln: 0,
     shield: 0,
     overdrive: 0,
@@ -152,8 +150,6 @@ function freshPlayer(char) {
     hp: stats.maxHp,
     ghostHp: stats.maxHp,
     heat: TUNING.heat.start,
-    heatLocked: false,
-    flameOn: false,
     invuln: 0,
     shield: 0,
     overdrive: 0,
@@ -183,7 +179,6 @@ function freshPlayer(char) {
   playerShots.length = 0;
   missiles.length = 0;
   slashFx.length = 0;
-  hackFx.length = 0;
   input.buttons.flame = false;
 }
 

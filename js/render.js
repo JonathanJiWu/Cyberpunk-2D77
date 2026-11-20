@@ -270,9 +270,9 @@ function drawHUD(time) {
     if (on) glow(lx + 13 * chip, cy, 18 * chip, "rgba(255,255,255,0.35)");
   }
   const res = CH().resource;
-  const heatColor = p.heatLocked ? (Math.sin(time * 14) > 0 ? "#ff3b3b" : "#7a1010") : res.color;
+  const heatColor = res.color;
   drawBar(44, 120, 300, 18, p.heat / TUNING.heat.max, 0, heatColor);
-  const resLabel = p.heatLocked ? `NO ${res.name}` : res.name;
+  const resLabel = res.name;
   hudText(resLabel, 360, 120, 18, heatColor);
   ctx.font = fontPx(18);
   // the IC's passive, as it grows with level (ends before the boss bar at x 640;

@@ -523,7 +523,6 @@ function openBreach(term) {
     heat: "",
     status: "",
   });
-  sfx.flame.stopLoop();
   clearInput();
   breachTermEl.textContent = "";
   breachFlashEl.hidden = true;

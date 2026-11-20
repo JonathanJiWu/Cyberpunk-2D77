@@ -4065,7 +4065,7 @@ const fastForward = (page, seconds, bot) =>
       await page.waitForTimeout(40);
       await touch(cdp, "touchEnd", [pt]);
       await page.waitForTimeout(300);
-      const r = await page.evaluate(() => ({ heat: player.heat, label: document.querySelector(".btn-flame").textContent, hacks: hackFx.length }));
+      const r = await page.evaluate(() => ({ heat: player.heat, label: document.querySelector(".btn-flame").textContent }));
       assert(r.label === label, `${ch}: wrong label ${r.label}`);
       assert(r.heat < 100, `${ch}: special was not used: ` + JSON.stringify(r));
     }

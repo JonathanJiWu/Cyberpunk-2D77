@@ -295,7 +295,6 @@ const classicMusic = {
 };
 
 const sfx = {
-  flame: new Sound("sound/fire.wav", { volume: 0.5 }),
   energy: new Sound("sound/energy.wav", { volume: 0.5, minGap: 0.05, pool: 4 }),
   enemyShot: new Sound("sound/energy.wav", { volume: 0.35, minGap: 0.12, pool: 3 }),
   zapHit: new Sound("sound/hit2.wav", { volume: 0.45, minGap: 0.06, pool: 4 }),

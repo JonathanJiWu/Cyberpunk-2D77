@@ -125,7 +125,6 @@ function startGame() {
 function pauseGame() {
   if (game.state !== "playing") return;
   setState("paused");
-  sfx.flame.stopLoop();
   synth.stop("dilationLoop"); // (resumeGame starts it again if a dilation is still running)
   music.pause();
 }
@@ -141,7 +140,6 @@ function resumeGame() {
 function endRun(won) {
   game.won = won;
   game.overTime = 0;
-  sfx.flame.stopLoop();
   forEachPlayer(() => resetKitState()); // a Time Dilation still running ends with the run (kits.js)
   clearInput();
   levelUpEl.hidden = true;
@@ -400,7 +398,6 @@ function syncSpecialButton() {
   const heat = (player.heat / TUNING.heat.max).toFixed(2);
   const on = special.hold ? input.buttons.flame : false;
   if (heat !== st.heat) flameBtn.style.setProperty("--heat", (st.heat = heat));
-  if (player.heatLocked !== st.hot) flameBtn.classList.toggle("overheated", (st.hot = player.heatLocked));
   if (on !== st.on) flameBtn.classList.toggle("on", (st.on = on));
   if (flameBtn.textContent !== special.label) flameBtn.textContent = special.label;
 }

@@ -9,7 +9,6 @@
 
 const CH = () => CHARACTERS[player.char] || CHARACTERS.paine;
 let slashFx = []; // blade arcs (per player in co-op, see coop.js)
-let hackFx = []; // overload circles
 
 // Smallest signed angle between two directions
 const angleDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
@@ -142,7 +141,6 @@ function updateDash(dt) {
   const D = stats.dash;
   p.specialCd -= dt;
   p.guard = Math.max(0, p.guard - dt);
-  if (p.heatLocked && p.heat >= D.cost) p.heatLocked = false;
   const pressed = specialPressed();
   let want = pressed;
   let dir = null;
