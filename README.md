@@ -13,20 +13,16 @@ It's 2D77. The corps own the city, the cameras and the truth, and they rent all 
 
 You have **3 lives**. The game plays on desktop (keyboard and mouse, or a game controller) and on phones and tablets (touch).
 
-## What's new in v3.1: The Desktop & Signature Update
-- **Desktop app** (Electron) for Windows, Linux and Intel macOS, plus **fullscreen and resolution** options.
-- **Game controllers**: Xbox, PlayStation and generic pads, with dual-stick aiming that works with auto-fire.
-- **Signature kits**:
-  - **PAINE** is now the **Cyber Widow**, with a cyber bow and a Flame On heat wave.
-  - **TETSU** reflects damage back at his attackers.
-  - **SUDO** is now **Hackerman**, with an EM projector, System Glitch and Time Dilation bullet time.
-- **A third boss**, NULL, "the assassin who isn't there".
-- **Coordinated enemy squads**.
-- **Skill cards as 3:4 posters**, an unmissable reroll button, guidance on every starting skill, and XP that drops as **shiny RAM, NVMe and CPU parts**.
-- **Unique sounds** for every IC, boss and pickup, synthesized live.
-- **Performance mode** and **local 2-player co-op** (see below).
+## What's new in v3.2: The Truth & Freedom Update
+- **A world worth fighting:** Goldhorn owns the city, Verity sells you its news and the Bureau of Public Calm flies the drones. THE LEGEND, an old hologram who still won't sign their contract, is now your **narrator and skill guide**: he sizes up every level-up offer, explains the card you point at, and has an opinion about your picks. His lines have stable ids and a voice hook, ready for voice acting.
+- **New art for every human character:** Paine, Tetsu and Sudo are redrawn with real proportions, faces and silhouettes (80x120 sprites, new landings and portraits), and so are THE LEGEND, NULL, the billboard model and the Cyber Ninja.
+- **A character select worth the name:** a big stage with each IC's bust, dossier (personality, background, playstyle), kit and stats, also in the pause menu's hot-swap and player 2's join screen.
+- **Five new enemies:** Fork Bomb (splits on death), Packet Lobber (artillery), Legacy Monolith (breakable armour plates), Hotfix (heals and shields its allies) and Rate Limiter (a 429 field that throttles you).
+- **Enemies can reach you anywhere:** a platform-graph navigation layer replaces "run at the player and hop". Walkers and bosses climb, drop and route to every platform; flyers stop stacking.
+- **Hackerman's EMP hijacks enemies:** System Glitch bursts can turn nearby enemies against their friends for a few seconds.
+- **A consistency pass:** an audit of the whole game, with the fixes listed in the patch notes (stuck slow-mo, exploits, phone HUD, texts), and the balance-sheet edits.
 
-Full details are in **[PATCH_NOTES.md](PATCH_NOTES.md)**.
+v3.1 brought the desktop app, controllers, local co-op, the signature kits and NULL. Full details are in **[PATCH_NOTES.md](PATCH_NOTES.md)**.
 
 ## Individual Contributors
 
@@ -34,7 +30,7 @@ Full details are in **[PATCH_NOTES.md](PATCH_NOTES.md)**.
 |---|---|---|---|---|
 | **PAINE** // Cyber Widow | 110, blocks 30% of damage | Cyber Bow | Flame On (HEAT) | Precision archer. Draw and release one heavy arrow at a time: it knocks enemies back and usually pierces (15% + 2% per level + the bow's 60-80% bonus, max 90%). Arrows shoot flyers out of the sky, and enemies knocked off ledges take fall damage. Bosses can't be shoved but bleed. Flame On is a radial heat wave from her heat-proof suit: it shoves, burns and melts bullets, on a short cooldown. |
 | **TETSU** // Chrome Ronin | 150, blocks 50% of damage | Monoblade | Iaido Dash (FOCUS) | Melee. A three-hit combo with a 360° shield-breaking finisher; swings parry bullets. The dash slices through everything and leaves him guarded. **Mirror Steel** reflects 15% of all incoming damage back at the attacker (+1% per level, max 40%). From level 8 reflections stagger minions; from level 16 they splash to two more enemies. The Monoblade and the dash are weaker on bosses. |
-| **SUDO** // Hackerman | 80, blocks 10% of damage | EM Projector | Time Dilation (RAM) | Electronic warfare. A hacked EM wave projector, wired to his laptop and a backpack battery, fires tall waves that pass through everything and slow it. **System Glitch**: each hit has a 15%+ chance to make the whole area stutter. Time Dilation is bullet time: the world slows to a crawl while he moves at full speed and hits 40%+ harder, in a rain of green code. |
+| **SUDO** // Hackerman | 80, blocks 10% of damage | EM Projector | Time Dilation (RAM) | Electronic warfare. A hacked EM wave projector, wired to his laptop and a backpack battery, fires tall waves that pass through everything and slow it. **System Glitch**: each hit has a 15%+ chance to make the whole area stutter, and each glitch burst can **hijack** nearby enemies (30%+ per burst): for 4-7 s they fight their former allies and draw their fire. Bosses are immune. Time Dilation is bullet time: the world slows to a crawl while he moves at full speed and hits 40%+ harder, in a rain of green code. |
 
 Each IC has their own:
 - sprite, attack animations and hero landing;
@@ -49,12 +45,19 @@ Swap ICs from the pause menu at any time: levels, upgrades, lives and resource c
   - rooftops to climb and rain-slick reflections;
   - one-way and moving platforms;
   - breakable supply crates.
-- **Eight kinds of enemies**, joining as the run goes on:
+- **Thirteen kinds of enemies**, joining as the run goes on:
   - Glitch Crawlers, Chrome Reapers, Security Drones and Mecha Wyrms;
   - Cyber Ninjas: wind up, then dash;
   - Bomber Drones: arm, then explode;
   - Enforcers: riot shield, so hit them from behind, stun them, or break the guard;
-  - Sniper Sentries: laser sight, then a fast shot.
+  - Sniper Sentries: laser sight, then a fast shot;
+  - Fork Bombs: roll in fast and split into two child processes when killed;
+  - Packet Lobbers: artillery that lands where you're headed (watch the floor marker; shoot the packets down);
+  - Legacy Monoliths: flat armour from three plates that break off; piercing arrows, finishers and the dash get through;
+  - Hotfixes: medic drones that heal and shield the enemy that needs it most (kill them first);
+  - Rate Limiters: a 429 field that halves your fire rate and locks your special until you step out or break it.
+
+  Walkers climb, drop through floors and route across the whole city to reach you (`?navdebug` draws their routes).
 
   Golden elites hit harder and drop more XP.
 - **Three bosses that fight like rival ICs**, on the ground, with telegraphed attacks, trash talk and cinematic entrances (letterbox plus a name card).
@@ -223,7 +226,7 @@ Optional: with one player nothing changes. A second player joins with a controll
 
 ## How a run works
 1. Press **Start**, pick your two loadout skills, and **Drop In**. Your IC leaps off a rooftop and lands in the street.
-2. Enemies come from both sides, more of them and tougher as time goes on. New types join at 0:45 (ninjas), 1:20 (bombers), 1:50 (enforcers) and 2:20 (snipers), and elites get more common.
+2. Enemies come from both sides, more of them and tougher as time goes on. New types join along the way: Fork Bombs at 0:35, ninjas at 0:45, wyrms at 1:00, Packet Lobbers at 1:10, bombers at 1:20, Hotfixes at 1:40, enforcers at 1:50, Rate Limiters at 2:05, snipers at 2:20 and Legacy Monoliths at 2:45. Elites get more common.
    - From 0:55, **coordinated squads** arrive together, announced on screen:
      - **PINCER**: ninjas from both sides;
      - **DRONE ESCORT**: a wyrm behind a drone screen;
@@ -268,7 +271,7 @@ Cyber City hides 8 secrets, little homages to the cyberpunk classics: *Blade Run
 </details>
 
 ## Tests
-Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 80 tests:
+Run `npm install`, then `npm test`. This plays the game in headless Chromium, on desktop and an emulated phone, through 116 tests:
 - controls, auto-fire and auto special;
 - the pre-drop loadout and hero landing;
 - skill weighting, rare cards, rerolls and the half-second install pause;
@@ -285,7 +288,11 @@ Run `npm install`, then `npm test`. This plays the game in headless Chromium, on
 - game controllers (mocked pads): connecting, play, auto-fire with two sticks, every menu, the hacking terminal and the button prompts;
 - local co-op (mocked pads): joining mid-run and on the menus, independent movement and kits, the camera, nearest-player targeting, hits on the right player, shared lives and respawns, a shared level-up, all three bosses;
 - the bundled font (no internet, canvas text waits for it) and the display settings: fullscreen in sync with the HUD button, a refused fullscreen request, resolution, persistence and the phone layout;
-- Performance mode: it persists and applies live, the slow-frame tip, far fewer expensive canvas calls in a heavy scene, and a frame-time check in both modes.
+- Performance mode: it persists and applies live, the slow-frame tip, far fewer expensive canvas calls in a heavy scene, and a frame-time check in both modes;
+- enemy navigation: every walker type and every boss reaches a player on every platform (including the top rooftop and the moving ones), 15 walkers on one route, flyers, a long soak with no stuck enemies;
+- the five new enemies and their interactions, Hackerman's hijack (caps, immunities, expiry, co-op, a soak), THE LEGEND's lines (one for every card level, numbers checked against the stats, the voice hook, the bubble fitting every screen), the character select, the new art and its fallbacks, and the audit's regressions.
+
+`ONLY="part of a test name" npm test` runs just the matching tests.
 
 GitHub Actions runs the same tests on every push and only deploys if they pass. The desktop app has its own tests, see [Desktop app](#desktop-app).
 
@@ -402,7 +409,10 @@ To sign, add the certificates as repository secrets (`CSC_LINK` and `CSC_KEY_PAS
 | `js/lives.js` | The rooftop drop and hero landing, the 3 lives and the IC hot-swap |
 | `js/kits.js` | The signature kits: the Widow's bow and Flame On, Ronin's Mirror Steel, Hackerman's EM projector, System Glitch and Time Dilation, and the enemy effects they cause (downed flyers, fall damage, bleeding, glitch stutter) |
 | `js/coop.js` | Local co-op: player contexts and binding, joining and leaving, targets, shared lives, the camera leash and player 2's HUD |
+| `js/nav.js` | Enemy navigation: a platform graph per kind of mover (built from real jump physics), cached route fields, and the walker controller (`?navdebug` draws it) |
 | `js/enemies.js` | The spawn director, enemy AI, status effects and enemy shots |
+| `js/enemies2.js` | The v3.2 enemies: Fork Bomb, Packet Lobber, Legacy Monolith, Hotfix and Rate Limiter, and their squads |
+| `js/hijack.js` | Hackerman's hijack: who can be turned, the HIJACK numbers, team-aware attacks, taunts and the PWNED tag |
 | `js/bosses.js` | Shared boss machinery: cinematic entrances, minion derez, grounded movement, shockwaves, speech and the name card |
 | `js/overseer.js` | The Overseer, the first boss |
 | `js/null.js` | NULL, the second boss |
@@ -410,12 +420,16 @@ To sign, add the certificates as repository secrets (`CSC_LINK` and `CSC_KEY_PAS
 | `js/upgrades.js` | XP, levels, hardware cards, rerolls, the pre-drop loadout and respec |
 | `js/narrator.js` | THE LEGEND: his lines (with stable ids), moods, the `narrator:line` event and the voice hook |
 | `js/secrets.js` | The easter eggs, the billboard hologram, the hacking terminal and the neon notes |
-| `js/codex.js` | The IC cards and the DATABASE screen |
+| `js/codex.js` | The DATABASE screen |
+| `js/select.js` | The character select stage (menu, pause hot-swap and player 2's join screen) |
 | `js/leaderboard.js` | Scoring runs, name entry and the leaderboard panel (saved in localStorage) |
 | `js/render.js` | Drawing the scene and the HUD |
 | `js/main.js` | Game state, menus, layout and the main loop |
 | `tests/game.test.cjs` | The automated browser tests |
-| `tools/make_sprites.py` | Generates the new pixel art in `img/` |
+| `tools/make_sprites.py` | Generates the original pixel art in `img/` |
+| `tools/art_ics.py` | Renders the v3.2 ICs (sprites, landings, portraits, select busts) from small posable 3D models; needs Pillow and numpy |
+| `tools/art_npcs.py` | Draws THE LEGEND, NULL, the billboard model and the Cyber Ninja |
+| `tools/art_enemies.py` | Draws the five v3.2 enemies |
 | `tools/bench.cjs` | The performance benchmark (`npm run bench`) |
 | `js/display.js` | The display settings (fullscreen, resolution, Performance mode and its slow-frame tip) and the desktop app's Quit button |
 | `fonts/` | Press Start 2P, bundled so the game needs no internet |
