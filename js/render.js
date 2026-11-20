@@ -278,6 +278,7 @@ function drawHUD(time) {
   // the IC's passive, as it grows with level (ends before the boss bar at x 640;
   // Hackerman's second line, the hijack chance, goes just below it)
   passiveLines().forEach((line, i) => hudText(line, Math.max(460, 360 + ctx.measureText(resLabel).width + 18), 122 + i * 19, 15, i ? "#5aff7a" : "#c9b6ff"));
+  drawEnemiesHud2(VW, time); // v3.2: "429 THROTTLED" (enemies2.js)
 
   // Active power-ups
   let ix = 44;

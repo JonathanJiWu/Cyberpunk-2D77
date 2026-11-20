@@ -167,7 +167,7 @@ function arrowHit(s, e) {
     damageEnemy(e, s.damage, { source: "arrow", fromX: s.x - s.vx });
     applyDot(e, "bleed", stats.bow.bleed, stats.bow.bleedTime);
   } else {
-    damageEnemy(e, s.damage, { source: "arrow", kbX: dir * stats.bow.knock, kbY: -140, fromX: s.x - s.vx, knock: true });
+    damageEnemy(e, s.damage, { source: "arrow", kbX: dir * stats.bow.knock, kbY: -140, fromX: s.x - s.vx, knock: true, pierce: s.piercing });
     if (!e.dead && !e.def.walker) downEnemy(e, dir);
   }
   burst(c.x, c.y, s.piercing ? 8 : 5, s.piercing ? "#ffffff" : "#ff4a6a", 280);

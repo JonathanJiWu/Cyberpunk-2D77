@@ -790,6 +790,7 @@ function drawPlayerProjectiles() {
   const flame = smallOr("fire");
   playerShots.forEach((s) => {
     // Shots parried with the katana keep their look
+    if (s.kind === "packet") return drawPacket2(s); // a parried Lobber packet (enemies2.js)
     if (s.kind === "laser") {
       glow(s.x, s.y, 40, "rgba(255,47,109,0.6)");
       drawCell("projectiles", 2, 16, s.x, s.y, 44, 44, s.angle);

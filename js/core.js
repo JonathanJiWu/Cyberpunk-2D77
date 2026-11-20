@@ -93,6 +93,12 @@ const portraitSheet = () => (isReady(IMG.portraits3) ? ["portraits3", 64] : [isR
 loadImage("fx2", "img/fx2.png"); // 8 cells of 32x32: arrows, EM, glitch, bleed, heat, reflect
 loadImage("xpHardware", "img/xp-hardware.png"); // rows RAM / NVMe / CPU x 4 shine frames
 loadImage("nullBoss", "img/null.png"); // 14 frames of 64x96
+// v3.2 enemies (tools/art_enemies.py)
+loadImage("forkbomb", "img/forkbomb.png"); // 6 frames of 28x28: roll x4, unfurl, leap
+loadImage("lobber", "img/lobber.png"); // 4 frames of 48x40: idle, walk x2, fire
+loadImage("monolith", "img/monolith.png"); // 7 frames of 64x64 (armored, walk x2, idle, slam x2, charge) + a row of plates
+loadImage("hotfix", "img/hotfix.png"); // 6 frames of 36x28: hover x4, tether x2
+loadImage("ratelimiter", "img/ratelimiter.png"); // 4 frames of 36x72: idle, walk x2, pulse
 // v3.2: redrawn NPCs (tools/art_npcs.py). The older sheets above stay as fallbacks.
 loadImage("legend2", "img/legend2.png"); // THE LEGEND's talking head: 6 frames of 96x96 (shown via CSS)
 loadImage("legendBust", "img/legend-bust.png"); // THE LEGEND, 192x240 bust

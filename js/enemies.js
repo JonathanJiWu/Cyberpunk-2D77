@@ -25,6 +25,7 @@ function resetEnemies() {
   director.firstSpawn = 1.5; // (respawns push this back; a new run starts fresh)
   director.squadAt = 50; // the first coordinated squad
   director.lastSquad = null;
+  resetEnemies2(); // v3.2 enemies (enemies2.js)
 }
 
 // ------------------------------------------------------------- Spawning -----
@@ -82,6 +83,7 @@ function spawnEnemy(type, x, y, opts = {}) {
     dropTimer: 0,
     nav: null, // walkers: the route through the platforms (nav.js)
     forcedTarget: null, // who it goes after instead of the player (see enemyTarget)
+    bubble: null, // a Hotfix's one-hit shield: the Hotfix (enemies2.js)
     // Hackerman's hijack (hijack.js): > 0 while it fights for the players
     hijackT: 0,
     hijackMax: 0,
@@ -89,6 +91,7 @@ function spawnEnemy(type, x, y, opts = {}) {
     patchFx: 0,
     retargetT: 0,
   };
+  if (def.v2) initEnemy2(e); // the v3.2 enemies' own state (enemies2.js)
   if (def.walker) e.y = y - (e.h - def.h); // keep elites standing on the surface
   enemies.push(e);
   return e;
@@ -214,6 +217,7 @@ function updateEnemies(dtAll) {
       navShove(b, -push);
     }
   }
+  updateEnemies2(dtAll); // v3.2: 429 fields, flying plates (enemies2.js)
 }
 
 // Who an enemy is after: a body with {x, y, w, h, vx, vy, onGround,
@@ -275,7 +279,8 @@ function updateEnemy(e, dtAll) {
     const pawn = e.hijackT > 0;
     const calm = blind || (pawn && !e.forcedTarget);
 
-    if (def.walker) {
+    if (def.v2) contactMul = updateEnemy2(e, dt, target, blind ? tgt : null, stunned); // the v3.2 enemies (enemies2.js)
+    else if (def.walker) {
       e.dashCd -= dt;
       // The route through the platforms (nav.js): run to the take-off point,
       // jump, drop or grapple to the next floor, then chase on your floor
@@ -542,6 +547,11 @@ function updateEnemyShots(dt) {
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
     if (!s) continue; // a hit just now cleared the list (e.g. Ronin's reflection killed a boss)
+    if (s.tick) {
+      // a shot that moves itself (the Lobber's packets, enemies2.js): true when it's gone
+      if (s.tick(s, dt) && enemyShots[i] === s) enemyShots.splice(i, 1);
+      continue;
+    }
     const frozen = somePlayer(() => player.dilation > 0 && stats.dilation.freezeShots && Math.hypot(s.x - player.x - player.w / 2, s.y - player.y - player.h / 2) < 220);
     if (!frozen) {
       s.x += s.vx * dt;
@@ -594,6 +604,10 @@ function damageEnemy(e, amount, opts = {}) {
   if (e.dead || amount <= 0) return;
   if (e.hijackT > 0 && !HURTS_PAWNS.has(opts.source)) return; // friendly now
   if (e.type === "nullptr" && nullIntercept(e)) return; // NULL's copies pop instead
+  if (!e.boss && (e.bubble || e.def.v2)) {
+    amount = preDamage2(e, amount, opts); // Hotfix shields, Monolith plates (enemies2.js)
+    if (amount <= 0) return;
+  }
   // Enforcer shields block most damage from the front
   if (e.def && e.def.shielded && !(e.stun > 0) && SHIELD_BLOCKS.has(opts.source) && opts.fromX !== undefined) {
     const fromFront = Math.sign(opts.fromX - (e.x + e.w / 2)) === e.facing;
@@ -616,7 +630,7 @@ function damageEnemy(e, amount, opts = {}) {
   e.hurt = 0.08;
   // Heat is earned by dealing damage - but not with the flame itself (or by your pawns)
   if (!NO_RESOURCE.has(opts.source)) gainHeat(amount * TUNING.heat.perDamageDealt);
-  const resist = e.boss ? 0.1 : e.def && e.def.shielded ? 0.4 : 1;
+  const resist = e.boss ? 0.1 : e.def.kbResist !== undefined ? e.def.kbResist : e.def.shielded ? 0.4 : 1;
   if (opts.kbX) e.kbX += opts.kbX * resist;
   if (opts.kbY) e.kbY += opts.kbY * resist;
   const c = centerOf(e);
@@ -640,6 +654,7 @@ function killEnemy(e, source) {
     return;
   }
   if (e.type === "bomber") explodeBomber(e); // shooting a bomber sets it off
+  if (e.def.v2) killEnemy2(e); // forks, flying plates, a Hotfix's shields popping (enemies2.js)
   burst(c.x, c.y, 14, e.def.kind === "ranged" || e.def.kind === "sniper" ? "#19f5ff" : "#ff2fd6", 320);
   sfx.kill.play({ rate: 0.8 + Math.random() * 0.4 });
   // XP: one big chip for tough enemies, small chips otherwise
@@ -664,6 +679,7 @@ function enemyFrame(e, s) {
 }
 
 function drawEnemies(time) {
+  drawEnemies2Back(time); // v3.2: 429 fields, heal tethers, packet markers (enemies2.js)
   for (const e of enemies) {
     if (e.dead) continue;
     if (e.boss) {
@@ -673,6 +689,10 @@ function drawEnemies(time) {
       continue;
     }
     if (e.x > camera.x + W + 100 || e.x + e.w < camera.x - 100) continue;
+    if (e.def.v2) {
+      drawEnemy2(e, time); // (enemies2.js)
+      continue;
+    }
     const s = e.def.sheet;
     const dw = s.fw * s.scale * e.size;
     const dh = s.fh * s.scale * e.size;
@@ -733,6 +753,7 @@ function drawEnemies(time) {
       ctx.fillStyle = e.def.kind === "melee" ? "#ff2fd6" : e.def.kind === "bomber" ? "#ff9b21" : "#19f5ff";
       ctx.fillRect(e.x, e.y, e.w, e.h);
     }
+    if (e.bubble) drawBubble2(e, time); // a Hotfix's shield
     if (e.def.shielded && !(e.stun > 0)) {
       // the shield's glowing edge
       ctx.fillStyle = "rgba(25,245,255,0.7)";
@@ -793,6 +814,7 @@ function drawEnemyShots() {
   const flame = smallOr("fire");
   ctx.imageSmoothingEnabled = true;
   enemyShots.forEach((s) => {
+    if (s.draw) return s.draw(s); // shots that draw themselves (enemies2.js)
     if (s.pawn) {
       // a hijacked enemy's shot: green, whatever it is
       glow(s.x, s.y, 36, "rgba(90,255,122,0.7)");
@@ -841,4 +863,5 @@ function drawEnemyShots() {
     ctx.drawImage(flame, -29 * k, -80 * 0.68 * k, 58 * k, 80 * k);
     ctx.restore();
   });
+  drawEnemiesFront2(); // v3.2: flying plates, "429" over throttled players (enemies2.js)
 }
