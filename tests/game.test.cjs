@@ -2010,6 +2010,7 @@ const fastForward = (page, seconds, bot) =>
         const e = spawnEnemy("enforcer", player.x + 300 + i * 90, GROUND_Y - 116);
         e.hp = e.maxHp = 9999;
         e.facing = 1;
+        e.patchT = 1e9; // (no hijacks here: a hijacked enemy is friendly, so the damage probes would pass through it)
         return e;
       });
       const hold = () => pack.forEach((e, i) => ((e.x = player.x + 300 + i * 90), (e.vx = 0)));

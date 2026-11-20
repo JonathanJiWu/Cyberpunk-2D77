@@ -678,6 +678,11 @@ function enemyFrame(e, s) {
   return Math.floor(e.anim) % s.frames;
 }
 
+// A hijacked enemy's pulsing green, in three steps: each distinct tint is a
+// cached canvas per frame, and a smooth pulse made dozens (Performance mode
+// holds the middle one)
+const HIJACK_TINTS = ["rgba(90,255,122,0.3)", "rgba(90,255,122,0.45)", "rgba(90,255,122,0.6)"];
+
 function drawEnemies(time) {
   drawEnemies2Back(time); // v3.2: 429 fields, heal tethers, packet markers (enemies2.js)
   for (const e of enemies) {
@@ -703,7 +708,7 @@ function drawEnemies(time) {
     let tint = null;
     if (e.hurt > 0) tint = "rgba(255,255,255,0.85)";
     else if (e.patchFx > 0) tint = "rgba(255,255,255,0.6)"; // rebooting after a hijack
-    else if (e.hijackT > 0) tint = `rgba(90,255,122,${0.45 + 0.15 * Math.sin(time * 9)})`; // hijacked: on your side
+    else if (e.hijackT > 0) tint = HIJACK_TINTS[perfMode() ? 1 : Math.round(1 + Math.sin(time * 9))]; // hijacked: on your side (3 steps, so the tint cache stays small)
     else if (e.stun > 0) tint = "rgba(176,108,255,0.5)";
     else if (e.slowT > 0) tint = "rgba(90,255,122,0.35)";
     if (e.hijackT > 0) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.8, "rgba(90,255,122,0.45)");
