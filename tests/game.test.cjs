@@ -197,14 +197,16 @@ const fastForward = (page, seconds, bot) =>
       const idle = heatWaves.length;
       [-60, 50, 90].forEach((dx) => spawnEnemy("crawler", player.x + dx, GROUND_Y - 48));
       let waves = 0;
+      let minHeat = player.heat; // (the lowest point: a kill can drop a heat cell that refills it right away)
       for (let i = 0; i < 30; i++) {
         update(1 / 60);
         waves = Math.max(waves, heatWaves.length);
+        minHeat = Math.min(minHeat, player.heat);
       }
-      return { idle, waves, heat: player.heat };
+      return { idle, waves, heat: player.heat, minHeat };
     });
     assert(r.idle === 0, "a wave fired with no enemies around");
-    assert(r.waves > 0 && r.heat < 100, "auto Flame On did not fire: " + JSON.stringify(r));
+    assert(r.waves > 0 && r.minHeat < 100, "auto Flame On did not fire: " + JSON.stringify(r));
     await context.close();
   });
 
