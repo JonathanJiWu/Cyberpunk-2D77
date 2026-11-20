@@ -74,7 +74,7 @@
 
 ### The balance sheet
 Your edits from `design/characters-and-skills.xlsx` are in:
-- **Base stats:** Paine armour 0.3, speed 480, jump 1200; Tetsu armour 0.5, jump 1000; Sudo armour 0.1, speed 440, jump 900.
+- **Base stats:** Paine speed 480, jump 1200; Tetsu jump 1000; Sudo speed 440, jump 900. Armour went to 0.3 / 0.5 / 0.1, then was evened out after bot runs: **Paine 0.25, Tetsu 0.45, Sudo 0.2**.
 - **Cyber Bow:** one heavy arrow at every level; draw 0.5/0.4/0.35/0.33 s; pierce bonus +60/70/80% (the pierce cap rose to 90%). Its old multishot levels now give faster arrows (level 3) and longer boss bleeds (level 6).
 - **Iaido Dash:** 480/490 px at levels 5/6.
 - **EM Projector:** 0.7 s cooldown (0.6 s from level 6), waves 100-140 tall, 16 damage from level 7.
@@ -98,7 +98,7 @@ Your edits from `design/characters-and-skills.xlsx` are in:
 - **Visuals:** parried shuriken, meteors and rings turned into the old energy ball, and fx2 skill icons were cropped.
 - **Phones:** the HUD's boss block moved to the bottom edge, lives no longer cover the boss countdown, and the touch hint wraps.
 - **Texts:**
-  - Tetsu blocks 50% (not 25%), and the Monoblade is weaker on bosses.
+  - Tetsu's armour text matches the code, and the Monoblade says it's weaker on bosses.
   - Chain Lightning hits up to 7.
   - The Repair Kit heals 48.
   - The resource pickup names HEAT, FOCUS or RAM.
