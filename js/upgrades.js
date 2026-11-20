@@ -7,7 +7,7 @@
 //   - 3 rerolls per run. Picking a card "installs" it: a short, juicy
 //     animation while the game stays paused for half a second.
 //   - RESPEC (pause menu): refund every skill point and spend them again.
-//   - THE LEGEND, a hologram, comments on all of it.
+//   - THE LEGEND, a hologram, comments on all of it (his lines: narrator.js).
 // =============================================================================
 
 const progress = { level: 1, xp: 0, pending: 0, rerolls: 3 };

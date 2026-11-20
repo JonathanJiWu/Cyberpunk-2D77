@@ -3833,7 +3833,7 @@ body:is(.pad-xbox, .pad-ps, .pad-generic) .overlay {
    6 frames of 96x96 (0 idle, 1 blink, 2 talk open, 3 talk half, 4 smirk,
    5 one eyebrow raised) at 600% 100%: frame n sits at n * 20%. Talking still
    cycles frames 2 and 3 (the base .legend rules above). */
-.legend.mood-neutral.done .legend-sprite { background-position: 0 0; }
+.legend.mood-neutral.done .legend-sprite { background-position: 0% 0; }
 .legend.mood-smirk.done .legend-sprite { background-position: 80% 0; }
 .legend.mood-skeptic.done .legend-sprite { background-position: 100% 0; }
 

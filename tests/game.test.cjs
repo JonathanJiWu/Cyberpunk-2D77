@@ -754,15 +754,352 @@ const fastForward = (page, seconds, bot) =>
       page.evaluate(() => {
         const el = document.querySelector("#legend-levelup");
         const cs = getComputedStyle(el.querySelector(".legend-sprite"));
-        return { talking: el.classList.contains("talking"), done: el.classList.contains("done"), image: cs.backgroundImage, size: cs.backgroundSize, x: cs.backgroundPositionX, anim: cs.animationName };
+        const mood = ["neutral", "smirk", "skeptic"].find((m) => el.classList.contains("mood-" + m));
+        return { talking: el.classList.contains("talking"), done: el.classList.contains("done"), mood, image: cs.backgroundImage, size: cs.backgroundSize, x: cs.backgroundPositionX, anim: cs.animationName };
       });
     const talking = await legend();
     await page.waitForFunction(() => document.querySelector("#legend-levelup").classList.contains("done"), null, { timeout: 8000 });
     const done = await legend();
     assert(talking.talking && /legend2\.png/.test(talking.image) && talking.size === "600% 100%" && /legend-talk/.test(talking.anim), "talking legend: " + JSON.stringify(talking));
-    assert(done.done && /legend2\.png/.test(done.image) && done.x === "80%" && !/legend-talk|legend-blink/.test(done.anim), "legend at rest: " + JSON.stringify(done));
+    // at rest he wears the line's mood (narrator.js): idle, the smirk (frame 4) or the raised eyebrow (frame 5)
+    const rest = { neutral: "0%", smirk: "80%", skeptic: "100%" }[done.mood];
+    assert(done.done && /legend2\.png/.test(done.image) && done.x === rest && !/legend-talk|legend-blink/.test(done.anim), "legend at rest: " + JSON.stringify(done));
     assert(!problems.length, problems.join("; "));
     await context.close();
+  });
+
+  // ------------------------------------------------ THE LEGEND, narrator ---
+  await test("THE LEGEND: every card the level-up can offer has a line for its level, accurate to the stats; ids are unique, stable and well-formed", async () => {
+    const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      const missing = [];
+      const ids = Object.keys(LEGEND_LINES);
+      // every IC's primary / special at every level, every shared skill, the heal card
+      CHARACTER_ORDER.forEach((ch) => {
+        player.char = ch;
+        UPGRADES.forEach((u) => {
+          const max = upgradeInfo(u).max;
+          for (let owned = 0; owned < max; owned++) {
+            [false, true].forEach((rare) => {
+              if (rare && max - owned < 2) return;
+              upg[u.id] = owned;
+              const id = narrator.skillId(u.id, narrator.cardLevel({ id: u.id, u, rare }));
+              if (!LEGEND_LINES[id]) missing.push(id);
+            });
+          }
+          for (let level = 1; level <= max; level++) if (!LEGEND_LINES[narrator.skillId(u.id, level)]) missing.push(narrator.skillId(u.id, level));
+          if (LEGEND_LINES[narrator.skillId(u.id, max + 1)]) missing.push("past max: " + u.id);
+        });
+      });
+      player.char = "paine";
+      Object.keys(upg).forEach((k) => delete upg[k]);
+      upg.zap = upg.flame = 1;
+      if (!LEGEND_LINES[narrator.skillId("_heal", 1)]) missing.push("heal");
+      // the reactions: offers, rerolls, picks, loadout, respec, the world
+      const groups = ["legend.open", "legend.open.rare", "legend.open.heal", "legend.open.hurt", "legend.open.max", "legend.reroll", "legend.reroll.none", "legend.reroll.last", "legend.pick", "legend.pick.rare", "legend.pick.max", "legend.pick.new", "legend.pick.heal", "legend.loadout.open", "legend.loadout.add", "legend.loadout.swap", "legend.loadout.remove", "legend.loadout.ready", "legend.respec.open", "legend.respec.reset", "legend.respec.apply", "legend.hint.hold", "legend.run", "legend.intro.menu"];
+      const sizes = {};
+      groups.forEach((g) => (sizes[g] = narrator.group(g).length));
+      const texts = ids.map((id) => LEGEND_LINES[id].text);
+      const bad = ids.filter((id) => !/^legend(\.[a-z_]+)+\.\d+$/.test(id) || !LEGEND_MOODS.includes(LEGEND_LINES[id].mood) || narrator.text(id).includes("{"));
+      const long = ids.filter((id) => !id.startsWith("legend.intro") && narrator.text(id).length > 92);
+      const dupes = texts.filter((t, i) => texts.indexOf(t) !== i);
+      // ids are stable (voice files are named after them): spot checks
+      const stable = {
+        "legend.skill.paine.zap.3": "25% faster",
+        "legend.skill.tetsu.zap.7": "Every second swing",
+        "legend.skill.sudo.flame.6": "2.5s",
+        "legend.skill.armor.5": "40%",
+        "legend.open.rare.1": "rare card",
+        "legend.intro.menu.1": "The corps own the city",
+      };
+      const unstable = Object.entries(stable).filter(([id, bit]) => !LEGEND_LINES[id] || !LEGEND_LINES[id].text.includes(bit));
+      // the numbers he quotes are the game's (stats at that level)
+      const at = (ch, levels) => {
+        player.char = ch;
+        Object.keys(upg).forEach((k) => delete upg[k]);
+        Object.assign(upg, { zap: 1, flame: 1 }, levels);
+        computeStats();
+        return stats;
+      };
+      const checks = {
+        bowDraw: at("paine", { zap: 4 }).bow.draw === 0.4 && at("paine", { zap: 3 }).bow.draw === 0.5,
+        bowBleed: at("paine", { zap: 6 }).bow.bleedTime === 6 && at("paine", { zap: 5 }).bow.bleedTime === 4,
+        flameCost: Math.round(at("paine", { flame: 3 }).heatwave.cost) === 36 && Math.round(at("paine", { flame: 2 }).heatwave.cost) === 44,
+        dashCost: Math.round(at("tetsu", { flame: 3 }).dash.cost) === 26 && Math.round(at("tetsu", { flame: 2 }).dash.cost) === 35,
+        guard: at("tetsu", { flame: 4 }).dash.guard === 3.2,
+        reflect: at("tetsu", { zap: 5 }).blade.reflect && !at("tetsu", { zap: 4 }).blade.reflect,
+        dilation: at("sudo", {}).dilation.duration === 1.5 && at("sudo", { flame: 4 }).dilation.duration === 2 && at("sudo", { flame: 6 }).dilation.duration === 2.5,
+        dilationCost: Math.round(at("sudo", { flame: 3 }).dilation.cost) === 34 && Math.round(at("sudo", { flame: 2 }).dilation.cost) === 45,
+        dilationHit: Math.abs(at("sudo", { flame: 5 }).dilation.dmgMul - 1.72) < 1e-9,
+        em: at("sudo", { zap: 7 }).em.damage === 16 && at("sudo", { zap: 2 }).em.damage === 10 && at("sudo", { zap: 6 }).em.waves === 3,
+        chain: at("paine", { chain: 6 }).chain.jumps + 1 === 7 && stats.chain.damage === 18 && stats.chain.cooldown === 1,
+        missile: at("paine", { missile: 6 }).missile.damage === 24 && stats.missile.cooldown === 1.3,
+        stomp: at("paine", { stomp: 5 }).stomp.damage === 34,
+        maxed: at("paine", { armor: 5, legs: 5, magnet: 5, clock: 5, sink: 5 }) && Math.abs(stats.armorMul / (1 - CHARACTERS.paine.armor) - 0.6) < 1e-9 && Math.abs(stats.magnetMul - 3) < 1e-9 && Math.abs(stats.cdMul - 0.65) < 1e-9 && Math.abs(stats.heatGainMul - 2.25) < 1e-9,
+        heal: narrator.text("legend.skill.heal.1").includes(String(40 + LEVEL_UP_HEAL)) && HEAL_CARD.desc[0].includes(String(40 + LEVEL_UP_HEAL)),
+      };
+      at("paine", {});
+      return { n: ids.length, missing, sizes, bad, long, dupes, unstable, checks };
+    });
+    assert(r.n >= 150 && !r.missing.length, "cards without a line: " + JSON.stringify(r.missing));
+    assert(Object.values(r.sizes).every((n) => n >= 1) && r.sizes["legend.open"] >= 8 && r.sizes["legend.pick"] >= 6 && r.sizes["legend.reroll"] >= 4, "too few variants: " + JSON.stringify(r.sizes));
+    assert(!r.bad.length && !r.long.length && !r.dupes.length && !r.unstable.length, "line ids / texts: " + JSON.stringify({ bad: r.bad, long: r.long, dupes: r.dupes, unstable: r.unstable }));
+    assert(Object.values(r.checks).every(Boolean), "a line quotes a number the game doesn't use: " + JSON.stringify(r.checks));
+    await context.close();
+  });
+
+  await test("THE LEGEND on the level-up: narrator:line events (with ids) on open, hover / focus (debounced) and pick; the voice hook plays only manifest ids at the SFX volume", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    await page.evaluate(() => {
+      window.__lines = [];
+      window.__voice = [];
+      document.addEventListener("narrator:line", (e) => __lines.push(e.detail));
+      NARRATOR_VOICE.player = (id, src, volume) => __voice.push({ id, src, volume });
+      NARRATOR_VOICE.enabled = true; // ...but nothing is in the manifest yet
+      progress.pending = 1;
+      openLevelUp();
+    });
+    const open1 = await page.evaluate(() => ({ lines: __lines.slice(), bubble: document.querySelector("#legend-levelup .legend-line").textContent, focused: document.activeElement === cardsEl.firstElementChild }));
+    // sweep the mouse over all three cards: one explanation, for the card it stops on
+    for (let i = 0; i < 3; i++) {
+      const box = await page.locator("#cards .card").nth(i).boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForFunction(() => __lines.some((l) => l.context.event === "focus"), null, { timeout: 6000 });
+    await page.waitForTimeout(600);
+    const hover = await page.evaluate(() => ({ focus: __lines.filter((l) => l.context.event === "focus"), third: currentChoices[2].id, level: narrator.cardLevel(currentChoices[2]) }));
+    // the keyboard: an arrow key moves the focus, he explains that card
+    await page.mouse.move(5, 5);
+    await page.keyboard.press("ArrowRight");
+    await page.waitForFunction(() => __lines.filter((l) => l.context.event === "focus").length >= 2, null, { timeout: 6000 });
+    const key = await page.evaluate(() => {
+      const l = __lines.filter((x) => x.context.event === "focus").pop();
+      return { line: l, focused: [...cardsEl.children].indexOf(document.activeElement), ids: currentChoices.map((c) => c.id), bubble: document.querySelector("#legend-levelup .legend-line").textContent };
+    });
+    // the pick: a reaction, and the manifest decides what gets voiced
+    const pick = await page.evaluate(() => {
+      NARRATOR_VOICE.manifest = new Set(narrator.group("legend.pick").concat(narrator.group("legend.pick.new"), narrator.group("legend.pick.rare"), narrator.group("legend.pick.max"), narrator.group("legend.pick.signature")));
+      SoundSystem.volume.sfx = 0.5;
+      levelUpShownAt = -1e9;
+      chooseUpgrade(1);
+      const line = __lines[__lines.length - 1];
+      return { line, voice: __voice.slice() };
+    });
+    await page.waitForTimeout(700);
+    const after = await page.evaluate(() => {
+      const valid = __lines.every((l) => LEGEND_LINES[l.id] && l.text && LEGEND_MOODS.includes(l.mood) && l.context && l.context.screen);
+      NARRATOR_VOICE.enabled = false; // switched off: nothing plays, even for a manifest id
+      narrator.say("legend.pick.1", null, { el: levelUpLegend, force: true, priority: 9 });
+      return { state: game.state, voice: __voice.length, valid };
+    });
+    assert(open1.lines.length === 1 && /^legend\.open\./.test(open1.lines[0].id) && open1.lines[0].context.event === "open" && open1.bubble.includes(open1.lines[0].text) && open1.focused, "no reaction to the offer: " + JSON.stringify(open1));
+    assert(hover.focus.length === 1 && hover.focus[0].context.card === hover.third && hover.focus[0].context.how === "hover" && hover.focus[0].id.endsWith("." + hover.level), "hover sweep should explain only the last card: " + JSON.stringify(hover));
+    assert(key.line.context.how === "focus" && key.line.context.card === key.ids[key.focused] && key.bubble.includes(key.line.text), "keyboard focus explanation: " + JSON.stringify(key));
+    assert(/^legend\.pick/.test(pick.line.id) && pick.line.context.event === "pick", "no pick reaction: " + JSON.stringify(pick.line));
+    assert(pick.voice.length === 1 && pick.voice[0].id === pick.line.id && pick.voice[0].src === `sound/voice/legend/${pick.line.id}.ogg` && Math.abs(pick.voice[0].volume - 0.9 * 0.25) < 1e-6, "voice hook: " + JSON.stringify(pick.voice));
+    assert(after.state === "playing" && after.voice === 1 && after.valid, "after the pick: " + JSON.stringify(after));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("THE LEGEND on a phone: a long press explains a card without installing it; a tap still installs; the hint shows once", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true });
+    await startRun(page);
+    await page.evaluate(() => {
+      window.__lines = [];
+      document.addEventListener("narrator:line", (e) => __lines.push(e.detail));
+      progress.pending = 1;
+      openLevelUp();
+      levelUpShownAt = -1e9;
+    });
+    await page.waitForTimeout(3000); // the reaction, then the hint
+    const hint = await page.evaluate(() => __lines.map((l) => l.id));
+    await page.evaluate(() => {
+      const card = cardsEl.children[1];
+      const b = card.getBoundingClientRect();
+      const at = { pointerType: "touch", bubbles: true, clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 };
+      card.dispatchEvent(new PointerEvent("pointerdown", at));
+      setTimeout(() => {
+        card.dispatchEvent(new PointerEvent("pointerup", at));
+        card.click(); // the click that ends a long press
+      }, 500);
+    });
+    await page.waitForTimeout(800);
+    const held = await page.evaluate(() => ({ state: game.state, focus: __lines.filter((l) => l.context.event === "focus"), card: currentChoices[1].id }));
+    const box = await page.locator("#cards .card").nth(0).boundingBox();
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForTimeout(800);
+    const tapped = await page.evaluate(() => ({ state: game.state, pick: __lines.some((l) => l.context.event === "pick") }));
+    // a second level-up: no second hint
+    await page.evaluate(() => {
+      progress.pending = 1;
+      openLevelUp();
+    });
+    await page.waitForTimeout(3500);
+    const hints = await page.evaluate(() => __lines.filter((l) => l.id.startsWith("legend.hint")).length);
+    assert(hint.length === 2 && /^legend\.open/.test(hint[0]) && hint[1] === "legend.hint.hold.1", "the reaction, then the touch hint: " + JSON.stringify(hint));
+    assert(held.state === "levelup" && held.focus.length === 1 && held.focus[0].context.card === held.card && held.focus[0].context.how === "hold", "long press: " + JSON.stringify(held));
+    assert(tapped.state === "playing" && tapped.pick, "a tap should still install: " + JSON.stringify(tapped));
+    assert(hints === 1, "the touch hint should show once: " + hints);
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("THE LEGEND's bubble: every line fits at desktop and phone sizes, and the bubble keeps one size (the cards never shift)", async () => {
+    const views = [
+      ["desktop", { viewport: { width: 1280, height: 720 } }],
+      ["phone landscape", { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true }],
+      ["phone portrait", { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }],
+    ];
+    for (const [name, opts] of views) {
+      const { context, page, problems } = await open(browser, url, opts);
+      await startRun(page);
+      const fit = (screen) =>
+        page.evaluate((screen) => {
+          const el = { levelup: levelUpLegend, loadout: loadoutLegend, respec: respecLegend }[screen];
+          const family = { levelup: /^legend\.(open|reroll|pick|hint|skill)\./, loadout: /^legend\.(loadout\.|skill\.[a-z_.]+\.1$)/, respec: /^legend\.respec\./ }[screen];
+          const panel = el.closest(".levelup-panel");
+          const sizes = new Set();
+          const over = [];
+          Object.keys(LEGEND_LINES)
+            .filter((id) => family.test(id))
+            .forEach((id) => {
+              narrator.type(el, narrator.text(id), "smirk", true);
+              const bubble = el.querySelector(".legend-bubble");
+              const r = el.getBoundingClientRect();
+              sizes.add(Math.round(r.height));
+              if (bubble.scrollWidth > bubble.clientWidth + 1 || bubble.scrollHeight > bubble.clientHeight + 1 || panel.scrollHeight > panel.clientHeight + 1 || r.right > innerWidth + 1) over.push(id);
+            });
+          return { sizes: [...sizes], over };
+        }, screen);
+      await page.evaluate(() => {
+        progress.pending = 1;
+        openLevelUp();
+      });
+      const levelup = await fit("levelup");
+      await page.evaluate(() => {
+        levelUpEl.hidden = true;
+        setState("menu");
+        openLoadout();
+      });
+      const loadout = await fit("loadout");
+      await page.evaluate(() => {
+        loadoutEl.hidden = true;
+        startGame();
+        skipIntro();
+        pauseGame();
+        openRespec();
+      });
+      const respec = await fit("respec");
+      const all = { levelup, loadout, respec };
+      Object.entries(all).forEach(([screen, f]) => assert(!f.over.length && f.sizes.length === 1, `${name} ${screen}: lines overflow or resize the bubble: ` + JSON.stringify(f)));
+      assert(!problems.length, problems.join("; "));
+      await context.close();
+    }
+  });
+
+  await test("THE LEGEND sets the scene: the v3.2 backstory on the menu, a line when the hero lands, the loadout and respec talk; lose lines fit what ended the run", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    const menu = await page.evaluate(() => {
+      window.__lines = [];
+      document.addEventListener("narrator:line", (e) => __lines.push(e.detail));
+      const before = document.getElementById("overlay-text").textContent;
+      setState("menu");
+      return { before, text: document.getElementById("overlay-text").textContent, line: __lines[0], intro: narrator.text("legend.intro.menu.1") };
+    });
+    // the loadout: an opening line, then reactions to picks
+    const loadout = await page.evaluate(() => {
+      openLoadout();
+      const opened = __lines[__lines.length - 1].id;
+      const card = [...loadoutGrid.children].find((c) => c.getAttribute("aria-pressed") === "false");
+      card.click();
+      const toggled = __lines[__lines.length - 1].id;
+      const zap = [...loadoutGrid.children].find((c) => c.dataset.id === "zap");
+      return { opened, toggled, zapDesc: zap.querySelector(".card-desc").textContent, zapFull: descAt(UPGRADES[0], 1) };
+    });
+    // the drop: his line lands as a neon note with the hero
+    await page.click("#drop-btn");
+    await page.evaluate(() => {
+      director.firstSpawn = 1e9;
+      for (let i = 0; i < 60 * 5 && intro.active; i++) update(1 / 60);
+    });
+    const drop = await page.evaluate(() => ({ intro: intro.active, note: neonNotes.some((n) => n.legend && n.text.startsWith("THE LEGEND: ")), line: __lines.filter((l) => /^legend\.run\./.test(l.id)).length }));
+    // respec: he talks on the panel; the apply line lands in the pause menu
+    const respec = await page.evaluate(() => {
+      upg.orbit = 2;
+      pauseGame();
+      openRespec();
+      const opened = __lines[__lines.length - 1].id;
+      document.getElementById("respec-apply").click();
+      const applied = __lines[__lines.length - 1].id;
+      return { opened, applied, shown: document.getElementById("overlay-text").textContent === narrator.text(applied) };
+    });
+    // the end: no goat jokes unless the goat did it (C9)
+    const lose = await page.evaluate(() => {
+      const out = {};
+      const run = (boss) => {
+        game.boss = boss ? { type: boss, dead: false, hp: 1, maxHp: 2 } : null;
+        director.stage = boss === "goat" ? STAGE.goat : boss === "nullptr" ? STAGE.nullptr : STAGE.overseer;
+        weather.amount = 0;
+        showGameOver();
+        return document.getElementById("overlay-text").textContent;
+      };
+      out.overseer = run("overseer");
+      out.none = run(null);
+      out.goat = run("goat");
+      return out;
+    });
+    assert(menu.before === menu.intro && menu.text === menu.intro && /corps own the city/.test(menu.text) && /Demon Goat/.test(menu.text) && menu.line.id === "legend.intro.menu.1", "menu backstory: " + JSON.stringify(menu));
+    assert(/^legend\.loadout\.open\.\d$/.test(loadout.opened) && /^legend\.loadout\.(add|ready|swap)\.\d$/.test(loadout.toggled), "loadout lines: " + JSON.stringify(loadout));
+    assert(loadout.zapDesc === loadout.zapFull, "the primary's loadout card should say what it does: " + JSON.stringify(loadout));
+    assert(!drop.intro && drop.note && drop.line === 1, "run start line: " + JSON.stringify(drop));
+    assert(/^legend\.respec\.open\.\d$/.test(respec.opened) && /^legend\.respec\.apply\.\d$/.test(respec.applied) && respec.shown, "respec lines: " + JSON.stringify(respec));
+    assert(!/goat/i.test(lose.overseer) && !/goat/i.test(lose.none) && /goat/i.test(lose.goat), "lose lines: " + JSON.stringify(lose));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
+  await test("level-up text: rare one-line passives add up both levels; co-op's primary card describes both ICs", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page);
+    const r = await page.evaluate(() => {
+      const u = (id) => UPGRADES.find((x) => x.id === id);
+      const out = { armor: describe(u("armor"), 2), heart: describe(u("heart"), 2), sink: describe(u("sink"), 2), orbit: describe(u("orbit"), 2) };
+      coop.seat = { char: "tetsu" };
+      coopAddPlayer(false);
+      currentChoices = [{ id: "zap", u: u("zap"), rare: false }];
+      renderCards();
+      out.name = cardsEl.children[0].querySelector(".card-name").textContent;
+      out.desc = cardsEl.children[0].querySelector(".card-desc").textContent;
+      return out;
+    });
+    assert(r.armor === "Take 16% less damage." && r.heart === "Max HP +40 and heal 40." && r.sink === "Earn 50% more heat; your special costs less.", "rare passives: " + JSON.stringify(r));
+    assert(r.orbit === "A neon shard circles you, slicing enemies. + +1 shard.", "multi-line skills keep both lines: " + JSON.stringify(r));
+    assert(r.name === "Cyber Bow + Monoblade" && /^PAINE: \+5 arrow damage\. TETSU: \+3 slash damage\.$/.test(r.desc), "co-op primary card: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+    // the loadout wall: every IC's guide lines fit on one line, on a laptop and a 1080p screen
+    for (const viewport of [{ width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
+      const v = await open(browser, url, { viewport });
+      const cut = await v.page.evaluate(() => {
+        const out = [];
+        CHARACTER_ORDER.forEach((ch) => {
+          player.char = ch;
+          openLoadout();
+          loadoutGrid.querySelectorAll(".guide-row span").forEach((s) => {
+            if (s.scrollHeight > s.clientHeight + 1 || s.scrollWidth > s.clientWidth + 1) out.push(`${ch} ${s.closest(".card").dataset.id}: ${s.textContent}`);
+          });
+          closeLoadout();
+        });
+        player.char = "paine";
+        return out;
+      });
+      assert(!cut.length, `guide lines cut off at ${viewport.width}px: ` + JSON.stringify(cut));
+      await v.context.close();
+    }
   });
 
   await test("the camera follows the player up to the rooftops", async () => {

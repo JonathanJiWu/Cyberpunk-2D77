@@ -442,9 +442,11 @@ const narrator = {
   levelUpOpen(choices) {
     clearTimeout(this.focusTimer);
     this.say(this.offerLine(choices), null, { el: levelUpLegend, priority: 2, hold: 900, force: true, context: { screen: "levelup", event: "open", cards: choices.map((c) => c.id), rare: choices.some((c) => c.rare), level: progress.level } });
+    // Touch: once a session (unless they found the long press already), how
+    // to hear about a card, after the reaction
     if (touchMode && !this.hintShown) {
-      this.hintShown = true; // once a session: how to hear about a card on a phone
-      this.queue(levelUpLegend, { id: "legend.hint.hold.1", text: null, opts: { el: levelUpLegend, context: { screen: "levelup", event: "hint" }, when: () => game.state === "levelup" && !pickLock } });
+      const when = () => game.state === "levelup" && !pickLock && !this.hintShown && (this.hintShown = true);
+      this.queue(levelUpLegend, { id: "legend.hint.hold.1", text: null, opts: { el: levelUpLegend, context: { screen: "levelup", event: "hint" }, when } });
     }
   },
 
@@ -459,9 +461,10 @@ const narrator = {
     const c = currentChoices[i];
     if (game.state !== "levelup" || pickLock || !c) return;
     const level = this.cardLevel(c);
+    if (how === "hold") this.hintShown = true; // they found it
     this.say(this.skillId(c.id, level), null, {
       el: levelUpLegend,
-      priority: 1,
+      priority: how === "hold" ? 2 : 1, // a long press is a question: it doesn't wait
       force: how === "hold",
       context: { screen: "levelup", event: "focus", card: c.id, level, rare: c.rare, how },
       when: () => game.state === "levelup" && !pickLock && currentChoices[i] === c,
