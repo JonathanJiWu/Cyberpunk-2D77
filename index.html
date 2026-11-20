@@ -48,7 +48,7 @@
       <div id="overlay" class="overlay">
         <div class="panel" role="dialog" aria-labelledby="overlay-title">
           <h1 id="overlay-title">Cyberpunk 2D77</h1>
-          <p id="overlay-text">It's year 2D77. You're a Cyber Badass. Don't kiss the Demon Goat.</p>
+          <p id="overlay-text">It's 2D77. The corps own the city, the cameras and the truth, and they rent all three back to you. Stop paying. Don't kiss the Demon Goat.</p>
           <dl id="overlay-stats" class="stats" hidden></dl>
           <div id="lb-entry" class="lb-entry" hidden>
             <div class="lb-score">SCORE <b id="lb-score">0</b></div>
@@ -141,7 +141,7 @@
               <dt class="kb-only">J / Left click</dt>
               <dd class="kb-only">Your primary attack. Clicking aims at the cursor</dd>
               <dt class="kb-only">K / Right click</dt>
-              <dd class="kb-only">Your special (Paine: hold for flame; Tetsu: dash; Sudo: hack)</dd>
+              <dd class="kb-only">Your special (Paine: Flame On; Tetsu: Iaido Dash; Sudo: Time Dilation)</dd>
               <dt class="kb-only">P / M</dt>
               <dd class="kb-only">Pause / mute</dd>
 
@@ -150,7 +150,7 @@
               <dt class="touch-only">Right stick</dt>
               <dd class="touch-only">Twin-stick: push to aim and fire. Tap mode: tap to fire there, hold to rapid-fire</dd>
               <dt class="touch-only">SPECIAL</dt>
-              <dd class="touch-only">The corner button. Paine's flame toggles on and off; Tetsu dashes; Sudo hacks</dd>
+              <dd class="touch-only">The corner button. Paine's Flame On heat wave; Tetsu's Iaido Dash; Sudo's Time Dilation</dd>
 
               <dt class="pad-only">Left stick / D-pad</dt>
               <dd class="pad-only">Run. Down + <b data-pad="A">A</b> drops through a platform</dd>
@@ -159,7 +159,7 @@
               <dt class="pad-only">Right stick</dt>
               <dd class="pad-only">Aim and fire that way, even with auto-fire on</dd>
               <dt class="pad-only"><span data-pad="RT">RT</span> / <span data-pad="LT">LT</span></dt>
-              <dd class="pad-only">Your primary attack / your special (Paine: hold for flame). <span data-pad="RB">RB</span> / <span data-pad="LB">LB</span> work too</dd>
+              <dd class="pad-only">Your primary attack / your special. <span data-pad="RB">RB</span> / <span data-pad="LB">LB</span> work too</dd>
               <dt class="pad-only" data-pad="START">MENU</dt>
               <dd class="pad-only">Pause. In menus <b data-pad="A">A</b> selects, <b data-pad="B">B</b> goes back, <b data-pad="Y">Y</b> rerolls and <b data-pad="BACK">VIEW</b> opens the DATABASE</dd>
 
@@ -174,7 +174,7 @@
               <dt>2P co-op</dt>
               <dd>A second controller joins as player 2: press its <b data-pad="START">MENU</b> or <b data-pad="A">A</b>, on a menu or mid-run. Playing on the keyboard with one pad? Pause and pick "Pad to P2". XP, levels, upgrades and lives are shared</dd>
               <dt>Lives &amp; bosses</dt>
-              <dd>You get 3 lives. The Overseer shows up at 2:30; beat it and the Demon GOAT, the final boss, comes for you</dd>
+              <dd>You get 3 lives. The Overseer shows up at 2:30; beat it and NULL comes for you, then the Demon GOAT, the final boss</dd>
             </dl>
           </details>
           <div id="secrets" class="secrets">
@@ -214,7 +214,7 @@
           <div id="loadout-grid" class="loadout-grid"></div>
           <div class="loadout-side">
             <h2 id="loadout-title">PRE-DROP LOADOUT</h2>
-            <p>Pick 2 starting skills (<b id="loadout-count">0/2</b>). They start a level up and show up more often, and rarer, in the run.</p>
+            <p>Pick 2 starting skills (<b id="loadout-count">0/2</b>). They start a level up, show up 3x as often and roll RARE 3x as often.</p>
             <div id="loadout-spec" class="loadout-spec"></div>
             <div class="levelup-foot">
               <div id="legend-loadout" class="legend" aria-live="polite">
@@ -235,6 +235,10 @@
           <h2 id="respec-title">RESPEC</h2>
           <p id="respec-points">0 POINTS FREE</p>
           <div id="respec-list" class="respec-list"></div>
+          <div id="legend-respec" class="legend respec-legend" aria-live="polite">
+            <span class="legend-sprite" aria-hidden="true"></span>
+            <span class="legend-bubble"><b>THE LEGEND</b><span class="legend-line"></span></span>
+          </div>
           <div class="loadout-actions">
             <button id="respec-cancel" class="secondary-btn" type="button">Cancel</button>
             <button id="respec-reset" class="secondary-btn" type="button">Reset all</button>
@@ -336,14 +340,19 @@
     <script src="js/kits.js"></script>
     <script src="js/lives.js"></script>
     <script src="js/coop.js"></script>
+    <script src="js/nav.js"></script>
     <script src="js/enemies.js"></script>
+    <script src="js/enemies2.js"></script>
+    <script src="js/hijack.js"></script>
     <script src="js/bosses.js"></script>
     <script src="js/overseer.js"></script>
     <script src="js/goat.js"></script>
     <script src="js/null.js"></script>
     <script src="js/upgrades.js"></script>
+    <script src="js/narrator.js"></script>
     <script src="js/secrets.js"></script>
     <script src="js/codex.js"></script>
+    <script src="js/select.js"></script>
     <script src="js/render.js"></script>
     <script src="js/leaderboard.js"></script>
     <script src="js/main.js"></script>

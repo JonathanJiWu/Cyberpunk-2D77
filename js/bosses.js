@@ -38,6 +38,7 @@ function makeBoss(type, w, h, x, y) {
     vulnT: 0,
     // status effects from the IC kits (declared up front so the shape stays stable)
     glitchT: 0,
+    glitchLock: 0, // System Glitch can only stutter a boss every so often (hijack.js)
     knockT: 0,
     bleedT: 0,
     bleedDps: 0,
@@ -55,6 +56,7 @@ function makeBoss(type, w, h, x, y) {
     standingOn: null,
     dropTimer: 0,
     airJumps: 0,
+    nav: null, // its route through the platforms (nav.js)
     speech: null,
     speechCd: 3,
     contactCd: 0,
@@ -94,19 +96,13 @@ const bossLocked = () => !!(game.cinematic && game.cinematic.lock);
 // ---------------------------------------------------------- Movement --------
 const BOSS_GRAVITY = 2900;
 
-// Run toward targetX; hop up to a higher player, drop down to a lower one
+// Chase the target through the platforms (nav.js: the same routes the
+// walkers use, with the boss's own double jump); on its floor, run to targetX
 function bossNavigate(e, dt, targetX, speed) {
-  const pc = centerOf(player);
-  const ec = centerOf(e);
-  const dx = targetX - ec.x;
-  const want = Math.abs(dx) < 20 ? 0 : Math.sign(dx) * speed;
-  e.vx += (want - e.vx) * (1 - Math.exp(-10 * dt));
+  const want = navBoss(e, dt, targetX, speed);
+  if (navAirborne(e)) e.vx = want; // a planned jump steers directly
+  else e.vx += (want - e.vx) * (1 - Math.exp(-10 * dt));
   if (Math.abs(e.vx) > 30) e.facing = Math.sign(e.vx);
-  const playerAbove = player.onGround && pc.y < ec.y - 140;
-  const playerBelow = player.onGround && pc.y > ec.y + 160;
-  if (e.onGround && playerAbove && Math.abs(pc.x - ec.x) < 520) bossJump(e, 1350);
-  else if (!e.onGround && e.vy > 0 && e.airJumps > 0 && playerAbove && e.y + e.h > player.y + player.h + 40) bossJump(e, 1150);
-  if (e.onGround && playerBelow && e.standingOn && !e.standingOn.ground) e.dropTimer = 0.3;
 }
 
 function bossJump(e, v) {
@@ -179,15 +175,29 @@ function updateShockwaves(dt) {
       continue;
     }
     if (Math.random() < 0.5) dust(s.x, s.y, 1, 0.8);
-    // it hits each player once (s.hit: the players it got)
-    eachTarget(() => {
-      const p = player;
-      const pc = centerOf(p);
-      const feet = p.y + p.h;
-      if (!s.hit.has(p) && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
-        if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y, s.owner)) s.hit.add(p);
+    // it hits each player once (s.hit: the players it got); a hijacked
+    // enemy's wave hits enemies instead, anyone else's the hijacked ones too
+    const pawn = isHijacked(s.owner);
+    if (!pawn) {
+      eachTarget(() => {
+        const p = player;
+        const pc = centerOf(p);
+        const feet = p.y + p.h;
+        if (!s.hit.has(p) && Math.abs(pc.x - s.x) < 34 && feet > s.y - s.h * 0.6 && feet <= s.y + 6 && !bossLocked()) {
+          if (hurtPlayer(s.damage, s.x - s.dir * 40, s.y, s.owner)) s.hit.add(p);
+        }
+      });
+    }
+    if (pawn || hijackPawns.length) {
+      for (const o of enemies) {
+        if (o.dead || o === s.owner || s.hit.has(o) || o.boss || isHijacked(o) === pawn) continue;
+        const feet = o.y + o.h;
+        if (Math.abs(o.x + o.w / 2 - s.x) < 34 + o.w / 2 && feet > s.y - s.h * 0.6 && feet <= s.y + 6) {
+          s.hit.add(o);
+          damageEnemy(o, s.damage, { source: pawn ? "hijack" : "enemy" });
+        }
       }
-    });
+    }
   }
 }
 
@@ -267,11 +277,13 @@ function drawBossCard(VW, VH) {
   ctx.globalAlpha = 1;
 }
 
-// Boss-fight odds and ends that run every frame
-function updateBossFx(dt) {
+// Boss-fight odds and ends that run every frame. dt is the enemies' (slowed
+// by Time Dilation and friends); realDt drives the intro card, which must
+// not last 4x longer because someone was in bullet time.
+function updateBossFx(dt, realDt = dt) {
   updateShockwaves(dt);
   updateNullFx(dt);
-  if (game.cinematic && (game.cinematic.time -= dt) <= 0) game.cinematic = null;
+  if (game.cinematic && (game.cinematic.time -= realDt) <= 0) game.cinematic = null;
   if (game.goatSky) game.goatSky = Math.min(1, game.goatSky + dt * 0.5);
 }
 function resetBossFx() {

@@ -25,6 +25,7 @@ function resetEnemies() {
   director.firstSpawn = 1.5; // (respawns push this back; a new run starts fresh)
   director.squadAt = 50; // the first coordinated squad
   director.lastSquad = null;
+  resetEnemies2(); // v3.2 enemies (enemies2.js)
 }
 
 // ------------------------------------------------------------- Spawning -----
@@ -74,13 +75,23 @@ function spawnEnemy(type, x, y, opts = {}) {
     airFrom: 0,
     orbitCd: 0,
     hitCd: 0,
-    jumpCd: rand(0.5, 1.5),
     shotCd: def.shot ? rand(def.shot.cooldown[0], def.shot.cooldown[1]) : 0,
     dashCd: rand(1, 2),
     bob: rand(0, Math.PI * 2),
     onGround: false,
     standingOn: null,
+    dropTimer: 0,
+    nav: null, // walkers: the route through the platforms (nav.js)
+    forcedTarget: null, // who it goes after instead of the player (see enemyTarget)
+    bubble: null, // a Hotfix's one-hit shield: the Hotfix (enemies2.js)
+    // Hackerman's hijack (hijack.js): > 0 while it fights for the players
+    hijackT: 0,
+    hijackMax: 0,
+    patchT: 0, // immune to another hijack while > 0
+    patchFx: 0,
+    retargetT: 0,
   };
+  if (def.v2) initEnemy2(e); // the v3.2 enemies' own state (enemies2.js)
   if (def.walker) e.y = y - (e.h - def.h); // keep elites standing on the surface
   enemies.push(e);
   return e;
@@ -93,9 +104,10 @@ function spawnAtEdge(type) {
   let side = Math.random() < 0.5 ? -1 : 1;
   if (side < 0 && leftX < 0) side = 1;
   if (side > 0 && rightX > WORLD_W - def.w) side = -1;
+  // Walkers appear on a floor near the player's height with a route to them
+  // (nav.js); flyers somewhere in the visible sky
+  if (def.walker && navSpawnSpot(type, side, 0)) return spawnEnemy(type, navSpot.x, navSpot.y);
   const x = clamp(side < 0 ? leftX : rightX, 0, WORLD_W - def.w);
-  // Walkers appear on a surface at about the player's height (the street, or
-  // the rooftops when you're up high); flyers somewhere in the visible sky
   const y = def.walker ? surfaceBelow(x + def.w / 2, player.y - 180) - def.h : camera.y + rand(140, 620);
   spawnEnemy(type, x, y);
 }
@@ -108,6 +120,7 @@ const countAlive = (type) => enemies.reduce((n, e) => n + (!e.dead && e.type ===
 // builds matter more than raw numbers.
 function spawnAt(type, side, offset = 0) {
   const def = ENEMY_TYPES[type];
+  if (def.walker && navSpawnSpot(type, side, offset)) return spawnEnemy(type, navSpot.x, navSpot.y);
   const x = clamp(side < 0 ? camera.x - def.w - 60 - offset : camera.x + W + 60 + offset, 0, WORLD_W - def.w);
   const y = def.walker ? surfaceBelow(x + def.w / 2, player.y - 180) - def.h : camera.y + rand(160, 520);
   return spawnEnemy(type, x, y);
@@ -179,28 +192,49 @@ function updateDirector(dt) {
 
 // --------------------------------------------------------------- Update -----
 function updateEnemies(dtAll) {
+  // Hijacked enemies run on real time: Time Dilation and slow-mo don't slow your pawns
+  const real = dtAll / Math.max(0.05, enemyTimeScale());
+  updateHijack(real);
   for (const e of enemies) {
     if (e.dead) continue;
+    const dt = e.hijackT > 0 ? real : dtAll;
     // `player` is its target while it thinks: in co-op, the nearest player (coop.js)
-    withPlayer(coopTargetFor(e), () => updateEnemy(e, dtAll));
+    if (coop.players.length < 2) updateEnemy(e, dt);
+    else withPlayer(coopTargetFor(e), () => updateEnemy(e, dt));
   }
 
-  // Keep enemies from stacking into one blob
+  // Keep walkers from stacking into one blob: only ones standing on the same
+  // floor shove each other, and never off its edge (flyers spread out in
+  // their own steering, see navSpread)
   for (let i = 0; i < enemies.length; i++) {
     const a = enemies[i];
-    if (a.dead || a.boss) continue;
+    if (a.dead || a.boss || !a.def.walker || !a.onGround) continue;
     for (let j = i + 1; j < enemies.length; j++) {
       const b = enemies[j];
-      if (b.dead || b.boss || !overlaps(a, b)) continue;
-      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 40 * dtAll * 4;
-      a.x += push;
-      b.x -= push;
+      if (b.dead || b.boss || !b.def.walker || !b.onGround || b.standingOn !== a.standingOn || !overlaps(a, b)) continue;
+      const push = (a.x + a.w / 2 < b.x + b.w / 2 ? -1 : 1) * 160 * dtAll;
+      navShove(a, push);
+      navShove(b, -push);
     }
   }
+  updateEnemies2(dtAll); // v3.2: 429 fields, flying plates (enemies2.js)
+}
+
+// Who an enemy is after: a body with {x, y, w, h, vx, vy, onGround,
+// standingOn} (camo > 0 on a player means it can't be seen). By default the
+// bound `player`: in co-op the nearest live one (updateEnemies binds it).
+// Movement, aiming and the despawn check go through here, so a later feature
+// can point an enemy at another body with e.forcedTarget (Hackerman's EMP
+// hijack sets it: a hijacked enemy goes after other enemies, and enemies near
+// it go after the hijacked one; see hijack.js).
+function enemyTarget(e) {
+  const t = e.forcedTarget;
+  return t && !t.dead ? t : player;
 }
 
 function updateEnemy(e, dtAll) {
-  const pc = centerOf(player);
+  const target = enemyTarget(e);
+  const pc = centerOf(target);
   // bleeding / burning tick here; a glitched enemy only gets every third frame
   const dt = enemyStatus(e, dtAll);
   if (e.dead) return;
@@ -234,78 +268,88 @@ function updateEnemy(e, dtAll) {
     const stunned = e.stun > 0;
     const ec = centerOf(e);
     // Thermoptic camo (easter egg): enemies lose you and wander around
-    const blind = player.camo > 0;
+    const blind = target.camo > 0;
     const tgt = blind ? wanderTarget(e, ec, dt) : pc;
     const dx = tgt.x - ec.x;
     const dy = tgt.y - ec.y;
     const d = Math.hypot(dx, dy) || 1;
     const steer = Math.min(1, 3 * dt);
     let contactMul = 1;
+    // hijacked with nobody to fight: it trails you, but doesn't attack you
+    const pawn = e.hijackT > 0;
+    const calm = blind || (pawn && !e.forcedTarget);
 
-    if (def.walker) {
-      e.jumpCd -= dt;
+    if (def.v2) contactMul = updateEnemy2(e, dt, target, blind ? tgt : null, stunned); // the v3.2 enemies (enemies2.js)
+    else if (def.walker) {
       e.dashCd -= dt;
-      let want = stunned || Math.abs(dx) < 12 ? 0 : Math.sign(dx) * def.speed * sm;
-      if (e.type === "ninja") want = updateNinja(e, dt, dx, dy, want, stunned || blind);
+      // The route through the platforms (nav.js): run to the take-off point,
+      // jump, drop or grapple to the next floor, then chase on your floor
+      let want = stunned || e.windup > 0 ? 0 : navWalker(e, dt, target, blind ? tgt : null);
+      const steering = navAirborne(e); // (a planned jump steers at full speed)
+      if (!steering) want *= sm;
+      const busy = stunned || calm || navBusy(e);
+      if (e.type === "ninja") want = updateNinja(e, dt, dx, dy, want, busy);
       if (e.type === "enforcer") {
-        want = updateEnforcer(e, dt, dx, dy, want, stunned || blind);
+        want = updateEnforcer(e, dt, dx, dy, want, busy);
         if (e.bash > 0) contactMul = 1.3;
       }
       if (e.dashT > 0) contactMul = 1;
-      const accel = e.dashT > 0 || e.bash > 0 ? 1 : Math.min(1, 8 * dt);
+      const accel = e.dashT > 0 || e.bash > 0 || steering ? 1 : Math.min(1, 8 * dt);
       e.vx += (want - e.vx) * accel;
-      const playerAbove = !blind && player.y + player.h < e.y + e.h - 90;
-      if (!stunned && e.onGround && e.jumpCd <= 0 && playerAbove && Math.abs(dx) < 340 && !(e.windup > 0)) {
-        e.vy = -rand(980, 1180);
-        e.jumpCd = rand(1, 2);
-      }
+      // (walkers don't run or slide off a ledge: they jump or drop when they mean to)
+      if (!steering && e.onGround) e.vx = navLedgeClamp(e, e.vx, dt);
       e.x += e.kbX * dt;
       if (e.kbY < 0) {
         e.vy += e.kbY;
         e.kbY = 0;
       }
       if (e.onGround) e.airFrom = e.y;
-      const landed = moveBody(e, dt, 2700, 1500);
+      const landed = navMoveWalker(e, dt);
       if (landed && e.knockT > 0 && e.airFrom !== undefined) fallDamage(e, e.y - e.airFrom);
       if (e.type === "enforcer") e.facing = dx > 0 ? 1 : -1; // the shield always faces you
       else if (Math.abs(e.vx) > 20) e.facing = e.vx > 0 ? 1 : -1;
     } else if (def.kind === "melee") {
-      // Reapers drift straight at you through everything
+      // Reapers drift straight at you through everything (spread out a little)
       const sp = stunned ? 0 : def.speed * sm;
-      e.vx += ((dx / d) * sp - e.vx) * steer;
-      e.vy += ((dy / d) * sp - e.vy) * steer;
+      navSpread(e);
+      e.vx += ((dx / d) * sp + navFlock.x * 150 - e.vx) * steer;
+      e.vy += ((dy / d) * sp + navFlock.y * 150 - e.vy) * steer;
       e.x += (e.vx + e.kbX) * dt;
       e.y += (e.vy + e.kbY) * dt + Math.sin(game.time * 2.5 + e.bob) * 25 * dt;
       e.facing = dx > 0 ? 1 : -1;
     } else if (def.kind === "bomber") {
-      if (updateBomber(e, dt, dx, dy, d, stunned || blind, sm)) return;
+      if (updateBomber(e, dt, dx, dy, d, stunned || calm, sm)) return;
     } else {
       // Ranged flyers (drones, wyrms, snipers) keep their distance and shoot
+      // (spread out from each other: navSpread)
       const side = ec.x < pc.x ? -1 : 1;
       const high = e.type === "dragon" ? 330 : e.type === "sniper" ? 400 : 250;
       const tx = blind ? tgt.x : pc.x + side * def.keepDistance;
-      const ty = blind ? tgt.y : pc.y - high + Math.sin(game.time * 1.4 + e.bob) * 70;
+      // (near the top of the city it can't get above you: it hovers beside you)
+      const ty = blind ? tgt.y : Math.max(pc.y - high + Math.sin(game.time * 1.4 + e.bob) * 70, WORLD_TOP + 70 + e.h / 2);
       const ddx = tx - ec.x;
       const ddy = ty - ec.y;
       const dd = Math.hypot(ddx, ddy) || 1;
       const holdStill = e.aimT > 0;
       const sp = stunned || holdStill ? 0 : Math.min(def.speed * sm, dd * 2.5);
-      e.vx += ((ddx / dd) * sp - e.vx) * steer;
-      e.vy += ((ddy / dd) * sp - e.vy) * steer;
+      const fk = stunned || holdStill ? 0 : 260;
+      navSpread(e);
+      e.vx += ((ddx / dd) * sp + navFlock.x * fk - e.vx) * steer;
+      e.vy += ((ddy / dd) * sp + navFlock.y * fk - e.vy) * steer;
       e.x += (e.vx + e.kbX) * dt;
       e.y += (e.vy + e.kbY) * dt;
       e.facing = dx > 0 ? 1 : -1;
-      if (e.type === "sniper") updateSniper(e, dt, stunned || blind, sm);
+      if (e.type === "sniper") updateSniper(e, dt, stunned || calm, sm);
       else {
         // Charge up (glowing) for a moment before every shot so it can be dodged
-        if (!stunned && !blind && onScreen(e)) e.shotCd -= dt * sm;
+        if (!stunned && !calm && onScreen(e)) e.shotCd -= dt * sm;
         if (e.charge > 0) {
           e.charge -= dt;
           if (e.charge <= 0 && !stunned) {
             fireEnemyShot(ec.x + e.facing * 20, ec.y, def.shot, undefined, e.dmgMul, e);
             e.shotCd = rand(def.shot.cooldown[0], def.shot.cooldown[1]);
           }
-        } else if (e.shotCd <= 0 && !stunned && !blind) {
+        } else if (e.shotCd <= 0 && !stunned && !calm) {
           e.charge = 0.45;
         }
       }
@@ -317,19 +361,39 @@ function updateEnemy(e, dtAll) {
     if (!def.walker) e.y = clamp(e.y, WORLD_TOP + 40, GROUND_Y - e.h - 10);
     e.anim += dt * def.sheet.fps * sm;
 
-    // Body contact: whoever it runs into (either player in co-op)
+    // Body contact: whoever it runs into (either player in co-op). A hijacked
+    // one hits the enemy it's after instead; an enemy it taunted hits it back.
     if (!stunned && e.hitCd <= 0) {
-      eachTarget(() => {
-        if (e.hitCd > 0 || player.camo > 0 || player.flameOn || !overlaps(e, player)) return;
-        if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
+      const foe = e.forcedTarget;
+      if (pawn) {
+        if (foe && !foe.dead && overlaps(e, foe)) {
+          damageEnemy(foe, def.damage * e.dmgMul * contactMul, { source: "hijack", fromX: ec.x, kbX: Math.sign(foe.x - e.x) * 220 });
+          e.hitCd = 0.9;
+          e.kbX = -Math.sign(dx) * 200;
+        }
+      } else {
+        eachTarget(() => {
+          if (e.hitCd > 0 || player.camo > 0 || !overlaps(e, player)) return;
+          if (hurtPlayer(def.damage * e.dmgMul * contactMul, ec.x, ec.y, e)) {
+            e.hitCd = 0.9;
+            e.kbX = -Math.sign(dx) * 300;
+          }
+        });
+        if (e.hitCd <= 0 && foe && isHijacked(foe) && overlaps(e, foe)) {
+          damageEnemy(foe, def.damage * e.dmgMul * contactMul, { source: "enemy", fromX: ec.x });
           e.hitCd = 0.9;
           e.kbX = -Math.sign(dx) * 300;
         }
-      });
+      }
     }
 
-    // Enemies left far behind just leave
+    // Enemies left far behind just leave (and so does a walker hopelessly
+    // stuck off screen: the director sends another)
     if (Math.abs(pc.x - ec.x) > 2600 || Math.abs(pc.y - ec.y) > 1900) e.dead = e.despawned = true;
+    else if (e.nav && e.nav.lost > NAV.rescue && !onScreen(e)) {
+      e.dead = e.despawned = true;
+      navStats.rescues++;
+    }
   }
 }
 
@@ -338,6 +402,7 @@ function updateNinja(e, dt, dx, dy, want, busy) {
   const D = e.def.dash;
   if (e.dashT > 0) {
     e.dashT -= dt;
+    if (navAtEdge(e, e.dashDir * D.speed * dt)) return (e.dashT = 0); // (a lunge, not a leap off the roof)
     if (Math.random() < 0.6) particles.push({ x: e.x + e.w / 2, y: e.y + e.h * 0.6, vx: 0, vy: 0, life: 0.25, size: 10, color: "#ff2fd6" });
     return e.dashDir * D.speed;
   }
@@ -363,6 +428,7 @@ function updateNinja(e, dt, dx, dy, want, busy) {
 function updateEnforcer(e, dt, dx, dy, want, busy) {
   if (e.bash > 0) {
     e.bash -= dt;
+    if (navAtEdge(e, e.facing * 650 * dt)) return (e.bash = 0); // (stops at the edge of a platform)
     return e.facing * 650;
   }
   if (e.windup > 0) {
@@ -396,8 +462,9 @@ function updateBomber(e, dt, dx, dy, d, busy, sm) {
     return false;
   }
   const sp = busy ? 0 : (d < 420 ? 480 : e.def.speed) * sm;
-  e.vx += ((dx / d) * sp - e.vx) * steer;
-  e.vy += ((dy / d) * sp - e.vy) * steer;
+  navSpread(e);
+  e.vx += ((dx / d) * sp + navFlock.x * 200 - e.vx) * steer;
+  e.vy += ((dy / d) * sp + navFlock.y * 200 - e.vy) * steer;
   e.x += (e.vx + e.kbX) * dt;
   e.y += (e.vy + e.kbY) * dt;
   e.facing = dx > 0 ? 1 : -1;
@@ -418,10 +485,14 @@ function explodeBomber(e) {
   burst(c.x, c.y, 10, "#ffe14d", 300);
   camera.shake = Math.max(camera.shake, 10);
   sfx.stomp.play({ rate: 0.8 });
-  eachTarget(() => circleHitsBox(c.x, c.y, B.radius, player) && hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y, e));
-  // the blast hurts other enemies too
+  // a hijacked bomber's blast only hurts enemies; anyone else's hurts players,
+  // other enemies and the hijacked ones
+  const pawn = isHijacked(e);
+  if (!pawn) eachTarget(() => circleHitsBox(c.x, c.y, B.radius, player) && hurtPlayer(e.def.damage * e.dmgMul, c.x, c.y, e));
   enemies.forEach((o) => {
-    if (o !== e && !o.dead && circleHitsBox(c.x, c.y, B.radius, o)) damageEnemy(o, 30, { source: "blast" });
+    if (o === e || o.dead || !circleHitsBox(c.x, c.y, B.radius, o)) return;
+    if (pawn) !o.boss && !isHijacked(o) && damageEnemy(o, 30 * e.dmgMul, { source: "hijack" });
+    else damageEnemy(o, 30, { source: isHijacked(o) ? "enemy" : "blast" });
   });
   e.dead = true;
 }
@@ -430,7 +501,7 @@ function explodeBomber(e) {
 function updateSniper(e, dt, busy, sm) {
   const def = e.def;
   const ec = centerOf(e);
-  const pc = centerOf(player);
+  const pc = centerOf(enemyTarget(e));
   if (busy) {
     e.aimT = 0;
     return;
@@ -439,7 +510,7 @@ function updateSniper(e, dt, busy, sm) {
     e.aimT -= dt * sm;
     if (e.aimT > 0.25) e.aimAngle = Math.atan2(pc.y - ec.y, pc.x - ec.x); // tracks, then locks
     if (e.aimT <= 0) {
-      fireEnemyShot(ec.x, ec.y, def.shot, e.aimAngle, e.dmgMul);
+      fireEnemyShot(ec.x, ec.y, def.shot, e.aimAngle, e.dmgMul, e); // (the sniper owns its shot: Ronin reflects it back)
       e.firedT = 0.2;
       e.shotCd = rand(def.shot.cooldown[0], def.shot.cooldown[1]);
     }
@@ -464,9 +535,11 @@ function wanderTarget(e, ec, dt) {
 }
 
 function fireEnemyShot(x, y, shot, angle, dmgMul = 1, owner = null) {
-  const pc = centerOf(player);
+  const pc = centerOf(owner ? enemyTarget(owner) : player);
   const a = angle !== undefined ? angle : Math.atan2(pc.y - y, pc.x - x);
-  enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4, owner });
+  // (a hijacked enemy's shot is green and only hits enemies: updateEnemyShots)
+  const pawn = isHijacked(owner);
+  enemyShots.push({ x, y, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed, r: shot.radius, damage: shot.damage * dmgMul, kind: shot.kind, angle: a, life: 4, owner, pawn, color: pawn ? HIJACK_COLOR : undefined });
   sfx.enemyShot.play({ rate: shot.kind === "laser" ? 1.6 : shot.kind === "snipe" ? 2.2 : 0.55 });
 }
 
@@ -474,6 +547,11 @@ function updateEnemyShots(dt) {
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const s = enemyShots[i];
     if (!s) continue; // a hit just now cleared the list (e.g. Ronin's reflection killed a boss)
+    if (s.tick) {
+      // a shot that moves itself (the Lobber's packets, enemies2.js): true when it's gone
+      if (s.tick(s, dt) && enemyShots[i] === s) enemyShots.splice(i, 1);
+      continue;
+    }
     const frozen = somePlayer(() => player.dilation > 0 && stats.dilation.freezeShots && Math.hypot(s.x - player.x - player.w / 2, s.y - player.y - player.h / 2) < 220);
     if (!frozen) {
       s.x += s.vx * dt;
@@ -481,13 +559,28 @@ function updateEnemyShots(dt) {
     }
     s.life -= dt;
     let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 300 || s.x < camera.x - 300 || s.x > camera.x + W + 300;
-    // a shot hits whichever player it reaches first (either one in co-op)
-    if (!gone) {
+    if (!gone && s.pawn) {
+      // a hijacked enemy's shot: the first enemy it reaches (never a player)
+      for (const o of enemies) {
+        if (o === s.owner || o.dead || o.boss || o.hijackT > 0 || !circleHitsBox(s.x, s.y, s.r, o)) continue;
+        damageEnemy(o, s.damage, { source: "hijack", fromX: s.x - s.vx * 0.05 });
+        gone = true;
+        break;
+      }
+    } else if (!gone) {
+      // a shot hits whichever player it reaches first (either one in co-op)...
       eachTarget(() => {
         if (gone || !circleHitsBox(s.x, s.y, s.r, player) || player.invuln > 0) return;
         hurtPlayer(s.damage, s.x - s.vx, s.y - s.vy, s.owner);
         gone = true;
       });
+      // ...or a hijacked enemy in its way
+      for (let j = 0; !gone && j < hijackPawns.length; j++) {
+        const o = hijackPawns[j];
+        if (o.dead || !(o.hijackT > 0) || !circleHitsBox(s.x, s.y, s.r, o)) continue;
+        damageEnemy(o, s.damage, { source: "enemy" });
+        gone = true;
+      }
     }
     if (gone) {
       const color = s.color || (s.kind === "laser" || s.kind === "snipe" ? "#ff2f6d" : s.kind === "ring" ? "#19f5ff" : "#ff9b21");
@@ -498,13 +591,24 @@ function updateEnemyShots(dt) {
 }
 
 // ------------------------------------------------------- Damage & death -----
-const SHIELD_BLOCKS = new Set(["zap", "orb", "arrow", "em", "blade", "missile", "chain"]);
-// Damage that doesn't come from the player's attacks (no Time Dilation bonus)
-const NOT_PLAYER_DAMAGE = new Set(["fall", "bleed", "reflect", "blast", "test"]);
+// (explosions, lightning arcs, fire and attacks from behind or above get past it)
+const SHIELD_BLOCKS = new Set(["zap", "arrow", "em", "blade"]);
+// Damage that doesn't come from the player's attacks (no Time Dilation bonus).
+// "hijack": a hijacked enemy hitting an enemy; "enemy": an enemy hitting a hijacked one.
+const NOT_PLAYER_DAMAGE = new Set(["fall", "bleed", "reflect", "blast", "test", "hijack", "enemy"]);
+// A hijacked enemy is on your side: only these still hurt it (player attacks pass through)
+const HURTS_PAWNS = new Set(["enemy", "fall", "bleed", "test"]);
+// Damage that earns the players nothing (heat/focus/RAM): no farming with your pawns
+const NO_RESOURCE = new Set(["flame", "heat", "hijack", "enemy"]);
 
 function damageEnemy(e, amount, opts = {}) {
   if (e.dead || amount <= 0) return;
+  if (e.hijackT > 0 && !HURTS_PAWNS.has(opts.source)) return; // friendly now
   if (e.type === "nullptr" && nullIntercept(e)) return; // NULL's copies pop instead
+  if (!e.boss && (e.bubble || e.def.v2)) {
+    amount = preDamage2(e, amount, opts); // Hotfix shields, Monolith plates (enemies2.js)
+    if (amount <= 0) return;
+  }
   // Enforcer shields block most damage from the front
   if (e.def && e.def.shielded && !(e.stun > 0) && SHIELD_BLOCKS.has(opts.source) && opts.fromX !== undefined) {
     const fromFront = Math.sign(opts.fromX - (e.x + e.w / 2)) === e.facing;
@@ -525,21 +629,21 @@ function damageEnemy(e, amount, opts = {}) {
   if (opts.knock || Math.abs(opts.kbX || 0) >= 250) e.knockT = 1.5; // knocked off a ledge? fall damage
   e.hp -= amount;
   e.hurt = 0.08;
-  // Heat is earned by dealing damage - but not with the flame itself
-  if (opts.source !== "flame" && opts.source !== "heat") gainHeat(amount * TUNING.heat.perDamageDealt);
-  const resist = e.boss ? 0.1 : e.def && e.def.shielded ? 0.4 : 1;
+  // Heat is earned by dealing damage - but not with the flame itself (or by your pawns)
+  if (!NO_RESOURCE.has(opts.source)) gainHeat(amount * TUNING.heat.perDamageDealt);
+  const resist = e.boss ? 0.1 : e.def.kbResist !== undefined ? e.def.kbResist : e.def.shielded ? 0.4 : 1;
   if (opts.kbX) e.kbX += opts.kbX * resist;
   if (opts.kbY) e.kbY += opts.kbY * resist;
   const c = centerOf(e);
   if (!opts.quiet) damageNumber(amount, c.x, e.y - 6, opts.source === "chain" ? "#9ffcff" : e.vulnT > 0 ? "#5aff7a" : "#ffffff");
-  if (e.hp <= 0) killEnemy(e);
+  if (e.hp <= 0) killEnemy(e, opts.source);
 }
 
-function killEnemy(e) {
+function killEnemy(e, source) {
   e.dead = true;
   const c = centerOf(e);
   game.kills++;
-  gainHeat(TUNING.heat.perKill);
+  if (source !== "hijack" && source !== "enemy") gainHeat(TUNING.heat.perKill); // (a pawn's kill earns no heat; XP still drops)
   if (game.kills % 50 === 0) say("kills", { n: game.kills });
   if (e.boss) {
     burst(c.x, c.y, 60, "#ff2457", 700);
@@ -551,6 +655,7 @@ function killEnemy(e) {
     return;
   }
   if (e.type === "bomber") explodeBomber(e); // shooting a bomber sets it off
+  if (e.def.v2) killEnemy2(e); // forks, flying plates, a Hotfix's shields popping (enemies2.js)
   burst(c.x, c.y, 14, e.def.kind === "ranged" || e.def.kind === "sniper" ? "#19f5ff" : "#ff2fd6", 320);
   sfx.kill.play({ rate: 0.8 + Math.random() * 0.4 });
   // XP: one big chip for tough enemies, small chips otherwise
@@ -574,7 +679,13 @@ function enemyFrame(e, s) {
   return Math.floor(e.anim) % s.frames;
 }
 
+// A hijacked enemy's pulsing green, in three steps: each distinct tint is a
+// cached canvas per frame, and a smooth pulse made dozens (Performance mode
+// holds the middle one)
+const HIJACK_TINTS = ["rgba(90,255,122,0.3)", "rgba(90,255,122,0.45)", "rgba(90,255,122,0.6)"];
+
 function drawEnemies(time) {
+  drawEnemies2Back(time); // v3.2: 429 fields, heal tethers, packet markers (enemies2.js)
   for (const e of enemies) {
     if (e.dead) continue;
     if (e.boss) {
@@ -584,6 +695,10 @@ function drawEnemies(time) {
       continue;
     }
     if (e.x > camera.x + W + 100 || e.x + e.w < camera.x - 100) continue;
+    if (e.def.v2) {
+      drawEnemy2(e, time); // (enemies2.js)
+      continue;
+    }
     const s = e.def.sheet;
     const dw = s.fw * s.scale * e.size;
     const dh = s.fh * s.scale * e.size;
@@ -593,8 +708,11 @@ function drawEnemies(time) {
     const frame = enemyFrame(e, s);
     let tint = null;
     if (e.hurt > 0) tint = "rgba(255,255,255,0.85)";
+    else if (e.patchFx > 0) tint = "rgba(255,255,255,0.6)"; // rebooting after a hijack
+    else if (e.hijackT > 0) tint = HIJACK_TINTS[perfMode() ? 1 : Math.round(1 + Math.sin(time * 9))]; // hijacked: on your side (3 steps, so the tint cache stays small)
     else if (e.stun > 0) tint = "rgba(176,108,255,0.5)";
     else if (e.slowT > 0) tint = "rgba(90,255,122,0.35)";
+    if (e.hijackT > 0) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.8, "rgba(90,255,122,0.45)");
     if (e.elite) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.9, "rgba(255,200,40,0.45)");
     if (e.def.kind === "ranged") glow(cx, e.y + e.h / 2, 60, e.type === "drone" ? "rgba(255,47,109,0.25)" : "rgba(255,155,33,0.2)");
     if (e.charge > 0) {
@@ -632,6 +750,7 @@ function drawEnemies(time) {
       drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + 8, dy, dw, dh, "rgba(0,255,220,0.9)", flip);
     }
     ctx.globalAlpha = e.def.alpha || 1;
+    if (e.nav) drawNavLine(e); // the enforcer's grapple
     const ok = drawFrame(img, frame * s.fw, sy, s.fw, s.fh, dx + glitching, dy, dw, dh, tint, flip);
     ctx.globalAlpha = 1;
     if (e.downed) ctx.restore();
@@ -640,6 +759,7 @@ function drawEnemies(time) {
       ctx.fillStyle = e.def.kind === "melee" ? "#ff2fd6" : e.def.kind === "bomber" ? "#ff9b21" : "#19f5ff";
       ctx.fillRect(e.x, e.y, e.w, e.h);
     }
+    if (e.bubble) drawBubble2(e, time); // a Hotfix's shield
     if (e.def.shielded && !(e.stun > 0)) {
       // the shield's glowing edge
       ctx.fillStyle = "rgba(25,245,255,0.7)";
@@ -649,6 +769,7 @@ function drawEnemies(time) {
       const a = time * 6;
       if (!drawCell("fx", 6, 32, cx, e.y - 22, 40, 40, a)) hudText("*", cx, e.y - 22, 26, "#ffe14d", "center", "middle");
     }
+    if (e.hijackT > 0) drawHijackTag(e, time);
     // Small health bar once damaged
     if (e.hp < e.maxHp) {
       ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -699,6 +820,14 @@ function drawEnemyShots() {
   const flame = smallOr("fire");
   ctx.imageSmoothingEnabled = true;
   enemyShots.forEach((s) => {
+    if (s.draw) return s.draw(s); // shots that draw themselves (enemies2.js)
+    if (s.pawn) {
+      // a hijacked enemy's shot: green, whatever it is
+      glow(s.x, s.y, 36, "rgba(90,255,122,0.7)");
+      ctx.fillStyle = HIJACK_COLOR;
+      ctx.fillRect(s.x - 9, s.y - 4, 18, 8);
+      return;
+    }
     if (s.kind === "shuriken") return drawShuriken(s); // NULL's
     if (s.kind === "laser") {
       glow(s.x, s.y, 40, "rgba(255,47,109,0.6)");
@@ -740,4 +869,5 @@ function drawEnemyShots() {
     ctx.drawImage(flame, -29 * k, -80 * 0.68 * k, 58 * k, 80 * k);
     ctx.restore();
   });
+  drawEnemiesFront2(); // v3.2: flying plates, "429" over throttled players (enemies2.js)
 }

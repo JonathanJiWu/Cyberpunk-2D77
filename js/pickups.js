@@ -175,8 +175,12 @@ function xpPickupSound(type) {
 function applyPowerup(type) {
   const def = POWERUPS[type];
   const pc = centerOf(player);
-  popup(def.name, pc.x, player.y - 30, def.color, 30, 1.2);
-  burst(pc.x, pc.y, 16, def.color, 320);
+  // the resource pickup says what it fills for this IC: HEAT, FOCUS or RAM
+  const res = CH().resource;
+  const name = type === "heat" ? `+50 ${res.name}` : def.name;
+  const color = type === "heat" ? res.color : def.color;
+  popup(name, pc.x, player.y - 30, color, 30, 1.2);
+  burst(pc.x, pc.y, 16, color, 320);
   sfx.powerup.play({ rate: 1.25 });
   switch (type) {
     case "heal":
@@ -198,7 +202,7 @@ function applyPowerup(type) {
       ring(pc.x, pc.y, W * 0.7, "#b06cff");
       camera.shake = Math.max(camera.shake, 14);
       enemies.forEach((e) => {
-        if (onScreen(e)) {
+        if (onScreen(e) && !(e.hijackT > 0)) {
           damageEnemy(e, e.boss ? 40 : 60, { source: "emp" });
           e.stun = 1.2;
         }

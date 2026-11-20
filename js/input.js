@@ -2,7 +2,7 @@
 // =============================================================================
 // Input and settings.
 //   Keyboard: A/D run, W/S aim, Space jump, J fire, K flame.
-//   Mouse:    left button fires at the cursor, right button holds the flame.
+//   Mouse:    left button fires at the cursor, right button uses the special.
 //   Touch:    left stick runs; flick it up to jump (again in the air for a
 //             double jump); hold it down on a platform to drop through.
 //             Right side, "twin-stick": a second stick, push it to aim + fire.
@@ -48,8 +48,8 @@ const mainInput = input; // player 1's: the keyboard, mouse and touch controls w
 
 // --------------------------------------------------------------- Settings ---
 const settings = {
-  autoFire: false, // the energy ball fires on its own at the nearest enemy
-  autoFlame: false, // the flame lights itself when enemies are close
+  autoFire: false, // the primary attack fires on its own at the nearest enemy
+  autoFlame: false, // "auto special": the special fires itself when it would help
   touchAim: "twin", // touch, when auto-fire is off: "twin" (right stick) or "tap"
   character: "paine",
   perfMode: false, // Performance mode (js/display.js, perfMode() in core.js)
@@ -322,8 +322,8 @@ const leftStick = makeStick(
 // Right stick: aim and fire (twin-stick)
 const rightStick = makeStick(document.getElementById("aim-zone"), document.getElementById("aim-stick"), document.getElementById("aim-knob"), input.aim);
 
-// SPECIAL button. Paine's flame is a toggle (tap on, tap off) so the right
-// thumb stays free to aim and fire; Tetsu's dash and Sudo's hack fire on tap.
+// SPECIAL button: the IC's special fires on a tap (a hold-to-use special,
+// special.hold, would toggle instead so the right thumb stays free to aim).
 document.querySelectorAll(".action-btn").forEach((btn) => {
   btn.addEventListener("pointerdown", (e) => {
     e.preventDefault();

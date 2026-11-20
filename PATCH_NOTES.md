@@ -1,5 +1,117 @@
 # Patch Notes
 
+## v3.2: The Truth & Freedom Update (2026-11-20)
+
+> *"Patched. Not fixed, patched. Story of this city."* (THE LEGEND)
+
+### The world and its narrator
+- **The story, in one breath:** "It's 2D77. The corps own the city, the cameras and the truth, and they rent all three back to you. Stop paying." It surfaces through the menu, run-start notes, DATABASE lore, boss intros and the city's own propaganda:
+  - **Goldhorn** owns the city and the Overseer;
+  - **Verity** sells the news and fills the billboards;
+  - the **Bureau of Public Calm** flies the drones;
+  - **NULL** is the assassin the Board denies hiring;
+  - the **Demon GOAT** is the scapegoat monster Goldhorn built to excuse the curfews.
+- **THE LEGEND is your narrator and skill guide.** He is an original hologram: dark hair with a silver streak, a beard, a cyan temple implant and a lot of opinions. He:
+  - sizes up every level-up offer: rare cards, a heal when you need it, nothing for defense when you're bleeding;
+  - explains the card you point at (hover, keyboard/pad focus, or a long press on phones), one short line per level of every skill, with the real numbers;
+  - reacts to picks, rerolls, the loadout and respec;
+  - is sarcastic, rebellious and anti-corporate: "Reroll. Refusing what you're offered is the first freedom."
+- **Voice hooks:** every line has a stable id (`legend.skill.paine.zap.3`), goes through `narrator.say`, fires a `narrator:line` event and calls a voice player that only plays ids listed in its manifest. Drop in recordings and they play.
+- New expressive art for him: talk, smirk and raised-eyebrow frames that follow his mood.
+
+### Human characters, redrawn
+- **Paine, Tetsu and Sudo:**
+  - new 80x120 sprites drawn 1:1, with realistic-heroic proportions, faces and real idle and airborne poses;
+  - one top-left key light and a rim light in each IC's color;
+  - new superhero landings and portraits;
+  - silhouettes you can tell apart at a glance: Paine the slim archer, Tetsu the armoured tank, Sudo slouched under his battery pack.
+- **Tetsu is electric blue** (he shared Paine's red), and FOCUS is gold. The three ICs read as red, blue and green.
+- **Also redrawn:** NULL (an armoured hooded ninja with a faceplate and energy blades), the billboard model (a confident, PG neon ad star) and the Cyber Ninja. THE LEGEND also gets a big bust.
+
+### Character select
+- **The centerpiece of the menu:**
+  - a large stage with the IC's bust;
+  - their dossier: role, difficulty, personality, background, playstyle and a quote;
+  - weapon, special and passive with icons;
+  - mechanics, resource, and stat bars scaled across the three ICs.
+- Mouse, keyboard, pad and touch, with motion that respects reduced-motion settings.
+- **Everywhere you pick an IC:** the pause menu's hot-swap shows the same stage, and so does player 2's join screen. The action holds while player 2 picks.
+
+### Five new enemies
+- **Fork Bomb** (fast pressure): rolls in, climbs after you, leaps; splits into two child processes when killed (three from an elite).
+- **Packet Lobber** (artillery): keeps its distance on high ground. It lobs packets onto a floor marker where you're headed, so standing still gets you hit. Shoot the packets down, burn them, slice them or parry them back.
+- **Legacy Monolith** (heavy armour):
+  - three steel plates give it flat damage reduction, so chip damage barely scratches it;
+  - plates break off and expose its glowing core;
+  - piercing arrows, finishers and the dash get through;
+  - no knockback, a slow turn, a slam that sends shockwaves along its floor, and a shoulder charge.
+- **Hotfix** (support): a flying medic that tethers to the enemy that needs it most, heals it and gives it a one-hit shield bubble. Kill it first; arrows shoot it out of the sky.
+- **Rate Limiter** (control): a walking signal tower whose 429 field halves your fire rate and locks your special. Step out, or collapse the field with a finisher or a dash.
+- **New squads:** FORK STORM, ARTILLERY (an Enforcer shielding two Lobbers) and SIEGE (a Monolith with two Hotfixes).
+
+### Enemy navigation, rebuilt
+- **The bug:** enemies couldn't reach the top platforms. Walkers ran straight at your x and hopped at random. The city's zig-zag stairs (and routes that lead away from you first) left them piled up under you, hopping in place.
+- **The fix:**
+  - a navigation graph built from each mover's real jump physics: double jumps, drop-throughs, the Enforcer's grapple line, and moving platforms timed in flight;
+  - shared route fields;
+  - turn-taking at take-off points, and a watchdog that bans failing moves.
+- **Now:** every walker type and every boss can reach every platform you can stand on, rooftops included. Flyers keep their spacing, and walkers spawn on a floor with a route to you. `?navdebug` draws the graph and every enemy's route.
+
+### Hackerman's EMP: hijack
+- **The trigger:** every System Glitch burst has a chance to **hijack** nearby enemies: 30% +1% per level, max 55%; up to 1-3 enemies per burst and 2-4 at once.
+- **While hijacked (4-7 s), an enemy:**
+  - fights its former allies with its own moves and attacks;
+  - **taunts** nearby enemies into attacking it;
+  - never hurts you, and ignores your bullet time.
+- **Afterwards:** it reboots and is patched (immune) for 8 s.
+- **Limits:**
+  - bosses and NULL's decoys are immune;
+  - elites and heavy types (Enforcer, Mecha Wyrm, Monolith, Rate Limiter) resist;
+  - nothing a hijacked enemy does can glitch or hijack;
+  - hijack damage earns no resource (no loops, no farming).
+- **With the new enemies:** a hijacked Hotfix heals your pawns, a hijacked Rate Limiter jams enemies, and a hijacked Fork Bomb's children join you too.
+- A green tint and a "PWNED" tag with a countdown ring show who's hijacked. The HUD shows GLITCH and HIJACK chances.
+
+### The balance sheet
+Your edits from `design/characters-and-skills.xlsx` are in:
+- **Base stats:** Paine speed 480, jump 1200; Tetsu jump 1000; Sudo speed 440, jump 900. Armour went to 0.3 / 0.5 / 0.1, then was evened out after bot runs: **Paine 0.25, Tetsu 0.45, Sudo 0.2**.
+- **Cyber Bow:** one heavy arrow at every level; draw 0.5/0.4/0.35/0.33 s; pierce bonus +60/70/80% (the pierce cap rose to 90%). Its old multishot levels now give faster arrows (level 3) and longer boss bleeds (level 6).
+- **Iaido Dash:** 480/490 px at levels 5/6.
+- **EM Projector:** 0.7 s cooldown (0.6 s from level 6), waves 100-140 tall, 16 damage from level 7.
+- **Time Dilation:** 1.5 s, 2 s from level 4, 2.5 s at level 6.
+
+### Consistency audit fixes
+- **Broken:**
+  - Hot-swapping away from Hackerman (or dying) mid Time Dilation left the world in slow motion for good.
+  - Expired bleeds and burns kept their strength.
+  - Time Dilation's heartbeat kept playing on pause and game over.
+- **Exploits:**
+  - The hacking terminals gave a free level every minute; each DATAMINE in a run is now worth half the last.
+  - The billboard's kisses were free regen; they now heal at most 30 HP a run.
+  - A knocked-out player 2 could leave and re-join at full HP without spending a life.
+- **Bosses:**
+  - Boss intros ran on slow-motion time.
+  - Auto specials fired during intros.
+  - Tetsu's level-8 stagger cancelled the Overseer's laser and its vent window.
+  - System Glitch kept bosses stuttering 38% of a fight (now at most once every 2.5 s).
+  - Sniper shots couldn't be reflected.
+- **Visuals:** parried shuriken, meteors and rings turned into the old energy ball, and fx2 skill icons were cropped.
+- **Phones:** the HUD's boss block moved to the bottom edge, lives no longer cover the boss countdown, and the touch hint wraps.
+- **Texts:**
+  - Tetsu's armour text matches the code, and the Monoblade says it's weaker on bosses.
+  - Chain Lightning hits up to 7.
+  - The Repair Kit heals 48.
+  - The resource pickup names HEAT, FOCUS or RAM.
+  - Rare passive cards add up both levels.
+  - The co-op skill card describes both ICs.
+  - Lose lines fit what ended the run.
+  - The how-to text describes the current kits.
+- **Names:** borrowed franchise corporation and ICE names in signs and terminals were replaced with the game's own world. The eight secrets are untouched.
+
+### Tests
+- 116 browser tests (80 in v3.1), plus the desktop app's.
+- `ONLY="name part" npm test` runs a subset.
+
 ## v3.1: The Desktop & Signature Update (2026-11-18)
 
 > *"There is no spoon. There is only technical debt."* (THE LEGEND)

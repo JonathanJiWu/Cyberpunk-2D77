@@ -15,9 +15,7 @@ const WORLD_TOP = -600; // the city goes this high above the screen; the camera 
 const TUNING = {
   player: {
     maxHp: 100,
-    speed: 470,
     accel: 5200, // how quickly you reach full speed
-    jumpVelocity: 1080,
     gravity: 2700,
     maxFall: 1500,
     maxJumps: 2,
@@ -26,9 +24,9 @@ const TUNING = {
     hurtInvuln: 1.0,
     knockback: 520,
   },
-  // Heat powers the flame. It does NOT refill on its own: you earn it by
-  // dealing damage (not with the flame itself) and by taking damage.
-  heat: { max: 100, start: 30, perDamageDealt: 0.1, perDamageTaken: 1.2, perKill: 0.6, flameMin: 12 },
+  // Each IC's resource (HEAT, FOCUS or RAM) powers their special. It does NOT
+  // refill on its own: you earn it by dealing damage and by taking damage.
+  heat: { max: 100, start: 30, perDamageDealt: 0.1, perDamageTaken: 1.2, perKill: 0.6 },
   zap: { speed: 1300, radius: 22, life: 1.1, spread: 0.17, aimAssist: 0.4 },
   pickupRadius: 150,
   spawn: {
@@ -53,38 +51,11 @@ const TUNING = {
 // character's primary and special: their name, icon and text come from
 // CHARACTERS in js/database.js.
 const UPGRADES = [
-  {
-    id: "zap",
-    name: "Energy Ball",
-    icon: 0,
-    max: 8,
-    weapon: true,
-    desc: [
-      "Fire energy balls where you aim.",
-      "+2 damage.",
-      "+1 energy ball per shot.",
-      "Fire 25% faster.",
-      "Shots pierce 1 enemy.",
-      "+1 energy ball per shot.",
-      "+3 damage.",
-      "Bigger, faster shots that pierce 1 more enemy.",
-    ],
-  },
-  {
-    id: "flame",
-    name: "Flame Aura",
-    icon: 1,
-    max: 6,
-    weapon: true,
-    desc: [
-      "Hold to burn everything around you. Uses heat.",
-      "Bigger flame, +25% burn damage, uses less heat.",
-      "Bigger flame, +25% burn damage, uses less heat.",
-      "Bigger flame, +25% burn damage, uses less heat.",
-      "Bigger flame, +25% burn damage, uses less heat.",
-      "Bigger flame, +25% burn damage, uses less heat.",
-    ],
-  },
+  // The IC's own primary and special: their name, icon, max level and text
+  // always come from CHARACTERS (upgradeInfo in upgrades.js); these two
+  // entries only give them a place in the upgrade list.
+  { id: "zap", name: "Primary", icon: 0, max: 8, weapon: true, desc: [] },
+  { id: "flame", name: "Special", icon: 1, max: 6, weapon: true, desc: [] },
   {
     id: "orbit",
     name: "Orbit Shards",
@@ -237,8 +208,8 @@ const LEVEL = {
     { x: 520, text: "2D77", color: "#ff2fd6" },
     { x: 1000, text: "RIPPERDOC", color: "#5aff7a" },
     { x: 1640, text: "NOODLES", color: "#19f5ff" },
-    { x: 2700, text: "TYRELL", color: "#ffe14d" },
-    { x: 4250, text: "SECTION 9", color: "#ff9b21" },
+    { x: 2700, text: "GOLDHORN", color: "#ffe14d" },
+    { x: 4250, text: "VERITY NEWS", color: "#ff9b21" },
     { x: 5150, text: "WAKE UP, SAMURAI", color: "#ff2457" },
     { x: 6250, text: "TO THE MOON", color: "#19f5ff" },
   ],
@@ -274,7 +245,7 @@ const SECRETS = [
     name: "Katana",
     icon: 1,
     desc: "Deflects enemy shots straight back at them.",
-    hint: "Something sharp rides the highest platform.",
+    hint: "Something sharp rides the moving platform above the arena.",
   },
   {
     id: "sandevistan",

@@ -27,7 +27,8 @@ function resetKits() {
 // --------------------------------------------------------------- Stats ------
 const playerLevel = () => (typeof progress === "undefined" ? 1 : progress.level);
 // Values that grow with your level (shown on the HUD and in the DATABASE)
-const pierceChance = () => Math.min(0.65, 0.15 + 0.02 * (playerLevel() - 1) + (stats.bow ? stats.bow.pierceBonus : 0));
+// (cap raised 0.65 -> 0.9 so the balance sheet's +60-80% bow bonus still grows with level)
+const pierceChance = () => Math.min(0.9, 0.15 + 0.02 * (playerLevel() - 1) + (stats.bow ? stats.bow.pierceBonus : 0));
 const reflectPct = () => Math.min(0.4, 0.15 + 0.01 * (playerLevel() - 1));
 const glitchChance = () => Math.min(0.45, 0.15 + 0.012 * (playerLevel() - 1));
 const glitchRadius = () => Math.min(280, 150 + 5 * (playerLevel() - 1));
@@ -36,12 +37,16 @@ const glitchTime = () => Math.min(1.1, 0.55 + 0.02 * (playerLevel() - 1));
 // Called from computeStats(): z = primary level, f = special level
 function computeKitStats(z, f, cdMul, costMul) {
   stats.bow = {
+    // (balance sheet, 2026-11-19: one heavy arrow at every level; slower
+    // draws early; a big pierce bonus)
     damage: 15 + (z >= 2 ? 5 : 0) + (z >= 5 ? 6 : 0) + (z >= 8 ? 8 : 0),
-    draw: 0.42 * (z >= 4 ? 0.8 : 1) * cdMul,
-    arrows: 1 + (z >= 3 ? 1 : 0) + (z >= 6 ? 1 : 0),
+    draw: byLevel([0.5, 0.5, 0.5, 0.5, 0.4, 0.4, 0.4, 0.35, 0.33], z) * cdMul,
+    arrows: 1,
     knock: 400 * (z >= 7 ? 1.4 : 1),
     bleed: 6 + (z >= 5 ? 4 : 0),
-    pierceBonus: z >= 8 ? 0.15 : 0,
+    bleedTime: z >= 6 ? 6 : 4, // level 6: bosses bleed 50% longer
+    speed: z >= 3 ? 2125 : 1700, // level 3: arrows fly 25% faster
+    pierceBonus: byLevel([0.6, 0.6, 0.6, 0.6, 0.7, 0.7, 0.7, 0.8, 0.8], z),
   };
   stats.heatwave = {
     radius: 300 * (1 + 0.12 * (f - 1)),
@@ -51,15 +56,16 @@ function computeKitStats(z, f, cdMul, costMul) {
     echo: f >= 6,
   };
   stats.em = {
-    damage: 7 + (z >= 2 ? 3 : 0) + (z >= 7 ? 4 : 0),
-    cooldown: 0.5 * (z >= 4 ? 0.8 : 1) * cdMul,
+    // (balance sheet, 2026-11-19: slower but much taller waves)
+    damage: 7 + (z >= 2 ? 3 : 0) + (z >= 7 ? 6 : 0),
+    cooldown: byLevel([0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.6, 0.6, 0.6], z) * cdMul,
     waves: 1 + (z >= 3 ? 1 : 0) + (z >= 6 ? 1 : 0),
     range: 640 * (z >= 5 ? 1.25 : 1),
-    height: 70 * (z >= 5 ? 1.3 : 1),
+    height: byLevel([100, 100, 100, 110, 120, 125, 130, 135, 140], z),
     slow: z >= 8 ? 0.45 : 0.6,
   };
   stats.dilation = {
-    duration: 3 + 0.4 * (f - 1),
+    duration: byLevel([1.5, 1.5, 1.5, 1.5, 2, 2, 2.5], f), // (balance sheet: short and sharp)
     cost: (f >= 3 ? 34 : 45) * costMul,
     scale: f >= 4 ? 0.18 : 0.25,
     dmgMul: 1.4 + 0.08 * (f - 1),
@@ -67,13 +73,15 @@ function computeKitStats(z, f, cdMul, costMul) {
   };
 }
 
-// The passive line on the HUD
-function passiveLine() {
+// The passive on the HUD: one line, or two for Hackerman (glitch, then the
+// hijack chance of each glitch); passiveLine() joins them for small panels
+function passiveLines() {
   const p = player;
-  if (p.char === "paine") return `PIERCE ${Math.round(pierceChance() * 100)}%`;
-  if (p.char === "tetsu") return `REFLECT ${Math.round(reflectPct() * 100)}%`;
-  return `GLITCH ${Math.round(glitchChance() * 100)}%`; // (radius: see the DATABASE)
+  if (p.char === "paine") return [`PIERCE ${Math.round(pierceChance() * 100)}%`];
+  if (p.char === "tetsu") return [`REFLECT ${Math.round(reflectPct() * 100)}%`];
+  return [`GLITCH ${Math.round(glitchChance() * 100)}%`, `HIJACK ${Math.round(hijackChance() * 100)}%`]; // (radius, caps: see the DATABASE)
 }
+const passiveLine = () => passiveLines().join(" ");
 
 // ========================================================= CYBER WIDOW ======
 // Cyber Bow: hold to draw (the aim keeps tracking), release at full draw
@@ -144,7 +152,7 @@ function releaseArrows(ax, ay, assist, cone) {
   for (let i = 0; i < n; i++) {
     const aa = a + (i - (n - 1) / 2) * 0.09;
     const pierce = Math.random() < pierceChance();
-    playerShots.push({ x: pc.x + Math.cos(aa) * 40, y: sy + Math.sin(aa) * 40, vx: Math.cos(aa) * 1700, vy: Math.sin(aa) * 1700, r: 12, angle: aa, life: 1.1, damage: B.damage, pierce: pierce ? 3 : 0, piercing: pierce, hit: new Set(), kind: "arrow" });
+    playerShots.push({ x: pc.x + Math.cos(aa) * 40, y: sy + Math.sin(aa) * 40, vx: Math.cos(aa) * B.speed, vy: Math.sin(aa) * B.speed, r: 12, angle: aa, life: 1.1, damage: B.damage, pierce: pierce ? 3 : 0, piercing: pierce, hit: new Set(), kind: "arrow" });
   }
   p.vx -= Math.cos(a) * 60; // a little recoil
   camera.shake = Math.max(camera.shake, 2);
@@ -157,9 +165,9 @@ function arrowHit(s, e) {
   if (e.boss) {
     // bosses don't budge, but they bleed
     damageEnemy(e, s.damage, { source: "arrow", fromX: s.x - s.vx });
-    applyDot(e, "bleed", stats.bow.bleed, 4);
+    applyDot(e, "bleed", stats.bow.bleed, stats.bow.bleedTime);
   } else {
-    damageEnemy(e, s.damage, { source: "arrow", kbX: dir * stats.bow.knock, kbY: -140, fromX: s.x - s.vx, knock: true });
+    damageEnemy(e, s.damage, { source: "arrow", kbX: dir * stats.bow.knock, kbY: -140, fromX: s.x - s.vx, knock: true, pierce: s.piercing });
     if (!e.dead && !e.def.walker) downEnemy(e, dir);
   }
   burst(c.x, c.y, s.piercing ? 8 : 5, s.piercing ? "#ffffff" : "#ff4a6a", 280);
@@ -172,10 +180,9 @@ function updateHeatWave(dt) {
   const H = stats.heatwave;
   p.specialCd -= dt;
   p.flameFlash = Math.max(0, (p.flameFlash || 0) - dt);
-  if (p.heatLocked && p.heat >= H.cost) p.heatLocked = false;
   const pressed = specialPressed();
   let want = pressed;
-  if (!want && settings.autoFlame && p.specialCd <= 0 && p.heat >= H.cost) {
+  if (!want && settings.autoFlame && !bossLocked() && p.specialCd <= 0 && p.heat >= H.cost) {
     const pc = centerOf(p);
     const close = enemies.filter((e) => !e.dead && circleHitsBox(pc.x, pc.y, H.radius * 0.7, e)).length;
     const shots = enemyShots.some((s) => s.kind !== "meteor" && Math.hypot(s.x - pc.x, s.y - pc.y) < 220);
@@ -215,7 +222,7 @@ function updateHeatWaves(dt) {
     w.r = 20 + (w.max - 20) * (1 - (1 - k) * (1 - k));
     if (k < 1) {
       enemies.forEach((e) => {
-        if (e.dead || w.hit.has(e)) return;
+        if (e.dead || e.hijackT > 0 || w.hit.has(e)) return; // (it doesn't shove your hijacked ones)
         const c = centerOf(e);
         if (Math.hypot(c.x - w.x, c.y - w.y) - Math.min(e.w, e.h) * 0.4 > w.r) return;
         w.hit.add(e);
@@ -255,7 +262,9 @@ function roninReflect(src, incoming) {
   const c = centerOf(src);
   damageEnemy(src, dmg, { source: "reflect" });
   const L = playerLevel();
-  if (L >= 8) src.stun = Math.max(src.stun || 0, src.boss ? 0.1 : 0.4); // Mirror Edge: staggers
+  // Mirror Edge: staggers minions. Not bosses: any stun cancels the
+  // Overseer's laser, and with it the vent window that rewards dodging it.
+  if (L >= 8 && !src.boss) src.stun = Math.max(src.stun || 0, 0.4);
   if (L >= 16) {
     // Riposte: the reflection splashes to two more enemies nearby
     enemies
@@ -304,21 +313,24 @@ function emHit(s, e) {
   if (Math.random() < glitchChance()) systemGlitch(c.x, c.y);
 }
 
-// System Glitch: everything near the hit stutters for a moment
-let glitchCd = 0;
+// System Glitch: everything near the hit stutters for a moment. The cooldown
+// is per Hackerman (the bound player: emHit runs for the shooter).
 function systemGlitch(x, y) {
-  if (glitchCd > 0) return;
-  glitchCd = 0.25;
+  if (player.glitchCd > 0) return;
+  player.glitchCd = 0.25;
   const r = glitchRadius();
   const t = glitchTime();
   let n = 0;
   enemies.forEach((e) => {
-    if (e.dead) return;
+    if (e.dead || e.hijackT > 0) return; // (your hijacked ones don't stutter)
     const c = centerOf(e);
     if (Math.hypot(c.x - x, c.y - y) > r) return;
+    if (e.boss && !hijackBossGlitch(e)) return; // (a boss stutters every so often, not all fight long)
     e.glitchT = Math.max(e.glitchT || 0, e.boss ? t * 0.4 : t);
     n++;
   });
+  // ...and it's an EMP: a chance to hijack the nearest ones (hijack.js)
+  tryHijack(x, y, r);
   kitFx.push({ type: "glitch", x, y, r, life: 0.4, max: 0.4 });
   glyphBurst(x, y, 6);
   synth.play("glitch");
@@ -330,14 +342,14 @@ function updateDilation(dt) {
   const p = player;
   const D = stats.dilation;
   p.specialCd -= dt;
-  glitchCd -= dt;
+  p.glitchCd = (p.glitchCd || 0) - dt;
   if (p.dilation > 0) {
     p.dilation -= dt;
     if (p.dilation <= 0) endDilation();
   }
   const pressed = specialPressed();
   let want = pressed;
-  if (!want && settings.autoFlame && !(p.dilation > 0) && p.specialCd <= 0 && p.heat >= D.cost) {
+  if (!want && settings.autoFlame && !bossLocked() && !(p.dilation > 0) && p.specialCd <= 0 && p.heat >= D.cost) {
     const pc = centerOf(p);
     const near = enemies.filter((e) => !e.dead && Math.hypot(centerOf(e).x - pc.x, centerOf(e).y - pc.y) < 520).length;
     const danger = enemyShots.filter((s) => Math.hypot(s.x - pc.x, s.y - pc.y) < 400).length >= 3 || !!(game.boss && game.boss.beam && game.boss.beam.on);
@@ -361,6 +373,16 @@ function updateDilation(dt) {
   if (Math.random() < 0.5) say("special");
 }
 
+// A hero who goes down or swaps out drops whatever the kit was doing.
+// (updateDilation only runs for Hackerman, so a Time Dilation left running
+// by a hot-swap or a death would otherwise slow the world forever.)
+function resetKitState() {
+  const p = player;
+  if (p.dilation > 0) endDilation();
+  p.draw = null;
+  p.releaseT = 0;
+}
+
 function endDilation() {
   const p = player;
   p.dilation = 0;
@@ -373,12 +395,14 @@ function endDilation() {
 // ======================================================= Enemy effects ======
 // Damage over time: "bleed" (arrows on bosses) and "burn" (heat wave)
 function applyDot(e, kind, dps, dur) {
+  // (a stronger DoT that is still running keeps its strength; an expired
+  // one doesn't, so check before refreshing the timer)
   if (kind === "bleed") {
-    e.bleedT = dur;
     e.bleedDps = Math.max(e.bleedT > 0 ? e.bleedDps || 0 : 0, dps);
+    e.bleedT = dur;
   } else {
-    e.burnT = dur;
     e.burnDps = Math.max(e.burnT > 0 ? e.burnDps || 0 : 0, dps);
+    e.burnT = dur;
   }
 }
 
@@ -513,6 +537,17 @@ function drawKitFx(time) {
   });
   kitFx.forEach((f) => {
     const k = f.life / f.max;
+    if (f.type === "tether") {
+      // the hijack: a green line from the burst to its new pawn
+      if (f.e.dead) return;
+      ctx.strokeStyle = `rgba(90,255,122,${0.9 * k})`;
+      ctx.lineWidth = 2 + 4 * k;
+      ctx.beginPath();
+      ctx.moveTo(f.x, f.y);
+      ctx.lineTo(f.e.x + f.e.w / 2, f.e.y + f.e.h / 2);
+      ctx.stroke();
+      return;
+    }
     if (f.type === "reflect") {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";

@@ -1,12 +1,13 @@
 "use strict";
 // =============================================================================
-// The player: platformer movement, aiming, Paine's kit (energy ball + flame),
-// the auto-firing weapons unlocked through upgrades, damage and drawing.
-// Tetsu's and Sudo's kits are in heroes.js; all base stats in database.js.
+// The player: platformer movement, aiming, the shared weapons unlocked
+// through upgrades (orbit, missiles, stomp, chain), damage and drawing.
+// The IC kits live in heroes.js (Tetsu) and kits.js (Paine, Sudo); base
+// stats in database.js.
 // =============================================================================
 
-// The player object IS its hitbox (x, y, w, h). The 32x48 sprite frame is
-// drawn 2.5x (80x120) around it.
+// The player object IS its hitbox (x, y, w, h). The hero is drawn 80x120
+// around it: a v3.2 80x120 frame 1:1, or an older 32x48 frame at 2.5x.
 // `player`, `stats`, `playerShots` and `missiles` are `let`: in local co-op
 // (coop.js) they point at whichever player a per-player system runs for.
 function makePlayerBody() {
@@ -35,8 +36,6 @@ function makePlayerBody() {
     hp: TUNING.player.maxHp,
     ghostHp: TUNING.player.maxHp,
     heat: TUNING.heat.start,
-    heatLocked: false,
-    flameOn: false,
     invuln: 0,
     shield: 0,
     overdrive: 0,
@@ -90,7 +89,7 @@ function computeStats() {
   };
   stats.dash = {
     damage: 26 + (f >= 2 ? 8 : 0) + (f >= 5 ? 12 : 0),
-    distance: 380 * (f >= 2 ? 1.15 : 1) * (f >= 5 ? 1.15 : 1),
+    distance: byLevel([380, 380, 437, 437, 437, 480, 490], f), // (balance sheet: levels 5-6 trimmed)
     cost: (f >= 3 ? 26 : 35) * costMul,
     guard: f >= 4 ? 3.2 : 2,
     wave: f >= 6,
@@ -151,8 +150,6 @@ function freshPlayer(char) {
     hp: stats.maxHp,
     ghostHp: stats.maxHp,
     heat: TUNING.heat.start,
-    heatLocked: false,
-    flameOn: false,
     invuln: 0,
     shield: 0,
     overdrive: 0,
@@ -182,7 +179,6 @@ function freshPlayer(char) {
   playerShots.length = 0;
   missiles.length = 0;
   slashFx.length = 0;
-  hackFx.length = 0;
   input.buttons.flame = false;
 }
 
@@ -365,7 +361,7 @@ function nearestEnemy(x, y, maxDist, filter) {
   let best = null;
   let bestD = maxDist;
   for (const e of enemies) {
-    if (e.dead || (filter && !filter(e))) continue;
+    if (e.dead || e.hijackT > 0 || (filter && !filter(e))) continue; // (never your hijacked ones)
     const c = centerOf(e);
     const d = Math.hypot(c.x - x, c.y - y);
     if (d < bestD) {
@@ -395,7 +391,7 @@ function updatePlayerShots(dt) {
     let gone = s.life <= 0 || s.y > GROUND_Y + 10 || s.y < camera.y - 200 || s.x < camera.x - 200 || s.x > camera.x + W + 200;
     if (!gone) {
       for (const e of enemies) {
-        if (e.dead || s.hit.has(e) || !circleHitsBox(s.x, s.y, s.r, e)) continue;
+        if (e.dead || e.hijackT > 0 || s.hit.has(e) || !circleHitsBox(s.x, s.y, s.r, e)) continue; // (shots pass through your hijacked ones)
         if (s.kind === "arrow" || s.kind === "em") {
           if (s.kind === "arrow") arrowHit(s, e);
           else emHit(s, e);
@@ -519,7 +515,7 @@ function updateMissiles(dt) {
     m.y += m.vy * dt;
     m.life -= dt;
     if (Math.random() < 0.5) particles.push({ x: m.x, y: m.y, vx: rand(-30, 30), vy: rand(-30, 30), life: 0.25, size: 5, color: "#19f5ff" });
-    const hitEnemy = enemies.find((e) => !e.dead && circleHitsBox(m.x, m.y, 14, e));
+    const hitEnemy = enemies.find((e) => !e.dead && !(e.hijackT > 0) && circleHitsBox(m.x, m.y, 14, e));
     if (hitEnemy || m.life <= 0 || m.y > GROUND_Y) {
       // Small explosion
       enemies.forEach((e) => {
@@ -663,12 +659,41 @@ function drawPlayer(time) {
   }
 }
 
+// The hero's v3.2 sheet (80x120 frames, drawn 1:1) once it has loaded, else null
+function heroArt(ch = CH()) {
+  return ch.art && isReady(IMG[ch.art.img]) ? ch.art : null;
+}
+
+// One walk cell of the current hero's sheet, whichever is loaded (afterimages)
+function heroCell(fx, row) {
+  const art = heroArt();
+  if (art) return { img: IMG[art.img], sx: fx * art.fw, sy: row * art.fh, sw: art.fw, sh: art.fh };
+  const img = isReady(IMG[CH().sprite.img]) ? IMG[CH().sprite.img] : IMG.player;
+  return { img, sx: fx * 32, sy: row * 48, sw: 32, sh: 48 };
+}
+
 // Which sheet / row / frame to draw: walking, or the attack pose while firing
+// (fw/fh: the sheet's frame size; the hero is always drawn 80x120)
 function heroFrame() {
   const landing = introFrame(); // the superhero landing poses
   if (landing) return landing;
   const p = player;
   const ch = CH();
+  const art = heroArt(ch);
+  if (art) {
+    const bow = p.char === "paine" && (p.draw || p.releaseT > 0);
+    const sheet = IMG[art.img];
+    if ((p.fireAnim > 0 || bow) && !p.lookUp) {
+      const fx = bow ? bowFrame() : Math.min(3, Math.floor((1 - p.fireAnim / p.fireAnimMax) * 4));
+      return { sheet, row: ch.sprite.attackRows[p.facing < 0 ? 0 : 1], fx, tint: null, fw: art.fw, fh: art.fh };
+    }
+    // the new sheets have their own idle and airborne frames (the run cycle is 0-3)
+    let fx = p.frameX;
+    if (p.lookUp) fx = 0;
+    else if (!p.onGround) fx = art.air;
+    else if (!p.moving) fx = art.idle;
+    return { sheet, row: p.lookUp ? 3 : p.frameY, fx, tint: null, fw: art.fw, fh: art.fh };
+  }
   let img = IMG[ch.sprite.img];
   let tint = null;
   let own = isReady(img);
@@ -691,7 +716,7 @@ function heroFrame() {
       fx = bowPose ? bowFrame() : Math.min(3, Math.floor((1 - p.fireAnim / p.fireAnimMax) * 4));
     }
   }
-  return { sheet, row, fx, tint };
+  return { sheet, row, fx, tint, fw: 32, fh: 48 };
 }
 
 // The hero sprite with squash & stretch, an air tilt, idle breathing and recoil
@@ -706,7 +731,9 @@ function drawHeroSprite(cx, bottom, time, tintOverride) {
   ctx.translate(cx + recoil, bottom);
   ctx.rotate(tilt);
   ctx.scale(p.sx, p.sy * breathe);
-  const ok = drawFrame(f.sheet, f.fx * 32, f.row * 48, 32, 48, -40, -115, 80, 120, tintOverride || f.tint, f.flip);
+  const fw = f.fw || 32;
+  const fh = f.fh || 48;
+  const ok = drawFrame(f.sheet, f.fx * fw, f.row * fh, fw, fh, -40, -115, 80, 120, tintOverride || f.tint, f.flip);
   ctx.restore();
   return ok;
 }
@@ -716,30 +743,39 @@ function drawAttackFx(cx, time) {
   const p = player;
   const hand = { x: cx + Math.cos(p.fireAngle || 0) * 40, y: p.y + p.h / 2 - 10 + Math.sin(p.fireAngle || 0) * 40 };
   const fresh = p.fireAnim > p.fireAnimMax - 0.09;
+  // The v3.2 art says where its arrow tip, dish, laptop and blade are
+  // (offsets from the feet, facing right); the old sheets keep the old spots
+  const art = (heroArt() || {}).fx || {};
+  const spot = (a, x, y) => (a ? { x: cx + p.facing * a[0], y: p.y + p.h + a[1] } : { x, y });
   if (p.char === "paine") {
+    const tip = spot(art.bow, hand.x, hand.y);
     if (p.draw) {
       // the drawn arrow's tip glows brighter as the string comes back
       const k = Math.min(1, p.draw.t / stats.bow.draw);
-      glow(hand.x, hand.y, 16 + 26 * k, `rgba(255,60,90,${0.4 + 0.5 * k})`);
+      glow(tip.x, tip.y, 16 + 26 * k, `rgba(255,60,90,${0.4 + 0.5 * k})`);
     } else if (p.releaseT > 0.1) {
-      glow(hand.x, hand.y, 34, "rgba(255,200,210,0.8)");
+      glow(tip.x, tip.y, 34, "rgba(255,200,210,0.8)");
     }
   } else if (p.char === "sudo") {
     if (p.fireAnim > 0) {
-      // a little holographic keyboard in front of the hands
-      const kx = cx + p.facing * 34;
-      const ky = p.y + 58;
+      // a little holographic keyboard over the laptop on his arm
+      const keys = spot(art.keys, cx + p.facing * 34, p.y + 58);
+      const kx = keys.x;
+      const ky = keys.y;
       ctx.fillStyle = "rgba(90,255,122,0.25)";
       ctx.fillRect(kx - 18, ky - 6, 36, 12);
       ctx.strokeStyle = "rgba(90,255,122,0.8)";
       ctx.lineWidth = 2;
       ctx.strokeRect(kx - 18, ky - 6, 36, 12);
-      if (fresh) glow(hand.x, hand.y, 40, "rgba(90,255,122,0.9)");
+      const dish = spot(art.muzzle, hand.x, hand.y);
+      if (fresh) glow(dish.x, dish.y, 40, "rgba(90,255,122,0.9)");
     } else if (p.onGround && !p.moving && Math.sin(time * 0.7) > 0.92) {
-      glow(cx + p.facing * 20, p.y + 30, 10, "rgba(25,245,255,0.9)"); // glasses glint
+      const lens = spot(art.glint, cx + p.facing * 20, p.y + 30);
+      glow(lens.x, lens.y, 10, "rgba(25,245,255,0.9)"); // glasses glint
     }
   } else if (p.char === "tetsu" && p.onGround && !p.moving && p.fireAnim <= 0 && Math.sin(time * 0.9) > 0.95) {
-    glow(cx - p.facing * 10, p.y + 20, 14, "rgba(160,250,255,0.9)"); // the blade gleams
+    const hilt = spot(art.gleam, cx - p.facing * 10, p.y + 20);
+    glow(hilt.x, hilt.y, 14, "rgba(160,250,255,0.9)"); // the blade gleams
   }
 }
 
@@ -749,6 +785,7 @@ function drawPlayerProjectiles() {
   const flame = smallOr("fire");
   playerShots.forEach((s) => {
     // Shots parried with the katana keep their look
+    if (s.kind === "packet") return drawPacket2(s); // a parried Lobber packet (enemies2.js)
     if (s.kind === "laser") {
       glow(s.x, s.y, 40, "rgba(255,47,109,0.6)");
       drawCell("projectiles", 2, 16, s.x, s.y, 44, 44, s.angle);
@@ -798,6 +835,31 @@ function drawPlayerProjectiles() {
         ctx.restore();
       }
       if (Math.random() < 0.25) drawCell("fx2", 3, 32, s.x + rand(-10, 10), s.y + rand(-s.r, s.r), 28, 28, rand(0, 6));
+      return;
+    }
+    // Enemy shots parried back (Monoblade / katana) keep the look they came in with
+    if (s.kind === "shuriken") {
+      if (s.spin === undefined) s.spin = 0; // (the parry copies no spin)
+      drawShuriken(s); // null.js
+      return;
+    }
+    if (s.kind === "meteor") {
+      glow(s.x, s.y, 70, "rgba(255,90,20,0.6)");
+      if (flame) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.angle - Math.PI / 2);
+        ctx.drawImage(flame, -36, -66, 72, 100);
+        ctx.restore();
+      }
+      return;
+    }
+    if (s.kind === "ring") {
+      glow(s.x, s.y, 34, "rgba(25,245,255,0.75)");
+      ctx.fillStyle = "#e9ffff";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 0.6, 0, Math.PI * 2);
+      ctx.fill();
       return;
     }
     glow(s.x, s.y, 55 * (s.r / 22), "rgba(40,160,255,0.5)");

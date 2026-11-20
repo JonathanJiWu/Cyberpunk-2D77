@@ -21,7 +21,6 @@ function startIntro(kind = "drop") {
   intro.t = 0;
   // glitched out this long before the drop ("join": co-op player 2 dropping in)
   intro.downFor = kind === "join" ? 0.35 : coopActive() ? COOP.respawnDelay : 1.3;
-  p.flameOn = false;
   p.dash = null;
   p.vx = p.vy = 0;
   input.buttons.flame = false;
@@ -95,6 +94,7 @@ function updateIntro(dt) {
         intro.active = false;
         p.vy = 0;
         say(intro.kind === "respawn" ? "respawn" : "start", null, true);
+        if (intro.kind === "drop" && coop.active === P1()) narrator.runStart(); // THE LEGEND's line for the run
       }
       break;
   }
@@ -134,13 +134,14 @@ function heroLanding() {
 
 // What the hero sheet should show during the drop (or null)
 function introFrame() {
-  const sheet = isReady(IMG.heroLanding2) ? IMG.heroLanding2 : IMG.heroLanding;
+  const big = isReady(IMG.heroLanding3); // v3.2: 80x120 frames
+  const sheet = big ? IMG.heroLanding3 : isReady(IMG.heroLanding2) ? IMG.heroLanding2 : IMG.heroLanding;
   if (!intro.active || !isReady(sheet)) return null;
   let fx;
   if (intro.phase === "leap") fx = 0;
   else if (intro.phase === "land") fx = intro.t < 0.12 ? 1 : intro.t < 0.75 ? 2 : 3;
   else return null;
-  return { sheet, row: LANDING_ROWS[player.char] || 0, fx, tint: null, flip: player.facing < 0 };
+  return { sheet, row: LANDING_ROWS[player.char] || 0, fx, tint: null, flip: player.facing < 0, fw: big ? 80 : 32, fh: big ? 120 : 48 };
 }
 
 // ------------------------------------------------------------------ Lives ---
@@ -152,6 +153,7 @@ function resetLives() {
 // HP hit zero: roll back to the last stable build, or game over
 function playerDown() {
   if (intro.active) return;
+  resetKitState(); // e.g. a Time Dilation still running (kits.js)
   if (game.lives > 1) {
     game.lives--;
     game.livesLost++;
@@ -178,7 +180,6 @@ function playerDown() {
     });
     p.hp = p.ghostHp = stats.maxHp;
     p.heat = Math.max(p.heat, 40);
-    p.heatLocked = false;
     p.invuln = 3;
     p.lowHpSaid = false;
     startIntro("respawn");
@@ -200,15 +201,13 @@ function switchCharacter(id) {
     settings.character = id;
     applySettings();
   }
+  resetKitState(); // the old kit's Time Dilation / bow draw (kits.js)
   p.char = id;
-  p.flameOn = false;
   p.dash = null;
   p.guard = 0;
   p.combo = 0;
-  p.heatLocked = false;
   input.buttons.flame = false;
   input.specialQueued = false;
-  sfx.flame.stopLoop();
   computeStats();
   p.hp = p.ghostHp = Math.max(1, Math.round(ratio * stats.maxHp));
   const pc = centerOf(p);

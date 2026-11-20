@@ -547,7 +547,9 @@ function updateNullReal(e, dt) {
         nullState(e, "hop");
         break;
       }
-      if (e.onGround && Math.random() < dt * 0.45) bossJump(e, 1150); // style hops...
+      if (navBusy(e)) {
+        // (mid-route: no style hops, the jump is planned)
+      } else if (e.onGround && Math.random() < dt * 0.45) bossJump(e, 1150); // style hops...
       else if (!e.onGround && e.vy > -150 && e.airJumps > 0 && Math.random() < dt * 0.8) bossJump(e, 1000); // ...and double jumps
       if (!blind && e.stateTime > NULLB.think[P] && e.onGround) chooseNullAttack(e);
       else if (Math.random() < dt * 0.1) bossTaunt(e);
@@ -1008,7 +1010,8 @@ function resetNull() {
 }
 
 // ------------------------------------------------------------- Drawing ------
-const nullImg = () => (isReady(IMG.nullBoss) ? IMG.nullBoss : IMG.nullFallback);
+// the v3.2 sheet, then the v3.1 one, then the one painted below
+const nullImg = () => (isReady(IMG.nullBoss2) ? IMG.nullBoss2 : isReady(IMG.nullBoss) ? IMG.nullBoss : IMG.nullFallback);
 
 function nullFrame(e) {
   switch (e.state) {

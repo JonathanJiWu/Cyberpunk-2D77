@@ -9,7 +9,6 @@
 
 const CH = () => CHARACTERS[player.char] || CHARACTERS.paine;
 let slashFx = []; // blade arcs (per player in co-op, see coop.js)
-let hackFx = []; // overload circles
 
 // Smallest signed angle between two directions
 const angleDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
@@ -64,7 +63,7 @@ function primaryAim(autoRange, projSpeed) {
   return null;
 }
 
-// Specials: Paine holds the flame; Tetsu and Sudo trigger on a press
+// Specials trigger on a press (special.hold would make one hold-to-use; no IC's is)
 function specialPressed() {
   const p = player;
   const held = flameHeld();
@@ -142,11 +141,10 @@ function updateDash(dt) {
   const D = stats.dash;
   p.specialCd -= dt;
   p.guard = Math.max(0, p.guard - dt);
-  if (p.heatLocked && p.heat >= D.cost) p.heatLocked = false;
   const pressed = specialPressed();
   let want = pressed;
   let dir = null;
-  if (!want && settings.autoFlame && !p.dash) {
+  if (!want && settings.autoFlame && !bossLocked() && !p.dash) {
     // Auto: dash into a nearby group (or at whatever is about to hit you)
     const pc = centerOf(p);
     const e = nearestEnemy(pc.x, pc.y, D.distance * 0.9, onScreen);

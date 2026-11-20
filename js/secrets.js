@@ -74,10 +74,14 @@ const moonState = { done: false, glow: 0 };
 const doves = [];
 const slashes = [];
 
+const breachRun = { datamined: 0 }; // per-run breach bookkeeping
+const KISS_HEAL_MAX = 30; // HP a run the billboard's kisses can heal
+
 function resetSecretsRun() {
   runSecrets.clear();
+  breachRun.datamined = 0;
   Object.assign(weather, { raining: false, timer: EASTER.rain.firstAt, amount: 0, idle: 0, tearsDone: false });
-  Object.assign(holo, { look: 0, done: false, pulse: 0, act: "idle", actT: 0, kissCd: 3 });
+  Object.assign(holo, { look: 0, done: false, pulse: 0, act: "idle", actT: 0, kissCd: 3, healed: 0 });
   kisses.length = 0;
   ripper.hold = 0;
   terminals.forEach((t) => Object.assign(t, { hold: 0, cooldown: 0 }));
@@ -298,7 +302,7 @@ function updateChrome(dt) {
     p.mantisCd -= dt;
     if (p.mantisCd <= 0) {
       const range = 170;
-      const targets = enemies.filter((e) => !e.dead && circleHitsBox(pc.x, pc.y, range, e));
+      const targets = enemies.filter((e) => !e.dead && !(e.hijackT > 0) && circleHitsBox(pc.x, pc.y, range, e));
       if (targets.length) {
         const sides = new Set();
         targets.forEach((e) => {
@@ -385,12 +389,12 @@ const BREACH = {
   holdRepeat: 0.11, // s between auto-typed chunks while a key, button or finger is held
 };
 const BREACH_STEPS = ["recon", "exploit", "crack", "root", "payload"];
-const BREACH_HOSTS = ["kabuki-node-77", "arasaka-edge-04", "militech-dev-03", "biotechnica-lab-09"];
-const BREACH_ICE = ["HELLHOUND", "RAVEN", "KRAKEN", "WISP", "SABERTOOTH"];
+const BREACH_HOSTS = ["goldhorn-edge-04", "verity-feed-03", "calm-bureau-09", "adfarm-node-77"];
+const BREACH_ICE = ["AUDITOR", "COMPLIANCE", "GAG ORDER", "PAYWALL", "LIQUIDATOR"];
 const BREACH_DECOYS = [
   { port: "22/tcp", svc: "ssh", ver: "OpenSSH 9.9p1", fail: "OpenSSH is patched. Someone actually read the changelog." },
   { port: "80/tcp", svc: "http", ver: 'nginx 1.27 ("works on my machine")', fail: "HTTP 418 I'm a teapot. It refuses to brew your exploit." },
-  { port: "443/tcp", svc: "https", ver: "ArasakaWeb 4.2 (TLS 1.7)", fail: "Cert pinned harder than a corpo exec's ego." },
+  { port: "443/tcp", svc: "https", ver: "GoldhornWeb 4.2 (TLS 1.7)", fail: "Cert pinned harder than a board member's ego." },
   { port: "3306/tcp", svc: "mysql", ver: "MySQL 9.4 (prod, no backups)", fail: "Access denied for user 'you'@'%'. Rude." },
   { port: "6379/tcp", svc: "redis", ver: "Redis 8.0 (protected-mode yes)", fail: "protected-mode yes. A sysadmin did their job today." },
   { port: "8080/tcp", svc: "jenkins", ver: "Jenkins 3.1 (build failing since 2061)", fail: "Jenkins is already broken. You can't break it more." },
@@ -407,11 +411,11 @@ const BREACH_PASSWORDS = [
   { pw: "trustno1", joke: "and yet, here we are" },
   { pw: "goat666", joke: "a Demon Goat fan, apparently" },
 ];
-const BREACH_WORDS = ["123456", "password", "qwerty", "iloveyou", "dragon", "monkey", "arasaka4ever", "chooms", "preem", "samurai", "nova2077", "delamain", "admin", "correcthorse", "johnny", "letmein1"];
+const BREACH_WORDS = ["123456", "password", "qwerty", "iloveyou", "dragon", "monkey", "goldhorn4ever", "chooms", "preem", "samurai", "nova2077", "shareholder1", "admin", "correcthorse", "trustme", "letmein1"];
 const BREACH_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const BREACH_DAEMONS = [
   { file: "short_circuit.daemon", size: "2.0M", name: "SHORT CIRCUIT", desc: "EMP: fries every bot on screen" },
-  { file: "datamine.daemon", size: "7.7M", name: "DATAMINE", desc: "siphons their XP: +1 LEVEL" },
+  { file: "datamine.daemon", size: "7.7M", name: "DATAMINE", desc: "siphons their XP: +1 LEVEL (halves each time)" },
   { file: "overclock.daemon", size: "1.0M", name: "OVERCLOCK", desc: "overdrive: 10 s of rapid fire" },
 ];
 const BREACH_WARNINGS = [
@@ -519,7 +523,6 @@ function openBreach(term) {
     heat: "",
     status: "",
   });
-  sfx.flame.stopLoop();
   clearInput();
   breachTermEl.textContent = "";
   breachFlashEl.hidden = true;
@@ -999,8 +1002,11 @@ function breachReward(reward) {
   const pc = centerOf(player);
   if (reward === 0) applyPowerup("emp");
   else if (reward === 1) {
-    gainXp(xpForLevel(progress.level + progress.pending));
-    popup("DATAMINE: +1 LEVEL", pc.x, player.y - 40, "#5aff7a", 26, 1.6);
+    // each DATAMINE in a run siphons half as much as the last: the vaults
+    // notice (it used to be a free level every minute, game clock paused)
+    const share = 1 / 2 ** breachRun.datamined++;
+    gainXp(Math.round(xpForLevel(progress.level + progress.pending) * share));
+    popup(share === 1 ? "DATAMINE: +1 LEVEL" : `DATAMINE: +1/${1 / share} LEVEL`, pc.x, player.y - 40, "#5aff7a", 26, 1.6);
   } else {
     player.overdrive = 10;
     popup("OVERCLOCK", pc.x, player.y - 40, "#ffe14d", 28, 1.6);
@@ -1423,7 +1429,10 @@ function updateBillboard(dt, pc) {
     if (d < 46 && k.t > 0.4) {
       kisses.splice(i, 1);
       burst(k.x, k.y, 8, "#ff8fe0", 200);
-      player.hp = Math.min(stats.maxHp, player.hp + 1);
+      if ((holo.healed || 0) < KISS_HEAL_MAX) {
+        holo.healed = (holo.healed || 0) + 1;
+        player.hp = Math.min(stats.maxHp, player.hp + 1);
+      }
       if (Math.random() < 0.3) popup("<3", k.x, k.y - 20, "#ff8fe0", 22, 0.8);
     } else if (k.t > k.life) kisses.splice(i, 1);
   }
@@ -1441,7 +1450,7 @@ function billboardLips() {
 }
 
 function drawBillboard(time) {
-  const img = IMG.billboard;
+  const img = isReady(IMG.billboard2) ? IMG.billboard2 : IMG.billboard; // v3.2 art, else the older sheet
   const r = billboardRect();
   const x = r.x + holo.glitch;
   const hue = (time * 40) % 360;
@@ -1504,7 +1513,7 @@ function drawBillboard(time) {
     ctx.globalAlpha = 1;
   }
   // the ad copy
-  const tag = signSprite("COMPANION 2D77", "#ff8fe0");
+  const tag = signSprite("VERITY COMPANION", "#ff8fe0");
   const sub = signSprite("EVERYTHING YOU WANT TO HEAR", "#19f5ff");
   ctx.imageSmoothingEnabled = true;
   ctx.globalAlpha = 0.85;
@@ -1571,12 +1580,12 @@ function drawSecretsBack(time) {
 // Just before the player sprite: Sandevistan afterimages
 function drawPlayerTrail() {
   const colors = ["rgba(90,255,122,0.85)", "rgba(255,225,77,0.85)", "rgba(255,47,214,0.85)", "rgba(25,245,255,0.85)"];
-  const img = isReady(IMG[CH().sprite.img]) ? IMG[CH().sprite.img] : IMG.player;
   player.trail.forEach((t, i) => {
     const cx = t.x + player.w / 2;
     ctx.globalAlpha = Math.max(0, 0.55 * (1 - t.t / 0.4));
     const color = t.dash ? "rgba(255,36,87,0.85)" : colors[i % colors.length];
-    drawFrame(img, t.frameX * 32, t.frameY * 48, 32, 48, cx - 40, t.y + player.h - 115, 80, 120, color);
+    const c = heroCell(t.frameX, t.frameY); // (the v3.2 80x120 sheet once loaded)
+    drawFrame(c.img, c.sx, c.sy, c.sw, c.sh, cx - 40, t.y + player.h - 115, 80, 120, color);
   });
   ctx.globalAlpha = 1;
 }

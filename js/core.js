@@ -81,9 +81,30 @@ loadImage("widow", "img/widow.png"); // 6 rows x 4 frames of 32x48 (rows 4/5: bo
 loadImage("hackerman", "img/hackerman.png"); // same layout (rows 4/5: EM projector)
 loadImage("heroLanding2", "img/hero-landing2.png"); // rows: widow, tetsu, hackerman
 loadImage("portraits2", "img/portraits2.png"); // 3 portraits of 48x48
+// v3.2: the ICs redrawn (tools/art_ics.py) at 80x120 a frame, drawn 1:1; the
+// 32x48 sheets above stay as fallbacks while these load (CHARACTERS[id].art)
+loadImage("widow3", "img/widow3.png"); // 6 rows x 6 frames of 80x120 (cols 4/5: idle, airborne)
+loadImage("tetsu3", "img/tetsu3.png"); // same layout
+loadImage("hackerman3", "img/hackerman3.png"); // same layout
+loadImage("heroLanding3", "img/hero-landing3.png"); // rows paine, tetsu, sudo x 4 frames of 80x120
+loadImage("portraits3", "img/portraits3.png"); // 3 portraits of 64x64
+// The portrait sheet to use and its cell size: the 64px one once it has loaded
+const portraitSheet = () => (isReady(IMG.portraits3) ? ["portraits3", 64] : [isReady(IMG.portraits2) ? "portraits2" : "portraits", 48]);
 loadImage("fx2", "img/fx2.png"); // 8 cells of 32x32: arrows, EM, glitch, bleed, heat, reflect
 loadImage("xpHardware", "img/xp-hardware.png"); // rows RAM / NVMe / CPU x 4 shine frames
 loadImage("nullBoss", "img/null.png"); // 14 frames of 64x96
+// v3.2 enemies (tools/art_enemies.py)
+loadImage("forkbomb", "img/forkbomb.png"); // 6 frames of 28x28: roll x4, unfurl, leap
+loadImage("lobber", "img/lobber.png"); // 4 frames of 48x40: idle, walk x2, fire
+loadImage("monolith", "img/monolith.png"); // 7 frames of 64x64 (armored, walk x2, idle, slam x2, charge) + a row of plates
+loadImage("hotfix", "img/hotfix.png"); // 6 frames of 36x28: hover x4, tether x2
+loadImage("ratelimiter", "img/ratelimiter.png"); // 4 frames of 36x72: idle, walk x2, pulse
+// v3.2: redrawn NPCs (tools/art_npcs.py). The older sheets above stay as fallbacks.
+loadImage("legend2", "img/legend2.png"); // THE LEGEND's talking head: 6 frames of 96x96 (shown via CSS)
+loadImage("legendBust", "img/legend-bust.png"); // THE LEGEND, 192x240 bust
+loadImage("nullBoss2", "img/null2.png"); // NULL, same layout as null.png
+loadImage("billboard2", "img/billboard2.png"); // the hologram ad, same layout as billboard.png
+loadImage("ninja2", "img/ninja2.png"); // Cyber Ninja, same layout as ninja.png
 // Neon city + cyberpunk enemy re-skins
 loadImage("cityMid", "img/city-mid.png");
 loadImage("facade", "img/facade.png"); // 2 tiles of 64x64
@@ -103,6 +124,9 @@ loadImage("endGame", "img/endgame.jpg");
 loadImage("wasd", "img/wasd.png");
 loadImage("fire", "img/fire.png");
 loadImage("blueFlame", "img/blue-flame.png");
+// The big select busts (192x240), for the co-op join screen: IMG.bust_paine...
+// Only the ICs that have one (ch.bust); js/select.js falls back to the portrait.
+CHARACTER_ORDER.forEach((id) => CHARACTERS[id].bust && loadImage("bust_" + id, CHARACTERS[id].bust));
 
 // fire.png and blue-flame.png are ~900px wide but drawn tiny; shrink them once
 // (and let the full-size decoded images go: ~7 MB of memory).
