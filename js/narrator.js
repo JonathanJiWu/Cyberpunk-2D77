@@ -439,8 +439,18 @@ const narrator = {
     return this.variant("legend.open");
   },
 
-  levelUpOpen(choices) {
+  // A screen that opens starts fresh: nothing left over from the last one
+  // (a pick's line, a queued explanation) holds his first line back
+  fresh(el) {
+    const st = this.state(el);
     clearTimeout(this.focusTimer);
+    clearTimeout(st.timer);
+    st.pending = null;
+    st.holdUntil = 0;
+  },
+
+  levelUpOpen(choices) {
+    this.fresh(levelUpLegend);
     this.say(this.offerLine(choices), null, { el: levelUpLegend, priority: 2, hold: 900, force: true, context: { screen: "levelup", event: "open", cards: choices.map((c) => c.id), rare: choices.some((c) => c.rare), level: progress.level } });
     // Touch: once a session (unless they found the long press already), how
     // to hear about a card, after the reaction
@@ -506,7 +516,7 @@ const narrator = {
 
   // ------------------------------------------------------------- Loadout --
   loadoutOpen() {
-    clearTimeout(this.focusTimer);
+    this.fresh(loadoutLegend);
     this.say(this.variant("legend.loadout.open"), null, { el: loadoutLegend, priority: 2, hold: 800, force: true, context: { screen: "loadout", event: "open" } });
   },
   loadoutFocus(id, how) {
@@ -526,6 +536,7 @@ const narrator = {
 
   // -------------------------------------------------------------- Respec --
   respecOpen() {
+    this.fresh(respecLegend);
     this.say(this.variant("legend.respec.open"), null, { el: respecLegend, priority: 2, force: true, context: { screen: "respec", event: "open" } });
   },
   respecReset() {
