@@ -1833,6 +1833,47 @@ const fastForward = (page, seconds, bot) =>
     await context.close();
   });
 
+  await test("parried enemy shots keep their look: shuriken, meteors and rings aren't drawn as the old energy ball", async () => {
+    const { context, page, problems } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
+    await startRun(page, { settings: { character: "tetsu", autoFire: false, autoFlame: false } });
+    const r = await page.evaluate(() => {
+      const blue = smallOr("blueFlame");
+      const out = {};
+      const realShuriken = drawShuriken;
+      let shurikenCalls = 0;
+      drawShuriken = (s) => (shurikenCalls++, realShuriken(s));
+      const draw = ctx.drawImage.bind(ctx);
+      let blueDraws = 0;
+      ctx.drawImage = function (img, ...rest) {
+        if (blue && img === blue) blueDraws++;
+        return draw(img, ...rest);
+      };
+      const pc = centerOf(player);
+      ["shuriken", "meteor", "ring"].forEach((kind) => {
+        playerShots.length = 0;
+        playerShots.push({ x: pc.x + 200, y: pc.y, vx: 1100, vy: 0, r: 16, angle: 0, life: 1, damage: 5, pierce: 0, hit: new Set(), kind });
+        blueDraws = 0;
+        drawPlayerProjectiles();
+        out[kind] = blueDraws;
+      });
+      out.shurikenCalls = shurikenCalls;
+      // the player's own default shot still uses the energy ball
+      playerShots.length = 0;
+      playerShots.push({ x: pc.x + 200, y: pc.y, vx: 1100, vy: 0, r: 22, angle: 0, life: 1, damage: 5, pierce: 0, hit: new Set() });
+      blueDraws = 0;
+      drawPlayerProjectiles();
+      out.ball = blueDraws;
+      ctx.drawImage = draw;
+      drawShuriken = realShuriken;
+      playerShots.length = 0;
+      return out;
+    });
+    assert(r.shuriken === 0 && r.meteor === 0 && r.ring === 0 && r.shurikenCalls === 1, "parried shots drawn as the energy ball: " + JSON.stringify(r));
+    assert(r.ball === 1, "the default shot lost its look: " + JSON.stringify(r));
+    assert(!problems.length, problems.join("; "));
+    await context.close();
+  });
+
   await test("Ronin: Mirror Steel reflects 15% of incoming damage, scaling with level, without loops", async () => {
     const { context, page } = await open(browser, url, { viewport: { width: 1280, height: 720 } });
     await startRun(page, { settings: { character: "tetsu" } });
@@ -4532,11 +4573,16 @@ const fastForward = (page, seconds, bot) =>
       const drone = Object.assign(spawnEnemy("drone", roof.x + 300, roof.y - 300, { elite: false }), { hp: 1e6, maxHp: 1e6, shotCd: 0 });
       enemyShots.length = 0;
       a.camo = 30;
+      hold();
+      step(1);
+      // (checked now: a blinded walker wanders, and a long random wander can
+      // legitimately bring it nearer to player 2, who it then targets)
+      const target = blind.coopTarget === c1;
       for (let i = 0; i < 60 * 4; i++) {
         hold();
         step(1);
       }
-      out.camo = { target: blind.coopTarget === c1, moves: blind.nav ? blind.nav.jumps : 0, floor: navNodeOf(blind.standingOn), shots: enemyShots.filter((s) => s.owner === drone).length };
+      out.camo = { target, moves: blind.nav ? blind.nav.jumps : 0, floor: navNodeOf(blind.standingOn), shots: enemyShots.filter((s) => s.owner === drone).length };
       a.camo = 0;
       return out;
     });

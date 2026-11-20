@@ -367,7 +367,7 @@ function padGameplay(p) {
   g.zap = held("RT") || held("RB") || held("X");
   g.jump = held("A");
   if (press("A")) input.jumpQueued = true;
-  // Specials: Paine's flame burns while held, Tetsu's dash and Sudo's hack fire on a press
+  // Specials fire on a press (a hold-to-use special, special.hold, would be held)
   const ch = CHARACTERS[player.char] || CHARACTERS.paine;
   if (ch.special.hold) g.flame = held("LT") || held("LB") || held("B");
   else {
