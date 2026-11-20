@@ -389,12 +389,12 @@ const BREACH = {
   holdRepeat: 0.11, // s between auto-typed chunks while a key, button or finger is held
 };
 const BREACH_STEPS = ["recon", "exploit", "crack", "root", "payload"];
-const BREACH_HOSTS = ["kabuki-node-77", "arasaka-edge-04", "militech-dev-03", "biotechnica-lab-09"];
-const BREACH_ICE = ["HELLHOUND", "RAVEN", "KRAKEN", "WISP", "SABERTOOTH"];
+const BREACH_HOSTS = ["goldhorn-edge-04", "verity-feed-03", "calm-bureau-09", "adfarm-node-77"];
+const BREACH_ICE = ["AUDITOR", "COMPLIANCE", "GAG ORDER", "PAYWALL", "LIQUIDATOR"];
 const BREACH_DECOYS = [
   { port: "22/tcp", svc: "ssh", ver: "OpenSSH 9.9p1", fail: "OpenSSH is patched. Someone actually read the changelog." },
   { port: "80/tcp", svc: "http", ver: 'nginx 1.27 ("works on my machine")', fail: "HTTP 418 I'm a teapot. It refuses to brew your exploit." },
-  { port: "443/tcp", svc: "https", ver: "ArasakaWeb 4.2 (TLS 1.7)", fail: "Cert pinned harder than a corpo exec's ego." },
+  { port: "443/tcp", svc: "https", ver: "GoldhornWeb 4.2 (TLS 1.7)", fail: "Cert pinned harder than a board member's ego." },
   { port: "3306/tcp", svc: "mysql", ver: "MySQL 9.4 (prod, no backups)", fail: "Access denied for user 'you'@'%'. Rude." },
   { port: "6379/tcp", svc: "redis", ver: "Redis 8.0 (protected-mode yes)", fail: "protected-mode yes. A sysadmin did their job today." },
   { port: "8080/tcp", svc: "jenkins", ver: "Jenkins 3.1 (build failing since 2061)", fail: "Jenkins is already broken. You can't break it more." },
@@ -411,7 +411,7 @@ const BREACH_PASSWORDS = [
   { pw: "trustno1", joke: "and yet, here we are" },
   { pw: "goat666", joke: "a Demon Goat fan, apparently" },
 ];
-const BREACH_WORDS = ["123456", "password", "qwerty", "iloveyou", "dragon", "monkey", "arasaka4ever", "chooms", "preem", "samurai", "nova2077", "delamain", "admin", "correcthorse", "johnny", "letmein1"];
+const BREACH_WORDS = ["123456", "password", "qwerty", "iloveyou", "dragon", "monkey", "goldhorn4ever", "chooms", "preem", "samurai", "nova2077", "shareholder1", "admin", "correcthorse", "trustme", "letmein1"];
 const BREACH_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const BREACH_DAEMONS = [
   { file: "short_circuit.daemon", size: "2.0M", name: "SHORT CIRCUIT", desc: "EMP: fries every bot on screen" },
@@ -1514,7 +1514,7 @@ function drawBillboard(time) {
     ctx.globalAlpha = 1;
   }
   // the ad copy
-  const tag = signSprite("COMPANION 2D77", "#ff8fe0");
+  const tag = signSprite("VERITY COMPANION", "#ff8fe0");
   const sub = signSprite("EVERYTHING YOU WANT TO HEAR", "#19f5ff");
   ctx.imageSmoothingEnabled = true;
   ctx.globalAlpha = 0.85;

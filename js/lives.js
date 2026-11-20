@@ -95,6 +95,7 @@ function updateIntro(dt) {
         intro.active = false;
         p.vy = 0;
         say(intro.kind === "respawn" ? "respawn" : "start", null, true);
+        if (intro.kind === "drop" && coop.active === P1()) narrator.runStart(); // THE LEGEND's line for the run
       }
       break;
   }
