@@ -408,7 +408,7 @@ const ENEMY_TYPES = {
     w: 50,
     h: 50,
     sheet: { img: "forkbomb", fw: 28, fh: 28, frames: 4, scale: 2.3, flip: true, fps: 12 },
-    nav: { jump: 1300, air: 520, think: 0.12 }, // a springy ball: big hops, sharp air control
+    nav: { jump: 1300, double: 900, air: 520, think: 0.12 }, // a springy ball: big hops, a bounce off thin air, sharp air control
     bomb: { leapRange: 330, windup: 0.32, leapSpeed: 900, leapReach: 860, leapDamage: 11, cooldown: [1.3, 2.1], childSize: 0.66, childHp: 0.5 },
     maxAlive: 8,
     from: 35,
@@ -431,7 +431,7 @@ const ENEMY_TYPES = {
     h: 74,
     kbResist: 0.6,
     sheet: { img: "lobber", fw: 48, fh: 40, frames: 3, scale: 2.2, flip: true, fps: 7 },
-    nav: { jump: 1050, air: 300, think: 0.4 }, // squat: middling hops
+    nav: { jump: 1050, air: 300, think: 0.4, grapple: { up: 430, side: 320, reel: 520, aim: 0.5 } }, // squat: middling hops, a grapple line for the rest
     shot: { kind: "packet", damage: 12, blast: 100, cooldown: [3.4, 4.8], windup: 0.6, lead: 0.9 },
     range: [420, 800],
     maxAlive: 2,
@@ -475,7 +475,7 @@ const ENEMY_TYPES = {
     h: 150,
     kbResist: 0.5,
     sheet: { img: "ratelimiter", fw: 36, fh: 72, frames: 2, scale: 2.2, flip: false, rowLeft: 0, rowRight: 0, fps: 5 },
-    nav: { jump: 1100, air: 280, think: 0.35 },
+    nav: { jump: 1100, double: 1000, air: 360, think: 0.35 }, // telescoping legs: a second push in mid-air
     field: { radius: 260, pulse: 430, every: 5.5, eliteEvery: 4, throttle: 0.5, collapse: 2.5, approach: 210 },
     maxAlive: 1,
     from: 125,
@@ -498,7 +498,7 @@ const ENEMY_TYPES = {
     h: 150,
     kbResist: 0, // can't be knocked back
     sheet: { img: "monolith", fw: 64, fh: 64, frames: 2, scale: 2.6, flip: true, fps: 3 },
-    nav: { jump: 1000, air: 220, think: 0.5 }, // heavy: short, slow climbs
+    nav: { jump: 950, air: 220, think: 0.5, grapple: { up: 430, side: 320, reel: 420, aim: 0.6 } }, // heavy: short hops, winches itself up the rest
     armor: { flat: 9, plates: [70, 50, 45] }, // front, back, crown
     slam: { range: 460, windup: 0.85, damage: 14, cooldown: [4.2, 5.6], speed: 700, reach: 680 },
     charge: { range: [230, 600], windup: 0.55, speed: 640, time: 0.45, cooldown: [5, 7] },

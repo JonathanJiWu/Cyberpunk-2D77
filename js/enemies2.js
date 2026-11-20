@@ -131,6 +131,18 @@ function walk2(e, dt, want, momentum) {
   return landed;
 }
 
+// Staying put on purpose (a Lobber holding its range, a tower at its spot):
+// its route's goal is the floor it stands on, so the navigation doesn't
+// take it for stuck; the next chase picks a new goal
+function holdHere2(e) {
+  const n = e.nav;
+  if (!n || !e.onGround || n.phase !== NAV_RUN) return;
+  n.node = n.goal = navNodeOf(e.standingOn);
+  n.edge = -1;
+  n.stuck = n.lost = 0;
+  n.best = Infinity;
+}
+
 // ------------------------------------------------------------ Fork Bomb -----
 function updateForkBomb(e, dt, t, wander, busy) {
   const B = e.def.bomb;
@@ -185,6 +197,12 @@ function forkLeap(e, t) {
   synth.play("forkLeap", { volume: 0.7 });
 }
 
+function pawnCount2() {
+  let n = 0;
+  for (let i = 0; i < enemies.length; i++) if (!enemies[i].dead && enemies[i].hijackT > 0) n++;
+  return n;
+}
+
 // killEnemy(): fork() - two child processes pop out (three from an elite)
 function forkChildren(e) {
   const B = e.def.bomb;
@@ -208,7 +226,7 @@ function forkChildren(e) {
     k.stateT = 0;
     k.dashCd = rand(0.6, 1.1);
     k.hitCd = 0.35;
-    hijackInherit(e, k); // a hijacked parent's children are on your side too
+    if (pawnCount2() < hijackCap()) hijackInherit(e, k); // a hijacked parent's children are on your side too (within the cap)
   }
   popup("fork()", cx, e.y - 10, "#ff2fd6", 20, 0.7);
   synth.play("forkSplit");
@@ -227,31 +245,36 @@ function updateLobber(e, dt, t, wander, busy) {
   if (e.state === "plant") {
     if (busy) e.state = "move"; // interrupted: the packet in the tube fizzles
     else if ((e.stateT -= dt) <= 0) {
+      holdHere2(e);
       lobberLaunch(e);
       e.state = "recoil";
       e.stateT = 0.4;
       e.firedT = 0.25;
     }
   } else if (e.state === "recoil") {
+    holdHere2(e);
     if ((e.stateT -= dt) <= 0) e.state = "move";
   } else {
     // Where to stand: a perch above the street if there's one in range, else
     // 420-800 px away on whatever floor
-    if (e.perch && (adx < 250 || adx > 1150 || (e.perchT += dt) > 7)) {
+    let onPerch = !!e.perch && e.onGround && e.standingOn === e.perch;
+    if (e.perch && (adx < 250 || adx > 1150 || (!onPerch && (e.perchT += dt) > 7))) {
       e.perch = null;
+      onPerch = false;
       e.perchCd = rand(4, 6);
     }
     if (!e.perch && !busy && e.perchCd <= 0 && e.onGround && !navBusy(e) && adx < far + 200) {
       e.perchCd = rand(2.5, 4);
       if (lobberPerch(e, tcx)) e.perchT = 0;
     }
-    const onPerch = e.perch && e.onGround && e.standingOn === e.perch;
     if (e.stun > 0) want = 0;
     else if (wander) want = chase2(e, dt, t, wander);
-    else if (e.perch && !onPerch) want = chase2(e, dt, e.perchBody, null);
-    else if (onPerch) want = 0;
+    else if (e.perch) want = chase2(e, dt, e.perchBody, null); // to its perch, then it stands there
     else if (navBusy(e) || adx > far) want = chase2(e, dt, t, null);
-    else if (adx < near) want = -Math.sign(dx) * e.def.speed * e.slowMul; // back off (the ledge stops it)
+    else {
+      holdHere2(e); // in range: it stays on this floor
+      if (adx < near) want = -Math.sign(dx) * e.def.speed * e.slowMul; // back off (the ledge stops it)
+    }
     // fire: plant the legs, mark the spot, then the packet goes up
     if (!busy && onScreen(e)) e.shotCd -= dt * e.slowMul;
     if (!busy && e.shotCd <= 0 && e.onGround && !navBusy(e) && adx < 1250) {
@@ -820,8 +843,11 @@ function updateRateLimiter(e, dt, t, wander, busy) {
   else if (wander) want = chase2(e, dt, t, wander);
   else if (!busy) {
     if (navBusy(e) || !sameFloor2(e, t)) want = chase2(e, dt, t, null);
-    else if (adx > F.approach) want = Math.sign(dx) * e.def.speed * sm;
-    else if (adx < 110) want = -Math.sign(dx) * e.def.speed * sm * 0.6;
+    else {
+      holdHere2(e);
+      if (adx > F.approach) want = Math.sign(dx) * e.def.speed * sm;
+      else if (adx < 110) want = -Math.sign(dx) * e.def.speed * sm * 0.6;
+    }
   }
   walk2(e, dt, want, false);
   if (!navAirborne(e)) e.facing = dx > 0 ? 1 : -1;
@@ -852,7 +878,12 @@ function collapseField2(e) {
 // use the special. A hijacked Rate Limiter's field slows enemies instead.
 let throttleDt = 0;
 const THROTTLE_LINES = ["429 THROTTLED", "P1 429 THROTTLED", "P2 429 THROTTLED"];
+function anyThrottled2() {
+  for (let i = 0; i < coop.players.length; i++) if (coop.players[i].player.throttleT > 0) return true;
+  return false;
+}
 function applyFields2(dt) {
+  if (!limiters2.length && !anyThrottled2()) return;
   const real = dt / Math.max(0.05, enemyTimeScale()); // (players live in real time)
   throttleDt = real;
   for (let i = 0; i < coop.players.length; i++) {
@@ -1020,6 +1051,7 @@ function drawEnemy2(e, time) {
   if (e.elite) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.9, "rgba(255,200,40,0.45)");
   if (isHijacked(e)) glow(cx, e.y + e.h / 2, Math.max(e.w, e.h) * 0.8, "rgba(90,255,122,0.4)");
   drawUnder2(e, time, cx, dx, dy, k);
+  if (e.nav) drawNavLine(e); // a grapple line (Lobber, Monolith)
   const tumbling = e.downed && !e.downed.landed; // a Hotfix shot out of the sky
   if (e.downed) {
     ctx.save();
@@ -1121,7 +1153,7 @@ function drawBubble2(e, time) {
 function drawEnemies2Back(time) {
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
-    if (e.dead || !e.def.v2) continue;
+    if (e.dead || e.boss || !e.def.v2) continue;
     if (e.type === "ratelimiter") drawField2(e, time);
     else if (e.type === "hotfix" && !e.downed) {
       if (e.tether1) drawTether2(e, e.tether1, time);
@@ -1148,10 +1180,13 @@ function drawField2(e, time) {
   ctx.globalAlpha = 0.7;
   ctx.strokeStyle = col;
   ctx.lineWidth = 4;
-  ctx.setLineDash(DASH2);
-  ctx.lineDashOffset = -time * 60;
+  const dashed = !perfMode(); // (dashed lines are slow without a GPU)
+  if (dashed) {
+    ctx.setLineDash(DASH2);
+    ctx.lineDashOffset = -time * 60;
+  }
   ctx.stroke();
-  ctx.setLineDash(NODASH2);
+  if (dashed) ctx.setLineDash(NODASH2);
   if (e.pulseT < 0.7) {
     // the pulse front rolling out
     ctx.globalAlpha = 1 - e.pulseT / 0.7;
